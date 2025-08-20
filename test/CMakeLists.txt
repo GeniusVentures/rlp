@@ -15,3 +15,11 @@ target_link_libraries(rlp_test PRIVATE
 
 # Ensure GTest headers are found (should be handled by CommonBuildParameters finding GTest)
 # target_include_directories(rlp_test PRIVATE ${GTest_INCLUDE_DIR}) # Likely not needed
+
+addtest(discovery_test
+        discovery_test.cpp
+)
+
+target_link_libraries(discovery_test PRIVATE
+        rlp # Link directly to the library target defined in src/
+)

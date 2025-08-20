@@ -74,6 +74,11 @@ if(BUILD_TESTS)
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_test.cpp"
         )
         target_link_libraries(${PROJECT_NAME}_test PUBLIC ${PROJECT_NAME} GTest::gtest)
+
+        add_executable(discovery_test
+                "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
+        )
+        target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest)
 endif()
 
 # Install Headers
