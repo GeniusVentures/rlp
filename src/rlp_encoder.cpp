@@ -43,6 +43,10 @@ void RlpEncoder::add(ByteView bytes) {
     }
 }
 
+void RlpEncoder::addRaw(ByteView bytes) {
+    buffer_.append(bytes);
+}
+
 // Explicit overload for uint256
 void RlpEncoder::add(const intx::uint256& n) {
     add_uint256(n); // Call private implementation detail
