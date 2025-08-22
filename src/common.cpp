@@ -25,4 +25,14 @@ namespace rlp {
         }
     }
 
+    std::string hexToString(rlp::ByteView bv)
+    {
+        std::stringstream ss;
+        ss<<std::setfill('0') << std::hex;
+        for(auto &byte : bv)
+        {
+            ss <<std::setw(2) << (int)byte;
+        }
+        return ss.str();
+    }
 } // namespace rlp

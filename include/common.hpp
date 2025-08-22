@@ -74,6 +74,7 @@ enum class Leftover {
 // Implementation is in common.cpp
 const char* decoding_error_to_string(DecodingError err); // <<< ADD THIS DECLARATION
 
+std::string hexToString(rlp::ByteView bv);
 } // namespace rlp
 
 #endif // RLP_COMMON_HPP
