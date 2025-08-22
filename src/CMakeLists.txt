@@ -5,6 +5,10 @@ add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/rlp_decoder.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common.cpp
         ${CMAKE_CURRENT_LIST_DIR}/endian.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/PeerDiscovery/packet_factory.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/PeerDiscovery/Discv4Packet.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/PeerDiscovery/Discv4Ping.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/PeerDiscovery/Discv4Pong.cpp
 )
 
 # Set config of crypto3
@@ -36,7 +40,11 @@ install(FILES
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp_decoder.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp_encoder.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/endian.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/discovery.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/PeerDiscovery/discovery.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/PeerDiscovery/packet_factory.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/PeerDiscovery/Discv4Packet.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/PeerDiscovery/Discv4Ping.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/PeerDiscovery/Discv4Pong.hpp
         # Add impl/endian.ipp if it exists in include/impl/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} # Install directly into <prefix>/include/
 )
