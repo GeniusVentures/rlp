@@ -301,14 +301,6 @@ int test_ping()
         auto payload_hash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(msg_cpp.begin() + 32, msg_cpp.end());
         std::array<uint8_t, 32> payload_array = payload_hash;
         std::copy(payload_array.begin(), payload_array.end(), msg_cpp.begin());
-        
-        // TODO Temporary Debug
-        std::cout<<"Absolute final full msg: ";
-        for(auto &byte : msg_cpp)
-        {
-            std::cout<<std::setfill('0') << std::setw(2) << std::hex<<(short)byte;
-        }
-        std::cout<<"\n\n";
     
         asio::io_context io;
         udp::socket socket(io, udp::v4());
