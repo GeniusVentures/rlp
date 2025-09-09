@@ -12,6 +12,17 @@ using namespace rlp;
 
 // --- Endian Tests ---
 
+namespace {
+template <typename T>
+bool expect_roundtrip(const T& val) {
+    const auto bytes = rlp::endian::to_big_compact(val);
+    T restored{};
+    const auto res = rlp::endian::from_big_compact(bytes, restored);
+    if (!res.has_value()) return false;
+    return restored == val;
+}
+} // anonymous
+
 TEST(RlpEndian, Uint8Tests) {
     const uint8_t val = 0xAB;
     const auto bytes = rlp::endian::to_big_compact(val);
@@ -252,37 +263,21 @@ TEST(RlpEndian, EdgeCases) {
 
 TEST(RlpEndian, BoundaryValues) {
     for (uint8_t val : {0x01, 0x7F, 0x80, 0xFE, 0xFF}) {
-        const auto bytes = rlp::endian::to_big_compact(val);
-        uint8_t restored;
-        const auto result = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(result.has_value());
-        EXPECT_EQ(restored, val) << "Failed for uint8_t value: 0x" << std::hex << static_cast<int>(val);
+        ASSERT_TRUE(expect_roundtrip<uint8_t>(val)) << "Failed for uint8_t value: 0x" << std::hex << static_cast<int>(val);
     }
     
     for (uint16_t val : {0x01, 0xFF, 0x0100, 0x7FFF, 0x8000, 0xFFFE, 0xFFFF}) {
-        const auto bytes = rlp::endian::to_big_compact(val);
-        uint16_t restored;
-        const auto result = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(result.has_value());
-        EXPECT_EQ(restored, val) << "Failed for uint16_t value: 0x" << std::hex << val;
+        ASSERT_TRUE(expect_roundtrip<uint16_t>(val)) << "Failed for uint16_t value: 0x" << std::hex << val;
     }
     
     for (uint32_t val : {0x01U, 0xFFU, 0x0100U, 0xFFFFU, 0x010000U, 0x7FFFFFFFU, 0x80000000U, 0xFFFFFFFEU, 0xFFFFFFFFU}) {
-        const auto bytes = rlp::endian::to_big_compact(val);
-        uint32_t restored;
-        const auto result = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(result.has_value());
-        EXPECT_EQ(restored, val) << "Failed for uint32_t value: 0x" << std::hex << val;
+        ASSERT_TRUE(expect_roundtrip<uint32_t>(val)) << "Failed for uint32_t value: 0x" << std::hex << val;
     }
     
     for (uint64_t val : {0x01ULL, 0xFFULL, 0x0100ULL, 0xFFFFULL, 0x010000ULL, 0xFFFFFFULL, 
                          0x01000000ULL, 0xFFFFFFFFULL, 0x0100000000ULL, 0x7FFFFFFFFFFFFFFFULL, 
                          0x8000000000000000ULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL}) {
-        const auto bytes = rlp::endian::to_big_compact(val);
-        uint64_t restored;
-        const auto result = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(result.has_value());
-        EXPECT_EQ(restored, val) << "Failed for uint64_t value: 0x" << std::hex << val;
+        ASSERT_TRUE(expect_roundtrip<uint64_t>(val)) << "Failed for uint64_t value: 0x" << std::hex << val;
     }
 }
 
@@ -423,25 +418,29 @@ TEST(RlpEndian, DeserializationFailure) {
     const rlp::Bytes oversized_for_u8{0x01, 0x02};
     uint8_t restored_u8;
     const auto result_u8 = rlp::endian::from_big_compact(oversized_for_u8, restored_u8);
-    EXPECT_FALSE(result_u8.has_value());
+    ASSERT_FALSE(result_u8.has_value());
+    EXPECT_EQ(result_u8.error(), rlp::DecodingError::kOverflow);
 
     // Case 2: >2 bytes into uint16_t
     const rlp::Bytes oversized_for_u16{0x01, 0x02, 0x03};
     uint16_t restored_u16;
     const auto result_u16 = rlp::endian::from_big_compact(oversized_for_u16, restored_u16);
-    EXPECT_FALSE(result_u16.has_value());
+    ASSERT_FALSE(result_u16.has_value());
+    EXPECT_EQ(result_u16.error(), rlp::DecodingError::kOverflow);
 
     // Case 3: >4 bytes into uint32_t
     const rlp::Bytes oversized_for_u32{0x01, 0x02, 0x03, 0x04, 0x05};
     uint32_t restored_u32;
     const auto result_u32 = rlp::endian::from_big_compact(oversized_for_u32, restored_u32);
-    EXPECT_FALSE(result_u32.has_value());
+    ASSERT_FALSE(result_u32.has_value());
+    EXPECT_EQ(result_u32.error(), rlp::DecodingError::kOverflow);
 
     // Case 4: >8 bytes into uint64_t
     const rlp::Bytes oversized_for_u64{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
     uint64_t restored_u64;
     const auto result_u64 = rlp::endian::from_big_compact(oversized_for_u64, restored_u64);
-    EXPECT_FALSE(result_u64.has_value());
+    ASSERT_FALSE(result_u64.has_value());
+    EXPECT_EQ(result_u64.error(), rlp::DecodingError::kOverflow);
 }
 
 int main(int argc, char **argv) {
