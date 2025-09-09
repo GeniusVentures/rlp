@@ -79,6 +79,11 @@ if(BUILD_TESTS)
                 "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
         )
         target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest)
+
+        add_executable(rlp_endian_test
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_test.cpp"
+        )
+        target_link_libraries(rlp_endian_test PUBLIC ${PROJECT_NAME} GTest::gtest)
 endif()
 
 # Install Headers
