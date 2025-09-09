@@ -389,8 +389,7 @@ TEST(RlpEndian, DeserializationFailure) {
     EXPECT_EQ(result_u64.error(), rlp::DecodingError::kOverflow);
 }
 
-TEST(RlpEndian, Uint256Tests) {
-    // Zero
+TEST(RlpEndian, Uint256Zero) {
     const intx::uint256 zero = 0;
     const auto bytes_zero = rlp::endian::to_big_compact(zero);
     EXPECT_TRUE(bytes_zero.empty());
@@ -398,8 +397,9 @@ TEST(RlpEndian, Uint256Tests) {
     const auto res_zero = rlp::endian::from_big_compact(bytes_zero, restored_zero);
     EXPECT_TRUE(res_zero.has_value());
     EXPECT_EQ(restored_zero, zero);
+}
 
-    // Small value
+TEST(RlpEndian, Uint256Small) {
     const intx::uint256 small = static_cast<uint64_t>(0x12345678ULL);
     const auto bytes_small = rlp::endian::to_big_compact(small);
     EXPECT_EQ(bytes_small.size(), 4);
@@ -407,22 +407,27 @@ TEST(RlpEndian, Uint256Tests) {
     const auto res_small = rlp::endian::from_big_compact(bytes_small, restored_small);
     EXPECT_TRUE(res_small.has_value());
     EXPECT_EQ(restored_small, small);
+}
 
-    // Large value (sparse bits set across the 256-bit space)
+TEST(RlpEndian, Uint256Large) {
     const intx::uint256 large = (intx::uint256(1) << 200) | (intx::uint256(0x12345678ULL) << 32) | intx::uint256(0x9ABCDEF0ULL);
     const auto bytes_large = rlp::endian::to_big_compact(large);
     intx::uint256 restored_large;
     const auto res_large = rlp::endian::from_big_compact(bytes_large, restored_large);
     EXPECT_TRUE(res_large.has_value());
     EXPECT_EQ(restored_large, large);
+}
 
-    // Overflow: 33 non-zero bytes should be rejected for uint256
+TEST(RlpEndian, Uint256Overflow) {
+    // 33 non-zero bytes should be rejected for uint256
     rlp::Bytes too_large(33, static_cast<uint8_t>(0xFF));
     intx::uint256 out_overflow;
     const auto res_overflow = rlp::endian::from_big_compact(too_large, out_overflow);
     ASSERT_FALSE(res_overflow.has_value());
     EXPECT_EQ(res_overflow.error(), rlp::DecodingError::kOverflow);
+}
 
+TEST(RlpEndian, Uint256LeadingZero) {
     // Leading zero: first byte zero and length > 1
     rlp::Bytes leading_zero{0x00, 0x01};
     intx::uint256 out_lz;
