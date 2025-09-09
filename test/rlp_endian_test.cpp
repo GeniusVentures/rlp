@@ -22,9 +22,7 @@ std::string to_hex(rlp::ByteView bytes) {
 
 // --- Endian Tests ---
 
-void rlp_test_endian() {
-    // Test all unsigned integral types with endian conversions
-    
+TEST(RlpEndian, Uint8Tests) {
     // Test uint8_t
     {
         uint8_t val = 0xAB;
@@ -36,7 +34,9 @@ void rlp_test_endian() {
         rlp::endian::from_big_compact(bytes, restored);
         EXPECT_EQ(restored, val);
     }
-    
+}
+
+TEST(RlpEndian, Uint16Tests) {
     // Test uint16_t
     {
         uint16_t val = 0xABCD;
@@ -55,7 +55,9 @@ void rlp_test_endian() {
         EXPECT_EQ(bytes_compact.size(), 1);
         EXPECT_EQ(bytes_compact[0], 0xCD);
     }
-    
+}
+
+TEST(RlpEndian, Uint32Tests) {
     // Test uint32_t
     {
         uint32_t val = 0xABCDEF12;
@@ -77,7 +79,9 @@ void rlp_test_endian() {
         EXPECT_EQ(bytes_compact[0], 0xEF);
         EXPECT_EQ(bytes_compact[1], 0x12);
     }
-    
+}
+
+TEST(RlpEndian, Uint64Tests) {
     // Test uint64_t
     {
         uint64_t val = 0xABCDEF1234567890ULL;
@@ -105,7 +109,9 @@ void rlp_test_endian() {
         EXPECT_EQ(bytes_compact[2], 0x78);
         EXPECT_EQ(bytes_compact[3], 0x90);
     }
-    
+}
+
+TEST(RlpEndian, ZeroValues) {
     // Test zero values (should return empty bytes)
     {
         uint8_t val8 = 0;
@@ -124,7 +130,9 @@ void rlp_test_endian() {
         auto bytes64 = rlp::endian::to_big_compact(val64);
         EXPECT_TRUE(bytes64.empty());
     }
-    
+}
+
+TEST(RlpEndian, VectorOperations) {
     // Test std::vector with endian operations
     {
         std::vector<uint32_t> vec = {0xABCDEF12, 0x34567890, 0x0000FFEE};
@@ -160,7 +168,9 @@ void rlp_test_endian() {
         
         EXPECT_EQ(restored_vec, vec);
     }
-    
+}
+
+TEST(RlpEndian, ArrayOperations) {
     // Test std::array with endian operations
     {
         std::array<uint16_t, 4> arr = {0xABCD, 0x1234, 0x00EF, 0x0000};
@@ -193,7 +203,9 @@ void rlp_test_endian() {
         
         EXPECT_EQ(restored_arr, arr);
     }
-    
+}
+
+TEST(RlpEndian, CArrayOperations) {
     // Test C array with endian operations
     {
         uint32_t c_array[] = {0xDEADBEEF, 0xCAFEBABE, 0x12345678};
@@ -231,7 +243,9 @@ void rlp_test_endian() {
             EXPECT_EQ(restored_c_array[i], c_array[i]);
         }
     }
-    
+}
+
+TEST(RlpEndian, EdgeCases) {
     // Test edge cases
     {
         // Test maximum values
@@ -284,10 +298,6 @@ void rlp_test_endian() {
     }
 }
 
-TEST(RlpEndian, ComprehensiveEndianTests) {
-    rlp_test_endian();
-}
-
 TEST(RlpEndian, BoundaryValues) {
     // Test boundary values for each unsigned type
     
@@ -326,7 +336,7 @@ TEST(RlpEndian, BoundaryValues) {
     }
 }
 
-TEST(RlpEndian, VectorOperations) {
+TEST(RlpEndian, VectorOperationsExtended) {
     // Test operations on vectors of different sizes
     
     // Empty vector
@@ -355,7 +365,7 @@ TEST(RlpEndian, VectorOperations) {
     }
 }
 
-TEST(RlpEndian, ArrayOperations) {
+TEST(RlpEndian, ArrayOperationsExtended) {
     // Test fixed-size arrays
     
     // Test array of uint8_t
@@ -392,7 +402,7 @@ TEST(RlpEndian, ArrayOperations) {
     }
 }
 
-TEST(RlpEndian, CArrayOperations) {
+TEST(RlpEndian, CArrayOperationsExtended) {
     // Test C-style arrays
     
     // Test array of uint32_t
@@ -430,7 +440,6 @@ TEST(RlpEndian, CArrayOperations) {
 TEST(RlpEndian, CompactRepresentation) {
     // Test that compact representation correctly removes leading zeros
     
-    // Test cases where leading zeros should be removed
     struct TestCase {
         uint64_t value;
         size_t expected_size;
