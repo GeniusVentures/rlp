@@ -436,6 +436,55 @@ TEST(RlpEndian, Uint256LeadingZero) {
     EXPECT_EQ(res_lz.error(), rlp::DecodingError::kLeadingZero);
 }
 
+TEST(RlpEndian, LeadingZeroSmallTypes) {
+    // Leading zero should be rejected for fixed-size unsigned types when length > 1
+    rlp::Bytes leading{0x00, 0x01};
+
+    uint8_t out8;
+    const auto r8 = rlp::endian::from_big_compact(leading, out8);
+    ASSERT_FALSE(r8.has_value());
+    EXPECT_EQ(r8.error(), rlp::DecodingError::kLeadingZero);
+
+    uint16_t out16;
+    const auto r16 = rlp::endian::from_big_compact(leading, out16);
+    ASSERT_FALSE(r16.has_value());
+    EXPECT_EQ(r16.error(), rlp::DecodingError::kLeadingZero);
+
+    uint32_t out32;
+    const auto r32 = rlp::endian::from_big_compact(leading, out32);
+    ASSERT_FALSE(r32.has_value());
+    EXPECT_EQ(r32.error(), rlp::DecodingError::kLeadingZero);
+
+    uint64_t out64;
+    const auto r64 = rlp::endian::from_big_compact(leading, out64);
+    ASSERT_FALSE(r64.has_value());
+    EXPECT_EQ(r64.error(), rlp::DecodingError::kLeadingZero);
+}
+
+TEST(RlpEndian, SingleZeroByteDeserializesToZero) {
+    rlp::Bytes single_zero{0x00};
+
+    uint8_t out8 = 0xFF;
+    const auto r8 = rlp::endian::from_big_compact(single_zero, out8);
+    EXPECT_TRUE(r8.has_value());
+    EXPECT_EQ(out8, static_cast<uint8_t>(0));
+
+    uint16_t out16 = 0xFFFF;
+    const auto r16 = rlp::endian::from_big_compact(single_zero, out16);
+    EXPECT_TRUE(r16.has_value());
+    EXPECT_EQ(out16, static_cast<uint16_t>(0));
+
+    uint32_t out32 = 0xFFFFFFFF;
+    const auto r32 = rlp::endian::from_big_compact(single_zero, out32);
+    EXPECT_TRUE(r32.has_value());
+    EXPECT_EQ(out32, static_cast<uint32_t>(0));
+
+    uint64_t out64 = 0xFFFFFFFFFFFFFFFFULL;
+    const auto r64 = rlp::endian::from_big_compact(single_zero, out64);
+    EXPECT_TRUE(r64.has_value());
+    EXPECT_EQ(out64, static_cast<uint64_t>(0));
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
