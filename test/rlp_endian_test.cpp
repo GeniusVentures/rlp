@@ -19,8 +19,8 @@ TEST(RlpEndian, Uint8Tests) {
     EXPECT_EQ(bytes[0], 0xAB);
     
     uint8_t restored;
-    const bool success = rlp::endian::from_big_compact(bytes, restored);
-    EXPECT_TRUE(success);
+    const auto result = rlp::endian::from_big_compact(bytes, restored);
+    EXPECT_TRUE(result.has_value());
     EXPECT_EQ(restored, val);
 }
 
@@ -32,8 +32,8 @@ TEST(RlpEndian, Uint16Tests) {
     EXPECT_EQ(bytes[1], 0xCD);
     
     uint16_t restored;
-    const bool success = rlp::endian::from_big_compact(bytes, restored);
-    EXPECT_TRUE(success);
+    const auto result = rlp::endian::from_big_compact(bytes, restored);
+    EXPECT_TRUE(result.has_value());
     EXPECT_EQ(restored, val);
     
     const uint16_t val_compact = 0x00CD;
@@ -52,8 +52,8 @@ TEST(RlpEndian, Uint32Tests) {
     EXPECT_EQ(bytes[3], 0x12);
     
     uint32_t restored;
-    const bool success = rlp::endian::from_big_compact(bytes, restored);
-    EXPECT_TRUE(success);
+    const auto result = rlp::endian::from_big_compact(bytes, restored);
+    EXPECT_TRUE(result.has_value());
     EXPECT_EQ(restored, val);
     
     const uint32_t val_compact = 0x0000EF12;
@@ -77,8 +77,8 @@ TEST(RlpEndian, Uint64Tests) {
     EXPECT_EQ(bytes[7], 0x90);
     
     uint64_t restored;
-    const bool success = rlp::endian::from_big_compact(bytes, restored);
-    EXPECT_TRUE(success);
+    const auto result = rlp::endian::from_big_compact(bytes, restored);
+    EXPECT_TRUE(result.has_value());
     EXPECT_EQ(restored, val);
     
     const uint64_t val_compact = 0x0000000034567890ULL;
@@ -132,8 +132,8 @@ TEST(RlpEndian, VectorOperations) {
     std::vector<uint32_t> restored_vec;
     for (const auto& bytes : vec_bytes) {
         uint32_t val;
-        const bool success = rlp::endian::from_big_compact(bytes, val);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, val);
+        EXPECT_TRUE(result.has_value());
         restored_vec.push_back(val);
     }
     
@@ -161,8 +161,8 @@ TEST(RlpEndian, ArrayOperations) {
     for (size_t i = 0; i < arr_bytes.size(); ++i) {
         uint16_t val = 0;
         if (!arr_bytes[i].empty()) {
-            const bool success = rlp::endian::from_big_compact(arr_bytes[i], val);
-            EXPECT_TRUE(success);
+            const auto result = rlp::endian::from_big_compact(arr_bytes[i], val);
+            EXPECT_TRUE(result.has_value());
         }
         restored_arr[i] = val;
     }
@@ -195,8 +195,8 @@ TEST(RlpEndian, CArrayOperations) {
     
     uint32_t restored_c_array[array_size];
     for (size_t i = 0; i < array_size; ++i) {
-        const bool success = rlp::endian::from_big_compact(c_array_bytes[i], restored_c_array[i]);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(c_array_bytes[i], restored_c_array[i]);
+        EXPECT_TRUE(result.has_value());
     }
     
     for (size_t i = 0; i < array_size; ++i) {
@@ -254,24 +254,24 @@ TEST(RlpEndian, BoundaryValues) {
     for (uint8_t val : {0x01, 0x7F, 0x80, 0xFE, 0xFF}) {
         const auto bytes = rlp::endian::to_big_compact(val);
         uint8_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, val) << "Failed for uint8_t value: 0x" << std::hex << static_cast<int>(val);
     }
     
     for (uint16_t val : {0x01, 0xFF, 0x0100, 0x7FFF, 0x8000, 0xFFFE, 0xFFFF}) {
         const auto bytes = rlp::endian::to_big_compact(val);
         uint16_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, val) << "Failed for uint16_t value: 0x" << std::hex << val;
     }
     
     for (uint32_t val : {0x01U, 0xFFU, 0x0100U, 0xFFFFU, 0x010000U, 0x7FFFFFFFU, 0x80000000U, 0xFFFFFFFEU, 0xFFFFFFFFU}) {
         const auto bytes = rlp::endian::to_big_compact(val);
         uint32_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, val) << "Failed for uint32_t value: 0x" << std::hex << val;
     }
     
@@ -280,8 +280,8 @@ TEST(RlpEndian, BoundaryValues) {
                          0x8000000000000000ULL, 0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL}) {
         const auto bytes = rlp::endian::to_big_compact(val);
         uint64_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, val) << "Failed for uint64_t value: 0x" << std::hex << val;
     }
 }
@@ -304,8 +304,8 @@ TEST(RlpEndian, VectorOperationsExtended) {
     for (size_t i = 0; i < large_vec.size(); ++i) {
         const auto bytes = rlp::endian::to_big_compact(large_vec[i]);
         uint8_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, large_vec[i]) << "Failed at index " << i;
     }
 }
@@ -319,8 +319,8 @@ TEST(RlpEndian, ArrayOperationsExtended) {
     for (size_t i = 0; i < byte_array.size(); ++i) {
         const auto bytes = rlp::endian::to_big_compact(byte_array[i]);
         uint8_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, byte_array[i]) << "Failed at index " << i;
     }
     
@@ -338,8 +338,8 @@ TEST(RlpEndian, ArrayOperationsExtended) {
     for (size_t i = 0; i < pattern_array.size(); ++i) {
         const auto bytes = rlp::endian::to_big_compact(pattern_array[i]);
         uint64_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, pattern_array[i]) << "Failed at pattern array index " << i;
     }
 }
@@ -355,8 +355,8 @@ TEST(RlpEndian, CArrayOperationsExtended) {
     for (size_t i = 0; i < c_array_size; ++i) {
         const auto bytes = rlp::endian::to_big_compact(c_array[i]);
         uint32_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, c_array[i]) << "Failed at C array index " << i;
     }
     
@@ -370,8 +370,8 @@ TEST(RlpEndian, CArrayOperationsExtended) {
         for (size_t j = 0; j < 4; ++j) {
             const auto bytes = rlp::endian::to_big_compact(multi_array[i][j]);
             uint16_t restored;
-            const bool success = rlp::endian::from_big_compact(bytes, restored);
-            EXPECT_TRUE(success);
+            const auto result = rlp::endian::from_big_compact(bytes, restored);
+            EXPECT_TRUE(result.has_value());
             EXPECT_EQ(restored, multi_array[i][j]) << "Failed at multi-array [" << i << "][" << j << "]";
         }
     }
@@ -409,11 +409,39 @@ TEST(RlpEndian, CompactRepresentation) {
         }
         
         uint64_t restored;
-        const bool success = rlp::endian::from_big_compact(bytes, restored);
-        EXPECT_TRUE(success);
+        const auto result = rlp::endian::from_big_compact(bytes, restored);
+        EXPECT_TRUE(result.has_value());
         EXPECT_EQ(restored, test_case.value) 
             << "Restoration failed for value 0x" << std::hex << test_case.value;
     }
+}
+
+TEST(RlpEndian, DeserializationFailure) {
+    // Test deserializing bytes that are too large for the target type.
+    
+    // Case 1: >1 byte into uint8_t
+    const rlp::Bytes oversized_for_u8{0x01, 0x02};
+    uint8_t restored_u8;
+    const auto result_u8 = rlp::endian::from_big_compact(oversized_for_u8, restored_u8);
+    EXPECT_FALSE(result_u8.has_value());
+
+    // Case 2: >2 bytes into uint16_t
+    const rlp::Bytes oversized_for_u16{0x01, 0x02, 0x03};
+    uint16_t restored_u16;
+    const auto result_u16 = rlp::endian::from_big_compact(oversized_for_u16, restored_u16);
+    EXPECT_FALSE(result_u16.has_value());
+
+    // Case 3: >4 bytes into uint32_t
+    const rlp::Bytes oversized_for_u32{0x01, 0x02, 0x03, 0x04, 0x05};
+    uint32_t restored_u32;
+    const auto result_u32 = rlp::endian::from_big_compact(oversized_for_u32, restored_u32);
+    EXPECT_FALSE(result_u32.has_value());
+
+    // Case 4: >8 bytes into uint64_t
+    const rlp::Bytes oversized_for_u64{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
+    uint64_t restored_u64;
+    const auto result_u64 = rlp::endian::from_big_compact(oversized_for_u64, restored_u64);
+    EXPECT_FALSE(result_u64.has_value());
 }
 
 int main(int argc, char **argv) {
