@@ -46,13 +46,21 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: true
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          echo "source-dir=${{ github.workspace }}/build/Windows" >> "$GITHUB_OUTPUT"
+          echo "build-output-dir=${{ github.workspace }}/build/Windows/build" >> "$GITHUB_OUTPUT"
+        else
+          echo "source-dir=${{ github.workspace }}/build/Linux" >> "$GITHUB_OUTPUT"
+          echo "build-output-dir=${{ github.workspace }}/build/Linux/build" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
@@ -62,7 +70,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -S ${{ github.workspace }}
+        -S ${{ steps.strings.outputs.source-dir }}
 
     - name: Build
       # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
