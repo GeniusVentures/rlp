@@ -79,7 +79,8 @@ TEST(RlpEncoder, EncodeLongString) {
 
 TEST(RlpEncoder, EncodeUintZero) {
     rlp::RlpEncoder encoder;
-    encoder.add(uint64_t{0});
+    const uint64_t value = 0UL;
+    encoder.add(value);
     EXPECT_EQ(to_hex(encoder.get_bytes()), "80"); // 0 encodes as empty string 0x80
 }
 
