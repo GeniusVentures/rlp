@@ -177,7 +177,7 @@ TEST(RlpEncoder, EncodeUnclosedListThrows) {
     encoder.begin_list();
     encoder.add(uint64_t{1});
     // Don't call end_list()
-    EXPECT_THROW(encoder.get_bytes(), std::logic_error);
+    EXPECT_THROW(static_cast<void>(encoder.get_bytes()), std::logic_error);
 }
 
 int main(int argc, char **argv) {
