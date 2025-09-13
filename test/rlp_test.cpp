@@ -86,13 +86,14 @@ TEST(RlpEncoder, EncodeUintZero) {
 
 TEST(RlpEncoder, EncodeUintSmall) {
     rlp::RlpEncoder encoder;
-    encoder.add(uint64_t{15}); // 0x0F < 0x80
+    const uint64_t value = 15;
+    encoder.add(value); // 0x0F < 0x80
     EXPECT_EQ(to_hex(encoder.get_bytes()), "0f");
 }
 
 TEST(RlpEncoder, EncodeUintMedium) {
     rlp::RlpEncoder encoder;
-    uint64_t testVal = 0x400; // 1024
+    const uint64_t testVal = 0x400; // 1024
 
     // Debug: Print the bytes returned by to_big_compact
     rlp::Bytes be = rlp::endian::to_big_compact(testVal);
