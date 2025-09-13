@@ -13,8 +13,8 @@
 namespace rlp {
 
 // --- Basic Types ---
-using Bytes = std::basic_string<uint8_t>;
-using ByteView = std::basic_string_view<uint8_t>;
+using Bytes = std::vector<uint8_t>;
+using ByteView = std::span<uint8_t>;
 
 // --- Concept Simulation (C++17) ---
 template <typename T>
