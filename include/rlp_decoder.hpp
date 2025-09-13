@@ -106,7 +106,7 @@ class RlpDecoder {
         {
             return DecodingError::kLeadingZero;
         }
-        if (h.payload_length == 1 && payload_view[0] == 0 && T{0} >= kRlpSingleByteThreshold)
+        if (h.payload_length == 1 && payload_view[0] == 0 && static_cast<uint8_t>(T{0U}) >= kRlpSingleByteThreshold)
         {
             return DecodingError::kLeadingZero;
         }
