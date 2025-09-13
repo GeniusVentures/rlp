@@ -169,7 +169,7 @@ TEST(RlpEncoder, EncodeLargeString) {
     std::string large_str(1000, 'x');
     rlp::Bytes large_bytes(reinterpret_cast<const uint8_t*>(large_str.data()), large_str.size());
     encoder.add(large_bytes);
-    EXPECT_EQ(encoder.get_bytes().size(), 1000 + 4); // Payload + header
+    EXPECT_EQ(encoder.get_bytes().size(), 1003); // 1000 payload + 3 header bytes
 }
 
 TEST(RlpEncoder, EncodeUnclosedListThrows) {
