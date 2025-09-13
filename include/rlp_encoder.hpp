@@ -19,8 +19,6 @@ class RlpEncoder {
     template <typename T>
         auto add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;
     void add(const intx::uint256& n); // Explicit overload for uint256
-
-    // --- List Handling ---
     void begin_list();
     void end_list(); // Calculates and inserts the list header
 
@@ -45,8 +43,8 @@ class RlpEncoder {
     }
 
     // --- Output ---
-    [[nodiscard]] const Bytes& get_bytes() const noexcept; // Get encoded result
-    Bytes&& move_bytes() noexcept; // Move encoded result out
+    [[nodiscard]] const Bytes& get_bytes() const;
+    Bytes&& move_bytes();
     void clear() noexcept; // Reset the encoder
 
    private:
@@ -57,7 +55,6 @@ class RlpEncoder {
     // Needs to be in header if add<T> is public template method
     template <typename T>
     auto add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;
-    void add_uint256(const intx::uint256& n);
 };
 
 template <typename T>
