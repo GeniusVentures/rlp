@@ -95,6 +95,12 @@ TEST(RlpEncoder, EncodeUintLarge) {
     EXPECT_EQ(to_hex(encoder.get_bytes()), "88ffccb5ddffee1483");
 }
 
+TEST(RlpEncoder, EncodeUint8Large) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint8_t{200}); // 200 = 0xC8 >= 0x80
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "81c8");
+}
+
 TEST(RlpEncoder, EncodeUint256Zero) {
     rlp::RlpEncoder encoder;
     encoder.add(intx::uint256{0});

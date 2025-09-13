@@ -79,10 +79,20 @@ inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned
          } else {
              // Encode as short string
               Bytes header_bytes;
-              size_t payload_len = 1;
+              const size_t payload_len = 1;
+              //__debugbreak();
+			  if (payload_len < kMaxShortStringLen + 1) { // 56
+				  header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
+			  }
+			  else {
+				  // Should not happen for single byte, but general logic:
+				  Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_len));
+				  header_bytes.push_back(static_cast<uint8_t>(kLongStringOffset + len_be.length()));
+				  header_bytes.append(len_be);
+			  }
               header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
-             buffer_.append(header_bytes);
-             buffer_.push_back(val);
+              buffer_.append(header_bytes);
+              buffer_.push_back(val);
          }
     } else {
          intx::uint256 val{n};
