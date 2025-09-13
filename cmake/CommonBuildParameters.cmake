@@ -70,10 +70,16 @@ include_directories(
 include("${CMAKE_CURRENT_LIST_DIR}/../src/CMakeLists.txt")
 
 if(BUILD_TESTS)
-        add_executable(${PROJECT_NAME}_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_test.cpp"
+        add_executable(${PROJECT_NAME}_encoder_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_encoder_tests.cpp"
         )
-        target_link_libraries(${PROJECT_NAME}_test PUBLIC ${PROJECT_NAME} GTest::gtest)
+
+        add_executable(${PROJECT_NAME}_decoder_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_decoder_tests.cpp"
+        )
+
+        target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
+        target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
 endif()
 
 # Install Headers
