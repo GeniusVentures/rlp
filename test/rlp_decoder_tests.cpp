@@ -120,6 +120,60 @@ TEST(RlpDecoder, DecodeUintLarge) {
     EXPECT_TRUE(decoder.is_finished());
 }
 
+TEST(RlpDecoder, DecodeUint8Small) {
+    rlp::Bytes data = from_hex("64"); // 100 < 128
+    rlp::RlpDecoder decoder(data);
+    uint8_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 100);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, DecodeUint8Big) {
+    rlp::Bytes data = from_hex("81c8"); // 200 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint8_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 200);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, DecodeUint16Small) {
+    rlp::Bytes data = from_hex("64"); // 100 < 128
+    rlp::RlpDecoder decoder(data);
+    uint16_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 100);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, DecodeUint16Big) {
+    rlp::Bytes data = from_hex("82012c"); // 300 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint16_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 300);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, DecodeUint32Small) {
+    rlp::Bytes data = from_hex("64"); // 100 < 128
+    rlp::RlpDecoder decoder(data);
+    uint32_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 100);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, DecodeUint32Big) {
+    rlp::Bytes data = from_hex("83011170"); // 70000 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint32_t out;
+    EXPECT_TRUE(decoder.read(out));
+    EXPECT_EQ(out, 70000);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
 TEST(RlpDecoder, DecodeUint256Zero) {
     rlp::Bytes data = from_hex("80");
     rlp::RlpDecoder decoder(data);
