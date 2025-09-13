@@ -16,8 +16,8 @@ class RlpEncoder {
     // --- Add basic types ---
     void add(ByteView bytes); // Add raw bytes (encoded as RLP string)
     // Add unsigned integrals (using SFINAE for C++17)
-    template <typename T, UnsignedIntegral<T>>
-        void add(const T& n);
+    template <typename T>
+        auto add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;
     void add(const intx::uint256& n); // Explicit overload for uint256
 
     // --- List Handling ---
@@ -56,12 +56,12 @@ class RlpEncoder {
     // --- Internal Template Implementation for Integrals ---
     // Needs to be in header if add<T> is public template method
     template <typename T>
-    void add_integral(const T& n);
+    auto add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;
     void add_uint256(const intx::uint256& n);
 };
 
-template <typename T, UnsignedIntegral<T>>
-inline void RlpEncoder::add(const T& n) {
+template <typename T>
+inline auto RlpEncoder::add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>> {
     if constexpr (std::is_same_v<T, bool>) {
         // Handle boolean values
         buffer_.push_back(n ? uint8_t{1} : kEmptyStringCode);
@@ -72,12 +72,7 @@ inline void RlpEncoder::add(const T& n) {
 }
 
 template <typename T>
-inline void RlpEncoder::add_integral(const T& n) {
-    // Implementation moved to encoder.cpp, called from non-template add method
-    // This function can be removed if add<T> implementation stays in header
-    // If we keep non-template add() calling template add_integral(),
-    // add_integral MUST be defined in the header. Let's move logic to cpp.
-    // We will have explicit overloads in the header and implementations in cpp.
+inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>> {
      if (n == 0) {
         buffer_.push_back(kEmptyStringCode);
     } else if constexpr (sizeof(T) == 1) {
@@ -85,19 +80,10 @@ inline void RlpEncoder::add_integral(const T& n) {
          if (val < kRlpSingleByteThreshold) {
              buffer_.push_back(val);
          } else {
-             // Needs header logic from encode_helpers.cpp
-             // Let's call a private non-template helper implemented in cpp
-             // This design doesn't work well - keep template implementation here for now
+             // Encode as short string
               Bytes header_bytes;
               size_t payload_len = 1;
-              if (payload_len < kMaxShortStringLen + 1) { // 56
-                   header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
-              } else {
-                   // Should not happen for single byte, but general logic:
-                   Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_len));
-                   header_bytes.push_back(static_cast<uint8_t>(kLongStringOffset + len_be.length()));
-                   header_bytes.append(len_be);
-              }
+              header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
              buffer_.append(header_bytes);
              buffer_.push_back(val);
          }
@@ -107,7 +93,7 @@ inline void RlpEncoder::add_integral(const T& n) {
               buffer_.push_back(static_cast<uint8_t>(val));
          } else {
               const Bytes be{endian::to_big_compact(val)};
-              // Needs header logic
+              // Encode header
               Bytes header_bytes;
               size_t payload_len = be.length();
               if (payload_len < kMaxShortStringLen + 1) {
