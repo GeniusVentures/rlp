@@ -356,8 +356,8 @@ TEST(RlpDecoder, ErrorUnexpectedListElements) {
 // --- Additional Edge Case Tests ---
 
 TEST(RlpDecoder, DecodeUint256Overflow) {
-    // A very large uint256 that exceeds uint64_t
-    rlp::Bytes data = from_hex("a101" + std::string(64, 'f')); // 33 bytes, too big for uint256
+    // A very large uint256 that exceeds the 32-byte (256-bit) limit for uint256.
+    rlp::Bytes data = from_hex("a101" + std::string(64, 'f')); // 33 bytes total (1 byte header + 32 bytes data), exceeds the 32-byte limit for uint256
     rlp::RlpDecoder decoder(data);
     intx::uint256 out;
     auto res = decoder.read(out);
