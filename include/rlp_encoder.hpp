@@ -70,49 +70,62 @@ inline auto RlpEncoder::add(const T& n) -> std::enable_if_t<is_unsigned_integral
 
 template <typename T>
 inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>> {
-     if (n == 0) {
+    if (n == 0) {
         buffer_.push_back(kEmptyStringCode);
-    } else if constexpr (sizeof(T) == 1) {
-         uint8_t val = static_cast<uint8_t>(n);
-         if (val < kRlpSingleByteThreshold) {
-             buffer_.push_back(val);
-         } else {
-             // Encode as short string
-              Bytes header_bytes;
-              const size_t payload_len = 1;
-              //__debugbreak();
-			  if (payload_len < kMaxShortStringLen + 1) { // 56
-				  header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
-			  }
-			  else {
-				  // Should not happen for single byte, but general logic:
-				  Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_len));
-				  header_bytes.push_back(static_cast<uint8_t>(kLongStringOffset + len_be.length()));
-				  header_bytes.append(len_be);
-			  }
-              header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
-              buffer_.append(header_bytes);
-              buffer_.push_back(val);
-         }
-    } else {
-         intx::uint256 val{n};
-         if (val < kRlpSingleByteThreshold) {
-              buffer_.push_back(static_cast<uint8_t>(val));
-         } else {
-              const Bytes be{endian::to_big_compact(val)};
-              // Encode header
-              Bytes header_bytes;
-              size_t payload_len = be.length();
-              if (payload_len < kMaxShortStringLen + 1) {
-                   header_bytes.push_back(static_cast<uint8_t>(kShortStringOffset + payload_len));
-              } else {
-                   Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_len));
-                   header_bytes.push_back(static_cast<uint8_t>(kLongStringOffset + len_be.length()));
-                   header_bytes.append(len_be);
-              }
-              buffer_.append(header_bytes);
-              buffer_.append(be);
-         }
+        return;
+    }
+    if constexpr (sizeof(T) == 1) {
+        uint8_t val = static_cast<uint8_t>(n);
+        if (val < kRlpSingleByteThreshold) {
+            buffer_.push_back(val);
+        } else {
+            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + 1));
+            buffer_.push_back(val);
+        }
+    } else if constexpr (sizeof(T) == 2) {
+        uint16_t val = n;
+        if (val < kRlpSingleByteThreshold) {
+            buffer_.push_back(static_cast<uint8_t>(val));
+        } else {
+            uint8_t buf[2];
+            size_t len = 0;
+            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            buf[len++] = static_cast<uint8_t>(val & 0xFF);
+            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
+            buffer_.append(buf, len);
+        }
+    } else if constexpr (sizeof(T) == 4) {
+        uint32_t val = n;
+        if (val < kRlpSingleByteThreshold) {
+            buffer_.push_back(static_cast<uint8_t>(val));
+        } else {
+            uint8_t buf[4];
+            size_t len = 0;
+            if (val >> 24) buf[len++] = static_cast<uint8_t>(val >> 24);
+            if (val >> 16) buf[len++] = static_cast<uint8_t>(val >> 16);
+            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            buf[len++] = static_cast<uint8_t>(val & 0xFF);
+            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
+            buffer_.append(buf, len);
+        }
+    } else if constexpr (sizeof(T) == 8) {
+        uint64_t val = n;
+        if (val < kRlpSingleByteThreshold) {
+            buffer_.push_back(static_cast<uint8_t>(val));
+        } else {
+            uint8_t buf[8];
+            size_t len = 0;
+            if (val >> 56) buf[len++] = static_cast<uint8_t>(val >> 56);
+            if (val >> 48) buf[len++] = static_cast<uint8_t>(val >> 48);
+            if (val >> 40) buf[len++] = static_cast<uint8_t>(val >> 40);
+            if (val >> 32) buf[len++] = static_cast<uint8_t>(val >> 32);
+            if (val >> 24) buf[len++] = static_cast<uint8_t>(val >> 24);
+            if (val >> 16) buf[len++] = static_cast<uint8_t>(val >> 16);
+            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            buf[len++] = static_cast<uint8_t>(val & 0xFF);
+            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
+            buffer_.append(buf, len);
+        }
     }
 }
 

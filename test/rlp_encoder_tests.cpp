@@ -101,6 +101,36 @@ TEST(RlpEncoder, EncodeUint8Large) {
     EXPECT_EQ(to_hex(encoder.get_bytes()), "81c8");
 }
 
+TEST(RlpEncoder, EncodeUint8Small) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint8_t{100}); // 100 = 0x64 < 0x80
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "64");
+}
+
+TEST(RlpEncoder, EncodeUint16Small) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint16_t{100}); // 100 < 128
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "64");
+}
+
+TEST(RlpEncoder, EncodeUint16Big) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint16_t{300}); // 300 = 0x012C
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "82012c");
+}
+
+TEST(RlpEncoder, EncodeUint32Small) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint32_t{100}); // 100 < 128
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "64");
+}
+
+TEST(RlpEncoder, EncodeUint32Big) {
+    rlp::RlpEncoder encoder;
+    encoder.add(uint32_t{70000}); // 70000 = 0x011170
+    EXPECT_EQ(to_hex(encoder.get_bytes()), "83011170");
+}
+
 TEST(RlpEncoder, EncodeUint256Zero) {
     rlp::RlpEncoder encoder;
     encoder.add(intx::uint256{0});
