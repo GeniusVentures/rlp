@@ -80,4 +80,24 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }}
+      run: ctest --build-config ${{ matrix.build_type }} --verbose
+
+    - name: Run Google Tests
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
+      shell: bash
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          # Windows executables in Release folder
+          ./${{ matrix.build_type }}/rlp_encoder_tests.exe
+          ./${{ matrix.build_type }}/rlp_decoder_tests.exe
+          if [ -f "./${{ matrix.build_type }}/rlp_test.exe" ]; then
+            ./${{ matrix.build_type }}/rlp_test.exe
+          fi
+        else
+          # Linux executables in current directory
+          ./rlp_encoder_tests
+          ./rlp_decoder_tests
+          if [ -f "./rlp_test" ]; then
+            ./rlp_test
+          fi
+        fi
