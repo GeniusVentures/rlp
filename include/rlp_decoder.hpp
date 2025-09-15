@@ -34,14 +34,14 @@ class RlpDecoder {
     // Skips the next complete RLP item (header + payload)
     DecodingResult skip_item() noexcept;
 
-    template <typename T, typename = UnsignedIntegral<T>>
-    DecodingResult read(T& out) {
+    template <typename T>
+    auto read(T& out) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, intx::uint256>, DecodingResult> {
         return read(view_, out); // Default to view_ and kProhibit
     }
 
     // Helper method for reading with a specified ByteView and leftover handling
     template <typename T>
-    DecodingResult read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit)
+    auto read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
         RlpDecoder temp_decoder(data);
         BOOST_OUTCOME_TRY(auto h, temp_decoder.peek_header());
@@ -96,7 +96,7 @@ class RlpDecoder {
     }
 
     template <typename T>
-    DecodingResult check_payload(Header& h, ByteView& payload_view, ByteView& view)
+    auto check_payload(Header& h, ByteView& payload_view, ByteView& view) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
         if (h.list)
         {
@@ -106,7 +106,7 @@ class RlpDecoder {
         {
             return DecodingError::kLeadingZero;
         }
-        if (h.payload_length == 1 && payload_view[0] == 0 && T{0} >= kRlpSingleByteThreshold)
+        if (h.payload_length == 1 && payload_view[0] == 0 && static_cast<uint8_t>(T{0U}) >= kRlpSingleByteThreshold)
         {
             return DecodingError::kLeadingZero;
         }

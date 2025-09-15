@@ -45,7 +45,15 @@ void RlpEncoder::add(ByteView bytes) {
 
 // Explicit overload for uint256
 void RlpEncoder::add(const intx::uint256& n) {
-    add_uint256(n); // Call private implementation detail
+     if (n == 0) {
+        buffer_.push_back(kEmptyStringCode);
+    } else if (n < kRlpSingleByteThreshold) {
+        buffer_.push_back(static_cast<uint8_t>(n));
+    } else {
+        const Bytes be{endian::to_big_compact(n)};
+        buffer_.append(encode_header_bytes(false, be.length()));
+        buffer_.append(be);
+    }
 }
 
 void RlpEncoder::begin_list() {
@@ -69,16 +77,16 @@ void RlpEncoder::end_list() {
     buffer_.insert(buffer_.begin() + start_pos, header.begin(), header.end());
 }
 
-const Bytes& RlpEncoder::get_bytes() const noexcept {
+const Bytes& RlpEncoder::get_bytes() const {
     if (!list_start_positions_.empty()) {
-        // Indicate misuse - maybe throw or log? For now, just return incomplete buffer.
+        throw std::logic_error("RLP encoder has unclosed lists");
     }
     return buffer_;
 }
 
-Bytes&& RlpEncoder::move_bytes() noexcept {
+Bytes&& RlpEncoder::move_bytes() {
      if (!list_start_positions_.empty()) {
-        // Indicate misuse
+        throw std::logic_error("RLP encoder has unclosed lists");
     }
     return std::move(buffer_);
 }
@@ -86,28 +94,6 @@ Bytes&& RlpEncoder::move_bytes() noexcept {
 void RlpEncoder::clear() noexcept {
     buffer_.clear();
     list_start_positions_.clear();
-}
-
-// --- Private Implementations ---
-// Need to explicitly instantiate add_integral for common types if add<T> is non-template
-// Since add<T> IS a template in the header, the template implementation MUST be in the header.
-// Let's remove the add_integral and add_uint256 private methods and keep the implementation
-// fully within the template methods in the header (as corrected before).
-// The only non-template add methods that need implementing here are `add(ByteView)` and `add(bool)`.
-
-// Re-evaluating the private add_uint256 - this CAN be implemented here
-// as it's called by the explicit public overload add(const intx::uint256&).
-
-void RlpEncoder::add_uint256(const intx::uint256& n) {
-     if (n == 0) {
-        buffer_.push_back(kEmptyStringCode);
-    } else if (n < kRlpSingleByteThreshold) {
-        buffer_.push_back(static_cast<uint8_t>(n));
-    } else {
-        const Bytes be{endian::to_big_compact(n)};
-        buffer_.append(encode_header_bytes(false, be.length()));
-        buffer_.append(be);
-    }
 }
 
 

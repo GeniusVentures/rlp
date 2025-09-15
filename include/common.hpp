@@ -19,8 +19,6 @@ using ByteView = std::basic_string_view<uint8_t>;
 // --- Concept Simulation (C++17) ---
 template <typename T>
 inline constexpr bool is_unsigned_integral_v = std::is_integral_v<T> && std::is_unsigned_v<T>;
-template <typename T>
-using UnsignedIntegral = std::enable_if_t<is_unsigned_integral_v<T>>;
 
 // --- RLP Constants ---
 inline constexpr uint8_t kEmptyStringCode{0x80};
