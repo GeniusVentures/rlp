@@ -271,6 +271,7 @@ TEST(RlpEndian, VectorOperationsExtended) {
 
 TEST(RlpEndian, ArrayOperationsExtended) {
     std::array<uint8_t, 256> byte_array;
+    // The cast to uint8_t is safe here because i only takes values from 0 to 255.
     for (size_t i = 0; i < byte_array.size(); ++i) {
         byte_array[i] = static_cast<uint8_t>(i);
     }
