@@ -156,8 +156,8 @@ TEST(RlpEndian, ArrayOperations) {
 }
 
 TEST(RlpEndian, CArrayOperations) {
-    const uint32_t c_array[] = {0xDEADBEEF, 0xCAFEBABE, 0x12345678};
-    const size_t array_size = sizeof(c_array) / sizeof(c_array[0]);
+    constexpr uint32_t c_array[] = {0xDEADBEEF, 0xCAFEBABE, 0x12345678};
+    constexpr size_t array_size  = sizeof(c_array) / sizeof(c_array[0]);
     
     rlp::Bytes c_array_bytes[array_size];
     for (size_t i = 0; i < array_size; ++i) {
