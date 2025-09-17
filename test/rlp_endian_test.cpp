@@ -260,8 +260,8 @@ TEST(RlpEndian, VectorOperationsExtended) {
     EXPECT_EQ(bytes_single[1], 0xCD);
     
     std::vector<uint8_t> large_vec;
-    for (uint8_t i = 0; i < 255; ++i) {
-        large_vec.push_back(i);
+    for (size_t i = 0; i < 255; ++i) {
+        large_vec.push_back(static_cast<uint8_t>(i));
     }
     
     for (size_t i = 0; i < large_vec.size(); ++i) {
