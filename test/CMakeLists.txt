@@ -23,3 +23,12 @@ addtest(discovery_test
 target_link_libraries(discovery_test PRIVATE
         rlp # Link directly to the library target defined in src/
 )
+
+# Add new test suite for endian tests
+addtest(rlp_endian_test
+        rlp_endian_test.cpp
+)
+
+target_link_libraries(rlp_endian_test PRIVATE
+        rlp
+)
