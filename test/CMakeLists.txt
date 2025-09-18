@@ -1,34 +1,21 @@
-# Define the test executable using the addtest function from cmake/functions.cmake
-# This function links GTest::gtest_main and GTest::gmock_main automatically
-addtest(rlp_test
-        rlp_test.cpp
+# Define the test executables
+addtest(rlp_encoder_tests
+        rlp_encoder_tests.cpp
 )
 
-# Link the library under test (rlp) using the target namespace defined during install export
-# If building within the same project, CMake might resolve 'rlp' directly.
-# Using the namespaced target 'rlp::rlp' is safer for consistency with installed usage.
-# However, the target 'rlp::rlp' only exists *after* installation or if defined as an ALIAS.
-# Let's try linking directly to the target 'rlp' defined in src/.
-target_link_libraries(rlp_test PRIVATE
-        rlp # Link directly to the library target defined in src/
+addtest(rlp_decoder_tests
+        rlp_decoder_tests.cpp
 )
-
-# Ensure GTest headers are found (should be handled by CommonBuildParameters finding GTest)
-# target_include_directories(rlp_test PRIVATE ${GTest_INCLUDE_DIR}) # Likely not needed
 
 addtest(discovery_test
         discovery_test.cpp
 )
 
-target_link_libraries(discovery_test PRIVATE
-        rlp # Link directly to the library target defined in src/
-)
-
-# Add new test suite for endian tests
 addtest(rlp_endian_test
         rlp_endian_test.cpp
 )
 
-target_link_libraries(rlp_endian_test PRIVATE
-        rlp
-)
+target_link_libraries(discovery_test PRIVATE rlp)
+target_link_libraries(rlp_endian_test PRIVATE rlp)
+target_link_libraries(rlp_encoder_tests PRIVATE rlp)
+target_link_libraries(rlp_decoder_tests PRIVATE rlp)
