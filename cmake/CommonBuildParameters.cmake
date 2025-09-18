@@ -83,13 +83,13 @@ if(BUILD_TESTS)
         )
 
         add_executable(${PROJECT_NAME}_endian_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_test.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
         )
 
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
         target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest)
-        target_link_libraries(${PROJECT_NAME}_endian_test PUBLIC ${PROJECT_NAME} GTest::gtest)
+        target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
 endif()
 
 # Install Headers

@@ -90,14 +90,10 @@ jobs:
           # Windows executables in Release folder
           ./${{ matrix.build_type }}/rlp_encoder_tests.exe
           ./${{ matrix.build_type }}/rlp_decoder_tests.exe
-          if [ -f "./${{ matrix.build_type }}/rlp_test.exe" ]; then
-            ./${{ matrix.build_type }}/rlp_test.exe
-          fi
+          ./${{ matrix.build_type }}/rlp_endian_tests.exe
         else
           # Linux executables in current directory
           ./rlp_encoder_tests
           ./rlp_decoder_tests
-          if [ -f "./rlp_test" ]; then
-            ./rlp_test
-          fi
+          ./rlp_endian_tests
         fi

@@ -11,11 +11,11 @@ addtest(discovery_test
         discovery_test.cpp
 )
 
-addtest(rlp_endian_test
-        rlp_endian_test.cpp
+addtest(rlp_endian_tests
+        rlp_endian_tests.cpp
 )
 
 target_link_libraries(discovery_test PRIVATE rlp)
-target_link_libraries(rlp_endian_test PRIVATE rlp)
+target_link_libraries(rlp_endian_tests PRIVATE rlp)
 target_link_libraries(rlp_encoder_tests PRIVATE rlp)
 target_link_libraries(rlp_decoder_tests PRIVATE rlp)
