@@ -82,7 +82,7 @@ if(BUILD_TESTS)
                 "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
         )
 
-        add_executable(${PROJECT_NAME}_endian_test
+        add_executable(${PROJECT_NAME}_endian_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
         )
 
