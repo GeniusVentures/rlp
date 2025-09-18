@@ -4,9 +4,9 @@ name: CMake on multiple platforms
 
 on:
   push:
-    branches: [ "main", "fix-warnings" ]
+    branches: [ "main", "dev_peer_discovery" ]
   pull_request:
-    branches: [ "main", "fix-warnings" ]
+    branches: [ "main", "dev_peer_discovery" ]
 
 jobs:
   build:
