@@ -28,16 +28,23 @@ class RlpDecoder {
     DecodingResult read(Bytes& out); // Read next item as bytes (string payload)
     DecodingResult read(intx::uint256& out); // Explicit overload for uint256
 
+    // Template read for integral types and uint256
+    template <typename T>
+    auto read(T& out) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, intx::uint256> || std::is_same_v<T, bool>, DecodingResult> {
+        if constexpr (std::is_same_v<T, intx::uint256>) {
+            return read(static_cast<intx::uint256&>(out)); // Call explicit uint256 overload
+        } else if constexpr (std::is_same_v<T, bool>) {
+            return read_bool(out);
+        } else {
+            return read_integral(out);
+        }
+    }
+
     // --- List Handling (Consume) ---
     // Reads *only* the list header, returns payload length, consumes header bytes
     Result<size_t> read_list_header() noexcept;
     // Skips the next complete RLP item (header + payload)
     DecodingResult skip_item() noexcept;
-
-    template <typename T>
-    auto read(T& out) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, intx::uint256>, DecodingResult> {
-        return read(view_, out); // Default to view_ and kProhibit
-    }
 
     // Helper method for reading with a specified ByteView and leftover handling
     template <typename T>
@@ -228,7 +235,82 @@ class RlpDecoder {
     // --- Internal Template Implementation for Integrals ---
     // Needs to be in header if read<T> is public template method
     template <typename T>
-        DecodingResult read_integral(T& out);
+    auto read_integral(T& out) -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
+        BOOST_OUTCOME_TRY(auto h, peek_header());
+        
+        if (h.list) {
+            return DecodingError::kUnexpectedList;
+        }
+        
+        // Check for leading zeros (except for zero value)
+        if (h.payload_length > 1) {
+            ByteView payload_view = view_.substr(h.header_length, h.payload_length);
+            if (payload_view[0] == 0) {
+                return DecodingError::kLeadingZero;
+            }
+        }
+        
+        // Check for overflow
+        if (h.payload_length > sizeof(T)) {
+            return DecodingError::kOverflow;
+        }
+        
+        // Check for non-canonical single byte encoding
+        if (h.payload_length == 1 && h.header_length > 0) {
+            ByteView payload_view = view_.substr(h.header_length, h.payload_length);
+            if (payload_view[0] < kRlpSingleByteThreshold) {
+                return DecodingError::kNonCanonicalSize;
+            }
+        }
+        
+        // Check input length
+        if (view_.length() < h.header_length + h.payload_length) {
+            return DecodingError::kInputTooShort;
+        }
+        
+        // Extract payload and decode
+        ByteView payload_view = view_.substr(h.header_length, h.payload_length);
+        BOOST_OUTCOME_TRY(endian::from_big_compact(payload_view, out));
+        
+        // Consume the item
+        view_.remove_prefix(h.header_length + h.payload_length);
+        
+        return outcome::success();
+    }
+    
+    DecodingResult read_bool(bool& out) {
+        BOOST_OUTCOME_TRY(auto h, peek_header());
+        
+        if (h.list) {
+            return DecodingError::kUnexpectedList;
+        }
+        
+        // Check input length
+        if (view_.length() < h.header_length + h.payload_length) {
+            return DecodingError::kInputTooShort;
+        }
+        
+        if (h.payload_length == 1) {
+            ByteView payload_view = view_.substr(h.header_length, h.payload_length);
+            if (payload_view[0] == 1) {
+                out = true;
+            } else if (payload_view[0] == 0) {
+                out = false;
+            } else {
+                return DecodingError::kOverflow;
+            }
+        } else if (h.payload_length == 0 && h.header_length == 1 && view_[0] == kEmptyStringCode) {
+            out = false;
+        } else {
+            return DecodingError::kOverflow;
+        }
+        
+        // Consume the item
+        view_.remove_prefix(h.header_length + h.payload_length);
+        
+        return outcome::success();
+    }
+    
     DecodingResult read_uint256(intx::uint256& out);
 
     // --- Internal Helpers (Declaration only) ---

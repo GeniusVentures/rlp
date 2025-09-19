@@ -428,6 +428,282 @@ TEST(RlpDecoder, DecodeMalformedData) {
     // Depending on implementation, could be kInputTooShort or other error
 }
 
+// --- Tests for the new read<T>() template function ---
+
+TEST(RlpDecoder, ReadTemplateUint8) {
+    rlp::Bytes data = from_hex("81c8"); // 200 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint8_t result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, 200);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateUint16) {
+    rlp::Bytes data = from_hex("82012c"); // 300 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint16_t result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, 300);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateUint32) {
+    rlp::Bytes data = from_hex("83011170"); // 70000 >= 128
+    rlp::RlpDecoder decoder(data);
+    uint32_t result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, 70000);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateUint64) {
+    rlp::Bytes data = from_hex("88ffccb5ddffee1483");
+    rlp::RlpDecoder decoder(data);
+    uint64_t result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, 0xFFCCB5DDFFEE1483);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateUint256) {
+    rlp::Bytes data = from_hex("8f10203e405060708090a0b0c0d0e0f2");
+    rlp::RlpDecoder decoder(data);
+    intx::uint256 result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, intx::from_string<intx::uint256>("0x10203E405060708090A0B0C0D0E0F2"));
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateBoolTrue) {
+    rlp::Bytes data = from_hex("01");
+    rlp::RlpDecoder decoder(data);
+    bool result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, true);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateBoolFalse) {
+    rlp::Bytes data = from_hex("80");
+    rlp::RlpDecoder decoder(data);
+    bool result;
+    ASSERT_TRUE(decoder.read(result));
+    EXPECT_EQ(result, false);
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateZeroValues) {
+    // Test that zero values work correctly for all integral types
+    rlp::Bytes data = from_hex("80"); // Encoded zero
+    
+    {
+        rlp::RlpDecoder decoder(data);
+        uint8_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 0);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    {
+        rlp::RlpDecoder decoder(data);
+        uint16_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 0);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    {
+        rlp::RlpDecoder decoder(data);
+        uint32_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 0);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    {
+        rlp::RlpDecoder decoder(data);
+        uint64_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 0);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    {
+        rlp::RlpDecoder decoder(data);
+        intx::uint256 result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 0);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+}
+
+TEST(RlpDecoder, ReadTemplateMaxValues) {
+    // Test maximum values for different integral types
+    
+    // uint8_t max (255)
+    {
+        rlp::Bytes data = from_hex("81ff");
+        rlp::RlpDecoder decoder(data);
+        uint8_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 255);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    // uint16_t max (65535)
+    {
+        rlp::Bytes data = from_hex("82ffff");
+        rlp::RlpDecoder decoder(data);
+        uint16_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 65535);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+    
+    // uint32_t max (4294967295)
+    {
+        rlp::Bytes data = from_hex("84ffffffff");
+        rlp::RlpDecoder decoder(data);
+        uint32_t result;
+        ASSERT_TRUE(decoder.read(result));
+        EXPECT_EQ(result, 4294967295U);
+        EXPECT_TRUE(decoder.is_finished());
+    }
+}
+
+TEST(RlpDecoder, ReadTemplateOverflowErrors) {
+    // Test overflow detection for smaller types
+    
+    // Value too large for uint8_t (256)
+    {
+        rlp::Bytes data = from_hex("820100");
+        rlp::RlpDecoder decoder(data);
+        uint8_t result;
+        auto res = decoder.read(result);
+        ASSERT_FALSE(res);
+        EXPECT_EQ(res.error(), rlp::DecodingError::kOverflow);
+    }
+    
+    // Value too large for uint16_t (65536)
+    {
+        rlp::Bytes data = from_hex("83010000");
+        rlp::RlpDecoder decoder(data);
+        uint16_t result;
+        auto res = decoder.read(result);
+        ASSERT_FALSE(res);
+        EXPECT_EQ(res.error(), rlp::DecodingError::kOverflow);
+    }
+    
+    // Value too large for uint32_t (4294967296)
+    {
+        rlp::Bytes data = from_hex("850100000000");
+        rlp::RlpDecoder decoder(data);
+        uint32_t result;
+        auto res = decoder.read(result);
+        ASSERT_FALSE(res);
+        EXPECT_EQ(res.error(), rlp::DecodingError::kOverflow);
+    }
+}
+
+TEST(RlpDecoder, ReadTemplateSequentialReads) {
+    // Test reading multiple values sequentially using the template function
+    // Simple list with small values: [1, 2, 3]
+    rlp::Bytes data = from_hex("c3" "01" "02" "03"); // List with [1, 2, 3]
+    rlp::RlpDecoder decoder(data);
+    
+    auto list_len = decoder.read_list_header();
+    ASSERT_TRUE(list_len);
+    EXPECT_EQ(list_len.value(), 3); // Total payload length
+    
+    uint8_t val1;
+    ASSERT_TRUE(decoder.read(val1));
+    EXPECT_EQ(val1, 1);
+    
+    uint8_t val2;
+    ASSERT_TRUE(decoder.read(val2));
+    EXPECT_EQ(val2, 2);
+    
+    uint8_t val3;
+    ASSERT_TRUE(decoder.read(val3));
+    EXPECT_EQ(val3, 3);
+    
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateComplexSequentialReads) {
+    // Test reading larger values sequentially
+    // List with [255, 65535] - max values for uint8 and uint16
+    rlp::Bytes data = from_hex("c5" "81ff" "82ffff"); // List with [255, 65535]
+    rlp::RlpDecoder decoder(data);
+    
+    auto list_len = decoder.read_list_header();
+    ASSERT_TRUE(list_len);
+    EXPECT_EQ(list_len.value(), 5); // Total payload length
+    
+    uint8_t val1;
+    ASSERT_TRUE(decoder.read(val1));
+    EXPECT_EQ(val1, 255);
+    
+    uint16_t val2;
+    ASSERT_TRUE(decoder.read(val2));
+    EXPECT_EQ(val2, 65535);
+    
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateMixedTypes) {
+    // Test reading different types in sequence including bool
+    rlp::Bytes data = from_hex("c5" "80" "01" "64" "81c8"); // List with [false, true, 100, 200]
+    rlp::RlpDecoder decoder(data);
+    
+    auto list_len = decoder.read_list_header();
+    ASSERT_TRUE(list_len);
+    EXPECT_EQ(list_len.value(), 5); // Total payload length
+    
+    bool bool_false;
+    ASSERT_TRUE(decoder.read(bool_false));
+    EXPECT_EQ(bool_false, false);
+    
+    bool bool_true;
+    ASSERT_TRUE(decoder.read(bool_true));
+    EXPECT_EQ(bool_true, true);
+    
+    uint8_t uint8_val;
+    ASSERT_TRUE(decoder.read(uint8_val));
+    EXPECT_EQ(uint8_val, 100);
+    
+    uint8_t uint8_val2;
+    ASSERT_TRUE(decoder.read(uint8_val2));
+    EXPECT_EQ(uint8_val2, 200);
+    
+    EXPECT_TRUE(decoder.is_finished());
+}
+
+TEST(RlpDecoder, ReadTemplateErrorHandling) {
+    // Test error handling with template function
+    
+    // Try to read from empty data
+    {
+        rlp::Bytes data;
+        rlp::RlpDecoder decoder(data);
+        uint32_t result;
+        auto res = decoder.read(result);
+        ASSERT_FALSE(res);
+        EXPECT_EQ(res.error(), rlp::DecodingError::kInputTooShort);
+    }
+    
+    // Try to read integral from list
+    {
+        rlp::Bytes data = from_hex("c0"); // Empty list
+        rlp::RlpDecoder decoder(data);
+        uint32_t result;
+        auto res = decoder.read(result);
+        ASSERT_FALSE(res);
+        EXPECT_EQ(res.error(), rlp::DecodingError::kUnexpectedList);
+    }
+}
+
 int main(int argc, char** argv) {
 	::testing::InitGoogleTest(&argc, argv);
 	return RUN_ALL_TESTS();
