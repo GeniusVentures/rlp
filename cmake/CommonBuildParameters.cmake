@@ -70,8 +70,6 @@ include_directories(
 include("${CMAKE_CURRENT_LIST_DIR}/../src/CMakeLists.txt")
 
 if(BUILD_TESTS)
-        enable_testing()
-        
         add_executable(${PROJECT_NAME}_encoder_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_encoder_tests.cpp"
         )
@@ -88,15 +86,15 @@ if(BUILD_TESTS)
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
         )
 
-        add_executable(round_trip_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/round_trip_test.cpp"
+        add_executable(${PROJECT_NAME}_edge_cases
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_edge_cases.cpp"
         )
 
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
         target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
-        target_link_libraries(round_trip_test PUBLIC ${PROJECT_NAME} GTest::gtest)
+        target_link_libraries(${PROJECT_NAME}_edge_cases PUBLIC ${PROJECT_NAME} GTest::gtest)
         
 endif()
 

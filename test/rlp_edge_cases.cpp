@@ -6,7 +6,7 @@
 namespace {
 
 // Test round-trip encoding/decoding for template methods
-TEST(RoundTripTest, TemplateIntegralTypes) {
+TEST(RlpEdgeCases, TemplateIntegralTypes) {
     // Test uint8_t
     {
         rlp::RlpEncoder encoder;
@@ -92,7 +92,7 @@ TEST(RoundTripTest, TemplateIntegralTypes) {
     }
 }
 
-TEST(RoundTripTest, TemplateUint256) {
+TEST(RlpEdgeCases, TemplateUint256) {
     rlp::RlpEncoder encoder;
     intx::uint256 original = intx::from_string<intx::uint256>("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
     encoder.add(original);
@@ -105,7 +105,7 @@ TEST(RoundTripTest, TemplateUint256) {
     EXPECT_TRUE(decoder.is_finished());
 }
 
-TEST(RoundTripTest, TemplateSequentialInList) {
+TEST(RlpEdgeCases, TemplateSequentialInList) {
     rlp::RlpEncoder encoder;
     encoder.begin_list();
     encoder.add(static_cast<uint8_t>(42));
