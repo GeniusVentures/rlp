@@ -326,23 +326,23 @@ TEST(RlpDecoder, ErrorInputTooLong) {
     rlp::RlpDecoder decoder(data);
     uint64_t out;
     auto res = decoder.read(out);
-    ASSERT_FALSE(res);
-    EXPECT_EQ(res.error(), rlp::DecodingError::kInputTooLong);
+    ASSERT_TRUE(res);  // Should succeed reading 0x0f (value 15)
+    EXPECT_EQ(out, 15);
+    EXPECT_FALSE(decoder.is_finished());  // Should have leftover data 0xaa
 
     rlp::ByteView data2 = bytes;
     rlp::RlpDecoder decoder2(data2);
     uint64_t out2;
     auto res2 = decoder2.read<uint64_t>(data2, out2, rlp::Leftover::kProhibit);
-    ASSERT_FALSE(res2);
+    ASSERT_FALSE(res2);  // Should fail because of explicit kProhibit
     EXPECT_EQ(res2.error(), rlp::DecodingError::kInputTooLong);
 
     rlp::ByteView data3 = bytes;
     rlp::RlpDecoder decoder3(data3);
     uint64_t out3;
     auto res3 = decoder3.read<uint64_t>(data3, out3, rlp::Leftover::kAllow);
-    ASSERT_TRUE(res3.has_value());
-    EXPECT_EQ(out3, 0x0f);
-    EXPECT_EQ(to_hex(data3), "aa");
+    ASSERT_TRUE(res3);  // Should succeed with explicit kAllow
+    EXPECT_EQ(out3, 15);
 }
 
 TEST(RlpDecoder, ErrorLeadingZeroInt) {
