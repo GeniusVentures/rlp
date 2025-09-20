@@ -358,7 +358,9 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
             // Try list first
             auto list_header = dec.read_list_header();
             if (list_header.has_value()) {
-                for (size_t j = 0; j < list_header.value(); ++j) {
+                // list_header.value() is the payload length in bytes
+                size_t payload_end = dec.position() + list_header.value();
+                while (dec.position() < payload_end) {
                     try_decode(dec);
                 }
                 return;
