@@ -53,6 +53,7 @@ enum class DecodingError {
     kInvalidVrsValue,
     kListLengthMismatch, // Added for decoder list helpers
     kNotInList, // Added for decoder if trying list ops outside a list context
+    kMalformedHeader, // Added for reserved/malformed header bytes
 };
 
 namespace outcome = BOOST_OUTCOME_V2_NAMESPACE;

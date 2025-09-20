@@ -19,8 +19,13 @@ Result<Header> decode_header_impl(ByteView& v) noexcept {
     const uint8_t b{v[0]};
     const size_t input_len = v.length();
 
+    // Reserved bytes (0xf9–0xff) as single bytes are always invalid
+    if (input_len == 1 && b >= 0xf9 && b <= 0xff) {
+        return DecodingError::kMalformedHeader;
+    }
+
     if (b < kShortStringOffset) { // 0x80
-        // Single byte literal
+        // Single byte literal (valid for 0x00–0x7f)
         h.payload_length = 1;
         h.header_length = 0; // Header is implicit
         // Do not consume 'v' here, payload is the byte itself

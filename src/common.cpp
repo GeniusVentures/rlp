@@ -21,6 +21,7 @@ namespace rlp {
             case DecodingError::kInvalidVrsValue: return "RLP Invalid VRS Value";
             case DecodingError::kListLengthMismatch: return "RLP List Length Mismatch";
             case DecodingError::kNotInList: return "RLP Operation requires being in a list context";
+            case DecodingError::kMalformedHeader: return "RLP Malformed Header";
             default: return "RLP Unknown Error";
         }
     }
