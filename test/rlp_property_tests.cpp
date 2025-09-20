@@ -28,7 +28,7 @@ protected:
     
     // Generate random bytes
     rlp::Bytes random_bytes(size_t min_size = 0, size_t max_size = 1000) {
-        std::uniform_int_distribution<size_t> size_dist(static_cast<long long>(min_size), static_cast<long long>(max_size));
+        std::uniform_int_distribution<size_t> size_dist(min_size, max_size);
         std::uniform_int_distribution<int> byte_dist(0, 255);
         size_t size = size_dist(rng_);
         rlp::Bytes result;
