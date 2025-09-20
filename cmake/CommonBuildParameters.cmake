@@ -78,8 +78,40 @@ if(BUILD_TESTS)
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_decoder_tests.cpp"
         )
 
-        target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
-        target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest)
+        add_executable(discovery_test
+                "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
+        )
+
+        add_executable(${PROJECT_NAME}_endian_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
+        )
+
+        add_executable(${PROJECT_NAME}_edge_cases
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_edge_cases.cpp"
+        )
+
+        # Use main benchmark and property test files
+                add_executable(${PROJECT_NAME}_benchmark_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_benchmark_tests.cpp"
+                )
+
+                add_executable(${PROJECT_NAME}_property_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_property_tests.cpp"
+                )
+
+                add_executable(${PROJECT_NAME}_comprehensive_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_comprehensive_tests.cpp"
+                )
+
+        target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_edge_cases PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_benchmark_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_property_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        target_link_libraries(${PROJECT_NAME}_comprehensive_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        
 endif()
 
 # Install Headers
