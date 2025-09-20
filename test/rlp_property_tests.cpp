@@ -359,9 +359,20 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
             auto list_header = dec.read_list_header();
             if (list_header.has_value()) {
                 // list_header.value() is the payload length in bytes
-                size_t payload_end = dec.position() + list_header.value();
-                while (dec.position() < payload_end) {
+                // Track remaining bytes in this list payload
+                ByteView remaining_before = dec.remaining();
+                size_t payload_length = list_header.value();
+                size_t consumed = 0;
+                
+                while (consumed < payload_length && !dec.is_finished()) {
+                    ByteView before_item = dec.remaining();
                     try_decode(dec);
+                    ByteView after_item = dec.remaining();
+                    size_t item_consumed = before_item.size() - after_item.size();
+                    consumed += item_consumed;
+                    
+                    // Safety check to prevent infinite loops
+                    if (item_consumed == 0) break;
                 }
                 return;
             }
