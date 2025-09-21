@@ -31,8 +31,13 @@ addtest(rlp_endian_tests
         rlp_endian_tests.cpp
 )
 
+addtest(rlp_ethereum_tests
+        rlp_ethereum_tests.cpp
+)
+
 target_link_libraries(discovery_test PRIVATE rlp)
 target_link_libraries(rlp_endian_tests PRIVATE rlp)
+target_link_libraries(rlp_ethereum_tests PRIVATE rlp)
 target_link_libraries(rlp_encoder_tests PRIVATE rlp)
 target_link_libraries(rlp_decoder_tests PRIVATE rlp)
 target_link_libraries(rlp_edge_cases PRIVATE rlp)

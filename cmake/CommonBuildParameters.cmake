@@ -103,6 +103,10 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_comprehensive_tests.cpp"
                 )
 
+                add_executable(rlp_ethereum_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_ethereum_tests.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -111,6 +115,18 @@ if(BUILD_TESTS)
         target_link_libraries(${PROJECT_NAME}_benchmark_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_property_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_comprehensive_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_ethereum_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                # Register all test executables with CTest
+                enable_testing()
+                add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
+                add_test(NAME rlp_decoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_decoder_tests>)
+                add_test(NAME discovery_test COMMAND $<TARGET_FILE:discovery_test>)
+                add_test(NAME rlp_endian_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_endian_tests>)
+                add_test(NAME rlp_edge_cases COMMAND $<TARGET_FILE:${PROJECT_NAME}_edge_cases>)
+                add_test(NAME rlp_benchmark_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_benchmark_tests>)
+                add_test(NAME rlp_property_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_property_tests>)
+                add_test(NAME rlp_comprehensive_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_comprehensive_tests>)
+                add_test(NAME rlp_ethereum_tests COMMAND $<TARGET_FILE:rlp_ethereum_tests>)
         
 endif()
 
