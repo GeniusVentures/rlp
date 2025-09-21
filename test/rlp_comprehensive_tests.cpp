@@ -6,7 +6,6 @@
 #include <chrono>
 #include <algorithm>
 #include <limits>
-#include <gtest/gtest.h>
 using namespace rlp;
 
 // Helper to convert hex string to Bytes
