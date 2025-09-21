@@ -109,7 +109,6 @@ if(BUILD_TESTS)
 
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_edge_cases PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_benchmark_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)

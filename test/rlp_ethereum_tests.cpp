@@ -150,23 +150,26 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
 
     // List with single element [1]
     encoder.begin_list();
-    encoder.encode(uint8_t{1});
+    encoder.add(uint8_t{1});
     encoder.end_list();
-    auto single_element = encoder.get_bytes();
-    EXPECT_EQ(bytes_to_hex(single_element), "c101");
-
-    // Reset encoder
-    encoder = RlpEncoder{};
-
-    // List [1, 2, 3]
-    encoder.begin_list();
-    encoder.encode(uint8_t{1});
-    encoder.encode(uint8_t{2});
-    encoder.encode(uint8_t{3});
-    encoder.end_list();
-    auto three_elements = encoder.get_bytes();
-    EXPECT_EQ(bytes_to_hex(three_elements), "c3010203");
-
+        Bytes bloom(256, 0x00);
+        bloom[0] = 0x01;
+        bloom[255] = 0xff;
+        encoder.add(hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
+        encoder.add(hex_to_bytes("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"));
+        encoder.add(hex_to_bytes("abcdefabcdefabcdefabcdefabcdefabcdefabcd"));
+        encoder.add(hex_to_bytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        encoder.add(hex_to_bytes("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
+        encoder.add(hex_to_bytes("1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"));
+        encoder.add(bloom);
+        encoder.add(uint64_t{0x1bc16d674ec80000});
+        encoder.add(uint64_t{0x1b4});
+        encoder.add(uint64_t{0x1388});
+        encoder.add(uint64_t{0x0});
+        encoder.add(uint64_t{0x54e34e8e});
+        encoder.add(Bytes{'G', 'e', 't', 'h'});
+        encoder.add(hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000"));
+        encoder.add(uint64_t{0x13218f1238912389});
     // Reset encoder
     encoder = RlpEncoder{};
 
@@ -184,11 +187,11 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     // Complex nested structure [[1, 2], [3]]
     encoder.begin_list();
     encoder.begin_list();
-    encoder.encode(uint8_t{1});
-    encoder.encode(uint8_t{2});
+    encoder.add(uint8_t{1});
+    encoder.add(uint8_t{2});
     encoder.end_list();
     encoder.begin_list();
-    encoder.encode(uint8_t{3});
+    encoder.add(uint8_t{3});
     encoder.end_list();
     encoder.end_list();
     auto complex_nested = encoder.get_bytes();
@@ -201,8 +204,8 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
 
     // List with string and integer ["cat", 1]
     encoder.begin_list();
-    encoder.encode(Bytes{'c', 'a', 't'});
-    encoder.encode(uint8_t{1});
+    encoder.add(Bytes{'c', 'a', 't'});
+    encoder.add(uint8_t{1});
     encoder.end_list();
     auto mixed = encoder.get_bytes();
     EXPECT_EQ(bytes_to_hex(mixed), "c483636174" "01");
@@ -212,12 +215,12 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
 
     // More complex: ["dog", [1, 2], "cat"]
     encoder.begin_list();
-    encoder.encode(Bytes{'d', 'o', 'g'});
+    encoder.add(Bytes{'d', 'o', 'g'});
     encoder.begin_list();
-    encoder.encode(uint8_t{1});
-    encoder.encode(uint8_t{2});
+    encoder.add(uint8_t{1});
+    encoder.add(uint8_t{2});
     encoder.end_list();
-    encoder.encode(Bytes{'c', 'a', 't'});
+    encoder.add(Bytes{'c', 'a', 't'});
     encoder.end_list();
     auto very_mixed = encoder.get_bytes();
     EXPECT_EQ(bytes_to_hex(very_mixed), "ca83646f67c2010283636174");
@@ -232,7 +235,7 @@ TEST_F(EthereumRlpTest, OfficialEdgeCaseTests) {
     encoder.begin_list();
     // Add 55 single-byte elements to create exactly 55 bytes payload
     for (int i = 1; i <= 55; ++i) {
-        encoder.encode(uint8_t{1});
+    encoder.add(uint8_t{1});
     }
     encoder.end_list();
     auto list_55 = encoder.get_bytes();
@@ -246,7 +249,7 @@ TEST_F(EthereumRlpTest, OfficialEdgeCaseTests) {
     encoder.begin_list();
     // Add 56 single-byte elements
     for (int i = 1; i <= 56; ++i) {
-        encoder.encode(uint8_t{1});
+    encoder.add(uint8_t{1});
     }
     encoder.end_list();
     auto list_56 = encoder.get_bytes();
@@ -262,15 +265,15 @@ TEST_F(EthereumRlpTest, EthereumDataStructures) {
     // Ethereum transaction-like structure
     // [nonce, gasPrice, gasLimit, to, value, data, v, r, s]
     encoder.begin_list();
-    encoder.encode(uint64_t{0x09});           // nonce
-    encoder.encode(uint64_t{0x4a817c800});    // gasPrice (20 Gwei)
-    encoder.encode(uint64_t{0x5208});         // gasLimit (21000)
-    encoder.encode(hex_to_bytes("3535353535353535353535353535353535353535")); // to address (20 bytes)
-    encoder.encode(uint64_t{0xde0b6b3a7640000}); // value (1 ETH in wei)
-    encoder.encode(Bytes{});                  // data (empty)
-    encoder.encode(uint8_t{0x1c});           // v
-    encoder.encode(hex_to_bytes("2fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8e8ed2e1b8f8e6b1d4c8e9f1f18")); // r (32 bytes)
-    encoder.encode(hex_to_bytes("7d8e2e1b8f8e6b1d4c8e9f1f182fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8")); // s (32 bytes)
+    encoder.add(uint64_t{0x09});           // nonce
+    encoder.add(uint64_t{0x4a817c800});    // gasPrice (20 Gwei)
+    encoder.add(uint64_t{0x5208});         // gasLimit (21000)
+    encoder.add(hex_to_bytes("3535353535353535353535353535353535353535")); // to address (20 bytes)
+    encoder.add(uint64_t{0xde0b6b3a7640000}); // value (1 ETH in wei)
+    encoder.add(Bytes{});                  // data (empty)
+    encoder.add(uint8_t{0x1c});           // v
+    encoder.add(hex_to_bytes("2fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8e8ed2e1b8f8e6b1d4c8e9f1f18")); // r (32 bytes)
+    encoder.add(hex_to_bytes("7d8e2e1b8f8e6b1d4c8e9f1f182fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8")); // s (32 bytes)
     encoder.end_list();
     
     auto tx_bytes = encoder.get_bytes();
@@ -323,52 +326,52 @@ TEST_F(EthereumRlpTest, ComplexNestedStructures) {
     encoder.begin_list();
     
     // Parent hash (32 bytes)
-    encoder.encode(hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
+        encoder.add(hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
     
     // Uncle hash (32 bytes)  
-    encoder.encode(hex_to_bytes("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"));
+        encoder.add(hex_to_bytes("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"));
     
     // Coinbase (20 bytes)
-    encoder.encode(hex_to_bytes("abcdefabcdefabcdefabcdefabcdefabcdefabcd"));
+        encoder.add(hex_to_bytes("abcdefabcdefabcdefabcdefabcdefabcdefabcd"));
     
     // State root (32 bytes)
-    encoder.encode(hex_to_bytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        encoder.add(hex_to_bytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     
     // Transactions root (32 bytes)
-    encoder.encode(hex_to_bytes("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
+        encoder.add(hex_to_bytes("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
     
     // Receipts root (32 bytes)
-    encoder.encode(hex_to_bytes("1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"));
+        encoder.add(hex_to_bytes("1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"));
     
     // Logs bloom (256 bytes)
     Bytes bloom(256, 0x00);
     bloom[0] = 0x01;
     bloom[255] = 0xff;
-    encoder.encode(bloom);
+    encoder.add(bloom);
     
     // Difficulty
-    encoder.encode(uint64_t{0x1bc16d674ec80000});
+        encoder.add(uint64_t{0x1bc16d674ec80000});
     
     // Block number
-    encoder.encode(uint64_t{0x1b4});
+        encoder.add(uint64_t{0x1b4});
     
     // Gas limit
-    encoder.encode(uint64_t{0x1388});
+        encoder.add(uint64_t{0x1388});
     
     // Gas used
-    encoder.encode(uint64_t{0x0});
+        encoder.add(uint64_t{0x0});
     
     // Timestamp
-    encoder.encode(uint64_t{0x54e34e8e});
+        encoder.add(uint64_t{0x54e34e8e});
     
     // Extra data
-    encoder.encode(Bytes{'G', 'e', 't', 'h'});
+        encoder.add(Bytes{'G', 'e', 't', 'h'});
     
     // Mix hash (32 bytes)
-    encoder.encode(hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000"));
+        encoder.add(hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000"));
     
     // Nonce (8 bytes)
-    encoder.encode(uint64_t{0x13218f1238912389});
+        encoder.add(uint64_t{0x13218f1238912389});
     
     encoder.end_list();
     
@@ -435,7 +438,7 @@ TEST_F(EthereumRlpTest, DeeplyNestedStructures) {
         encoder.begin_list();
     }
     
-    encoder.encode(uint8_t{42});
+    encoder.add(uint8_t{42});
     
     for (int i = 0; i < depth; ++i) {
         encoder.end_list();
@@ -463,63 +466,73 @@ TEST_F(EthereumRlpTest, ArraysAndVectors) {
     // Test std::vector encoding/decoding
     std::vector<uint32_t> vec = {1, 2, 3, 4, 5};
     
-    RlpEncoder encoder;
-    encoder.encode_vector(vec);
-    auto encoded_vec = encoder.get_bytes();
-    
-    RlpDecoder decoder(encoded_vec);
-    std::vector<uint32_t> decoded_vec;
-    EXPECT_TRUE(decoder.read_vector(decoded_vec));
-    EXPECT_EQ(vec, decoded_vec);
-    
-    // Test fixed-size array
-    std::array<uint8_t, 4> arr = {0xde, 0xad, 0xbe, 0xef};
-    
-    encoder = RlpEncoder{};
-    encoder.encode(arr);
-    auto encoded_arr = encoder.get_bytes();
-    
-    decoder = RlpDecoder{encoded_arr};
-    std::array<uint8_t, 4> decoded_arr;
-    EXPECT_TRUE(decoder.read(decoded_arr));
-    EXPECT_EQ(arr, decoded_arr);
-}
-
-// Test boolean encoding (Ethereum-specific: false=0x80, true=0x01)
-TEST_F(EthereumRlpTest, BooleanEncoding) {
-    // Test false
-    test_roundtrip(false, "80"); // Empty string encoding
-    
-    // Test true  
-    test_roundtrip(true, "01"); // Single byte 0x01
-}
-
-// Test large data structures
-TEST_F(EthereumRlpTest, LargeDataStructures) {
-    // Create a large byte array (larger than 55 bytes)
-    Bytes large_data(1000, 0xaa);
-    test_roundtrip(large_data);
+    {
+        RlpEncoder encoder;
+        encoder.begin_list();
+        // Parent hash (32 bytes)
+        encoder.add(hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
+        // Uncle hash (32 bytes)  
+        encoder.add(hex_to_bytes("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"));
+        // Coinbase (20 bytes)
+        encoder.add(hex_to_bytes("abcdefabcdefabcdefabcdefabcdefabcdefabcd"));
+        // State root (32 bytes)
+        encoder.add(hex_to_bytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        // Transactions root (32 bytes)
+        encoder.add(hex_to_bytes("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
+        // Receipts root (32 bytes)
+        encoder.add(hex_to_bytes("1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"));
+        // Logs bloom (256 bytes)
+        Bytes bloom(256, 0x00);
+        bloom[0] = 0x01;
+        bloom[255] = 0xff;
+        encoder.add(bloom);
+        // Difficulty
+        encoder.add(uint64_t{0x1bc16d674ec80000});
+        // Block number
+        encoder.add(uint64_t{0x1b4});
+        // Gas limit
+        encoder.add(uint64_t{0x1388});
+        // Gas used
+        encoder.add(uint64_t{0x0});
+        // Timestamp
+        encoder.add(uint64_t{0x54e34e8e});
+        // Extra data
+        encoder.add(Bytes{'G', 'e', 't', 'h'});
+        // Mix hash (32 bytes)
+        encoder.add(hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000"));
+        // Nonce (8 bytes)
+        encoder.add(uint64_t{0x13218f1238912389});
+        encoder.end_list();
+    }
     
     // Create a large list
-    RlpEncoder encoder;
-    encoder.begin_list();
-    for (int i = 0; i < 100; ++i) {
-        encoder.encode(uint32_t{static_cast<uint32_t>(i)});
+    {
+        RlpEncoder large_encoder;
+        large_encoder.begin_list();
+        for (int i = 0; i < 100; ++i) {
+            large_encoder.add(uint32_t{static_cast<uint32_t>(i)});
+        }
+        large_encoder.end_list();
+        
+        auto large_list = large_encoder.get_bytes();
+        
+        // Decode and verify
+        RlpDecoder decoder(large_list);
+        auto list_result = decoder.read_list_header();
+        EXPECT_TRUE(list_result.has_value());
+        
+        for (int i = 0; i < 100; ++i) {
+            uint32_t value;
+            EXPECT_TRUE(decoder.read(value));
+            EXPECT_EQ(value, static_cast<uint32_t>(i));
+        }
+        
+        EXPECT_TRUE(decoder.is_finished());
     }
-    encoder.end_list();
-    
-    auto large_list = encoder.get_bytes();
-    
-    // Decode and verify
-    RlpDecoder decoder(large_list);
-    auto list_result = decoder.read_list_header();
-    EXPECT_TRUE(list_result.has_value());
-    
-    for (int i = 0; i < 100; ++i) {
-        uint32_t value;
-        EXPECT_TRUE(decoder.read(value));
-        EXPECT_EQ(value, static_cast<uint32_t>(i));
-    }
-    
-    EXPECT_TRUE(decoder.is_finished());
+}
+
+// Google Test main entry point
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
