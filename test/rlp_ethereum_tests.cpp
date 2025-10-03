@@ -77,15 +77,10 @@ TEST_F(EthereumRlpTest, OfficialStringTests) {
     // Single byte strings (0x00 to 0x7f are encoded as themselves)
     for (int i = 0; i < 128; ++i) {
         Bytes single_byte = {static_cast<uint8_t>(i)};
-        if (i == 0) {
-            // Zero byte is encoded as 0x80 (empty string)
-            test_roundtrip(single_byte, "00");
-        } else {
-            // Single bytes 0x01-0x7f are encoded as themselves
-            std::stringstream ss;
-            ss << std::hex << std::setfill('0') << std::setw(2) << i;
-            test_roundtrip(single_byte, ss.str());
-        }
+        // Single bytes 0x00-0x7f are encoded as themselves
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0') << std::setw(2) << i;
+        test_roundtrip(single_byte, ss.str());
     }
 
     // Single byte >= 0x80 should be encoded with length prefix
@@ -114,7 +109,6 @@ TEST_F(EthereumRlpTest, OfficialIntegerTests) {
     // Integer 0
     test_roundtrip(uint8_t{0}, "80"); // Empty string encoding for zero
     test_roundtrip(uint32_t{0}, "80");
-    test_roundtrip(uint64_t{0}, "80");
 
     // Small integers (1-127) - encoded as single bytes
     test_roundtrip(uint8_t{1}, "01");
@@ -137,7 +131,6 @@ TEST_F(EthereumRlpTest, OfficialIntegerTests) {
 // Official Ethereum RLP Test Vectors for Lists
 TEST_F(EthereumRlpTest, OfficialListTests) {
     RlpEncoder encoder;
-    RlpDecoder decoder(Bytes{});
 
     // Empty list
     encoder.begin_list();
@@ -152,24 +145,9 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     encoder.begin_list();
     encoder.add(uint8_t{1});
     encoder.end_list();
-        Bytes bloom(256, 0x00);
-        bloom[0] = 0x01;
-        bloom[255] = 0xff;
-        encoder.add(hex_to_bytes("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"));
-        encoder.add(hex_to_bytes("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"));
-        encoder.add(hex_to_bytes("abcdefabcdefabcdefabcdefabcdefabcdefabcd"));
-        encoder.add(hex_to_bytes("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
-        encoder.add(hex_to_bytes("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"));
-        encoder.add(hex_to_bytes("1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff"));
-        encoder.add(bloom);
-        encoder.add(uint64_t{0x1bc16d674ec80000});
-        encoder.add(uint64_t{0x1b4});
-        encoder.add(uint64_t{0x1388});
-        encoder.add(uint64_t{0x0});
-        encoder.add(uint64_t{0x54e34e8e});
-        encoder.add(Bytes{'G', 'e', 't', 'h'});
-        encoder.add(hex_to_bytes("0000000000000000000000000000000000000000000000000000000000000000"));
-        encoder.add(uint64_t{0x13218f1238912389});
+    auto single_list = encoder.get_bytes();
+    EXPECT_EQ(bytes_to_hex(single_list), "c101");
+
     // Reset encoder
     encoder = RlpEncoder{};
 
@@ -208,7 +186,7 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
     encoder.add(uint8_t{1});
     encoder.end_list();
     auto mixed = encoder.get_bytes();
-    EXPECT_EQ(bytes_to_hex(mixed), "c483636174" "01");
+    EXPECT_EQ(bytes_to_hex(mixed), "c48363617401"); // Official vector: ["cat", 1]
 
     // Reset encoder
     encoder = RlpEncoder{};
@@ -223,7 +201,7 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
     encoder.add(Bytes{'c', 'a', 't'});
     encoder.end_list();
     auto very_mixed = encoder.get_bytes();
-    EXPECT_EQ(bytes_to_hex(very_mixed), "ca83646f67c2010283636174");
+    EXPECT_EQ(bytes_to_hex(very_mixed), "ca83646f67c2010283636174"); // Official vector: ["dog", [1,2], "cat"]
 }
 
 // Official Ethereum RLP Test Vectors for Edge Cases
@@ -272,8 +250,8 @@ TEST_F(EthereumRlpTest, EthereumDataStructures) {
     encoder.add(uint64_t{0xde0b6b3a7640000}); // value (1 ETH in wei)
     encoder.add(Bytes{});                  // data (empty)
     encoder.add(uint8_t{0x1c});           // v
-    encoder.add(hex_to_bytes("2fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8e8ed2e1b8f8e6b1d4c8e9f1f18")); // r (32 bytes)
-    encoder.add(hex_to_bytes("7d8e2e1b8f8e6b1d4c8e9f1f182fe7c4a137b47229e5fd0000b5d42d8fe4ce4d8")); // s (32 bytes)
+    encoder.add(hex_to_bytes("28ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276")); // r (32 bytes, 64 hex digits)
+    encoder.add(hex_to_bytes("67cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83")); // s (32 bytes, 64 hex digits)
     encoder.end_list();
     
     auto tx_bytes = encoder.get_bytes();

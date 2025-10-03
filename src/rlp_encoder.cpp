@@ -73,12 +73,13 @@ void RlpEncoder::end_list() {
     list_start_positions_.pop_back();
 
     size_t current_pos = buffer_.size();
-    size_t payload_len = current_pos - start_pos;
-
+    Bytes payload(buffer_.begin() + start_pos, buffer_.end());
+    size_t payload_len = payload.size();
     Bytes header = encode_header_bytes(true, payload_len);
 
-    // Insert header at the start position
-    buffer_.insert(buffer_.begin() + start_pos, header.begin(), header.end());
+    buffer_.resize(start_pos); // Remove payload
+    buffer_.insert(buffer_.end(), header.begin(), header.end()); // Insert header
+    buffer_.insert(buffer_.end(), payload.begin(), payload.end()); // Insert payload
 }
 
 const Bytes& RlpEncoder::get_bytes() const {
