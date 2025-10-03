@@ -614,7 +614,7 @@ TEST(RlpDecoder, ReadTemplateSequentialReads) {
     
     auto list_len = decoder.read_list_header();
     ASSERT_TRUE(list_len);
-    EXPECT_EQ(list_len.value(), 3); // Total payload length
+    EXPECT_EQ(list_len.value(), 3); // List payload length in bytes (not number of items)
     
     uint8_t val1;
     ASSERT_TRUE(decoder.read(val1));
