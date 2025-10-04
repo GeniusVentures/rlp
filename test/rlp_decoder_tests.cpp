@@ -188,7 +188,7 @@ TEST(RlpDecoder, DecodeBoolFalse) {
 TEST(RlpDecoder, DecodeEmptyList) {
     rlp::Bytes data = from_hex("c0");
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header();
+    auto len_res = decoder.read_list_header_bytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 0);
     EXPECT_TRUE(decoder.is_finished());
@@ -197,7 +197,7 @@ TEST(RlpDecoder, DecodeEmptyList) {
 TEST(RlpDecoder, DecodeSimpleList) {
     rlp::Bytes data = from_hex("c481aa81bb");
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header();
+    auto len_res = decoder.read_list_header_bytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 4);
 
@@ -213,7 +213,7 @@ TEST(RlpDecoder, DecodeNestedList) {
     rlp::Bytes bytes = from_hex("c401c20203");
     rlp::ByteView data = bytes;
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header();
+    auto len_res = decoder.read_list_header_bytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 4);
 
@@ -224,7 +224,7 @@ TEST(RlpDecoder, DecodeNestedList) {
     EXPECT_EQ(item1, 1);
 
     rlp::RlpDecoder inner_decoder(outer_list_data);
-    auto inner_len_res = inner_decoder.read_list_header();
+    auto inner_len_res = inner_decoder.read_list_header_bytes();
     ASSERT_TRUE(inner_len_res);
     EXPECT_EQ(inner_len_res.value(), 2);
 
@@ -359,7 +359,7 @@ TEST(RlpDecoder, ErrorUnexpectedList) {
 TEST(RlpDecoder, ErrorUnexpectedString) {
     rlp::Bytes data = from_hex("0f");
     rlp::RlpDecoder decoder(data);
-    auto res = decoder.read_list_header();
+    auto res = decoder.read_list_header_bytes();
     ASSERT_FALSE(res);
     EXPECT_EQ(res.error(), rlp::DecodingError::kUnexpectedString);
 }
@@ -587,7 +587,7 @@ TEST(RlpDecoder, ReadTemplateSequentialReads) {
     rlp::Bytes data = from_hex("c3" "01" "02" "03"); // List with [1, 2, 3]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header();
+    auto list_len = decoder.read_list_header_bytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 3); // List payload length in bytes (not number of items)
     
@@ -612,7 +612,7 @@ TEST(RlpDecoder, ReadTemplateComplexSequentialReads) {
     rlp::Bytes data = from_hex("c5" "81ff" "82ffff"); // List with [255, 65535]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header();
+    auto list_len = decoder.read_list_header_bytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 5); // Total payload length
     
@@ -632,7 +632,7 @@ TEST(RlpDecoder, ReadTemplateMixedTypes) {
     rlp::Bytes data = from_hex("c5" "80" "01" "64" "81c8"); // List with [false, true, 100, 200]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header();
+    auto list_len = decoder.read_list_header_bytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 5); // Total payload length
     

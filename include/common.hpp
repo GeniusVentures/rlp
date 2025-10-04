@@ -35,8 +35,8 @@ inline constexpr uint8_t kRlpSingleByteThreshold{0x80};  // Values below this ar
 // Note: Users interact via Encoder/Decoder methods, not directly with Header
 struct Header {
     bool list{false};
-    size_t payload_length{0};
-    size_t header_length{0}; // Length of the RLP prefix itself
+    size_t payload_size_bytes{0};  // Size of payload in bytes (not item count for lists)
+    size_t header_size_bytes{0};   // Size of the RLP header/prefix itself in bytes
 };
 
 // --- Error Handling ---

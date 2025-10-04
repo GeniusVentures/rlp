@@ -236,7 +236,7 @@ TEST_F(EthereumRlpTest, EthereumDataStructures) {
     
     // Verify we can decode it back
     RlpDecoder decoder(tx_bytes);
-    auto list_length_result = decoder.read_list_header();
+    auto list_length_result = decoder.read_list_header_bytes();
     EXPECT_TRUE(list_length_result.has_value()) << "Failed to decode transaction list header";
 
     // Decode each field
@@ -335,7 +335,7 @@ TEST_F(EthereumRlpTest, ComplexNestedStructures) {
     
     // Verify we can decode the complex structure
     RlpDecoder decoder(block_header);
-    auto header_list_result = decoder.read_list_header();
+    auto header_list_result = decoder.read_list_header_bytes();
     EXPECT_TRUE(header_list_result.has_value());
     
     // Verify all fields can be read back
@@ -407,7 +407,7 @@ TEST_F(EthereumRlpTest, DeeplyNestedStructures) {
     
     // Navigate through all the nested lists
     for (int i = 0; i < depth; ++i) {
-        auto list_result = decoder.read_list_header();
+        auto list_result = decoder.read_list_header_bytes();
         EXPECT_TRUE(list_result.has_value()) << "Failed at depth " << i;
     }
     
@@ -474,7 +474,7 @@ TEST_F(EthereumRlpTest, ArraysAndVectors) {
         
         // Decode and verify
         RlpDecoder decoder(large_list);
-        auto list_result = decoder.read_list_header();
+        auto list_result = decoder.read_list_header_bytes();
         EXPECT_TRUE(list_result.has_value());
         
         for (int i = 0; i < 100; ++i) {

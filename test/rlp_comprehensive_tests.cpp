@@ -161,7 +161,7 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
 
         RlpDecoder decoder(encoded);
         rlp::Bytes list;
-        EXPECT_FALSE(decoder.read_list_header()); // Should not be a list
+        EXPECT_FALSE(decoder.read_list_header_bytes()); // Should not be a list
     }
 
     // Try to read string as integer
@@ -284,7 +284,7 @@ TEST_F(RlpErrorConditionsTest, DeepNesting) {
     
     // Navigate to the deeply nested value
     for (int i = 0; i < max_depth; ++i) {
-        auto list_header = decoder.read_list_header();
+        auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value()) << "Failed at nesting level: " << i;
     }
     uint8_t result;
@@ -331,7 +331,7 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         auto encoded = encoder.get_bytes();
 
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header();
+        auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value());
     EXPECT_EQ(list_header.value(), 0);
     }
@@ -347,7 +347,7 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         auto encoded = encoder.get_bytes();
 
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header();
+        auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value());
     EXPECT_EQ(list_header.value(), 10u);
     size_t item_count = 0;

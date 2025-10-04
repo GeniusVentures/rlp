@@ -383,7 +383,7 @@ TEST_F(BenchmarkTest, BenchmarkListDecoding) {
         
         auto avg_time = benchmark_operation([&]() {
             RlpDecoder decoder(encoded);
-            auto list_header = decoder.read_list_header();
+            auto list_header = decoder.read_list_header_bytes();
             if (list_header.has_value()) {
                 for (size_t j = 0; j < static_cast<size_t>(list_size); ++j) {
                     uint32_t value;

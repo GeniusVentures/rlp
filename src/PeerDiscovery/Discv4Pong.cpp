@@ -36,7 +36,7 @@ rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
     }
 
     // Read the list header
-    BOOST_OUTCOME_TRY(size_t list_length, decoder.read_list_header());
+    BOOST_OUTCOME_TRY(size_t list_length, decoder.read_list_header_bytes());
     
     // Parse to_endpoint (first element - should be a list of 3 elements)
     BOOST_OUTCOME_TRY(parse_endpoint(decoder, pong.to_endpoint));
@@ -89,7 +89,7 @@ rlp::DecodingResult Discv4Pong::parse_endpoint(rlp::RlpDecoder& decoder, Discv4P
     }
     
     // Read endpoint list header
-    BOOST_OUTCOME_TRY(size_t endpoint_list_length, decoder.read_list_header());
+    BOOST_OUTCOME_TRY(size_t endpoint_list_length, decoder.read_list_header_bytes());
     
     // Parse IP address (4 bytes)
     BOOST_OUTCOME_TRY(decoder.read(endpoint.ip));

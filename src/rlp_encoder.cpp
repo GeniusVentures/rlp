@@ -8,17 +8,17 @@ namespace rlp {
 namespace { // Anonymous namespace for internal helpers
 
 // Encodes just the header bytes into a temporary buffer
-Bytes encode_header_bytes(bool list, size_t payload_length) {
+Bytes encode_header_bytes(bool list, size_t payload_size_bytes) {
     Bytes header_bytes;
     header_bytes.reserve(1 + sizeof(uint64_t)); // Max possible header size
 
     uint8_t short_offset = list ? kShortListOffset : kShortStringOffset;
     uint8_t long_offset = list ? kLongListOffset : kLongStringOffset;
 
-    if (payload_length <= kMaxShortStringLen) { // 55 bytes
-        header_bytes.push_back(static_cast<uint8_t>(short_offset + payload_length));
+    if (payload_size_bytes <= kMaxShortStringLen) { // 55 bytes
+        header_bytes.push_back(static_cast<uint8_t>(short_offset + payload_size_bytes));
     } else {
-        Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_length));
+        Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_size_bytes));
         if (len_be.length() > 8) {
             // RLP spec limits length field to 8 bytes
             throw std::length_error("RLP payload length exceeds 64-bit limit");

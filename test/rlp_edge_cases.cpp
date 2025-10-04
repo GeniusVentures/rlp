@@ -117,7 +117,7 @@ TEST(RlpEdgeCases, TemplateSequentialInList) {
     rlp::Bytes encoded = encoder.get_bytes();
     
     rlp::RlpDecoder decoder(encoded);
-    auto list_len = decoder.read_list_header();
+    auto list_len = decoder.read_list_header_bytes();
     ASSERT_TRUE(list_len);
     
     uint8_t val1;

@@ -106,8 +106,8 @@ int main() {
 int main() {
     rlp::Bytes data = /* some RLP data */;
     rlp::RlpDecoder decoder(data);
-    auto len = decoder.read_list_header();
-    if (len) {
+    auto list_payload_bytes = decoder.read_list_header_bytes(); // Returns byte count, not item count
+    if (list_payload_bytes) {
         uint64_t num;
         bool flag;
         decoder.read(num);

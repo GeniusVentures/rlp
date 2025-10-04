@@ -231,7 +231,7 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
         encoder.end_list();
         auto encoded = encoder.get_bytes();
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header();
+        auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value()) << "Iteration " << iteration;
     RlpDecoder list_decoder(decoder.remaining().substr(0, list_header.value()));
         for (size_t i = 0; i < original_values.size(); ++i) {
@@ -281,7 +281,7 @@ TEST_F(PropertyBasedTest, FuzzDecoderWithRandomData) {
         [[maybe_unused]] auto str_result_code = decoder.read(str_result);
         decoder = RlpDecoder(random_data); // Reset
 
-        [[maybe_unused]] auto list_header_result = decoder.read_list_header();
+        [[maybe_unused]] auto list_header_result = decoder.read_list_header_bytes();
         decoder = RlpDecoder(random_data); // Reset
 
         uint8_t u8_val;
@@ -356,15 +356,15 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
             if (dec.is_finished()) return;
 
             // Try list first
-            auto list_header = dec.read_list_header();
+            auto list_header = dec.read_list_header_bytes();
             if (list_header.has_value()) {
                 // list_header.value() is the payload length in bytes
                 // Track remaining bytes in this list payload
                 ByteView remaining_before = dec.remaining();
-                size_t payload_length = list_header.value();
+                size_t payload_size_bytes = list_header.value();
                 size_t consumed = 0;
                 
-                while (consumed < payload_length && !dec.is_finished()) {
+                while (consumed < payload_size_bytes && !dec.is_finished()) {
                     ByteView before_item = dec.remaining();
                     try_decode(dec);
                     ByteView after_item = dec.remaining();
