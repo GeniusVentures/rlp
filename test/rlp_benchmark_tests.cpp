@@ -11,6 +11,61 @@
 using namespace rlp;
 
 // ===================================================================
+// BENCHMARK UTILITIES
+// ===================================================================
+
+// Prevent compiler from optimizing away computations
+// Similar to Google Benchmark's DoNotOptimize but for use with Google Test
+namespace benchmark_util {
+
+#if defined(_MSC_VER)
+    #pragma optimize("", off)
+    template <typename T>
+    inline void DoNotOptimize(T const& value) {
+        // Force the compiler to believe the value is used
+        const_cast<char const volatile&>(reinterpret_cast<char const volatile&>(value));
+    }
+    #pragma optimize("", on)
+#elif defined(__GNUC__) || defined(__clang__)
+    template <typename T>
+    inline void DoNotOptimize(T const& value) {
+        asm volatile("" : : "r,m"(value) : "memory");
+    }
+    
+    template <typename T>
+    inline void DoNotOptimize(T& value) {
+#if defined(__clang__)
+        asm volatile("" : "+r,m"(value) : : "memory");
+#else
+        asm volatile("" : "+m,r"(value) : : "memory");
+#endif
+    }
+#else
+    // Fallback for unknown compilers - use a pointer with side effects
+    template <typename T>
+    inline void DoNotOptimize(T const& value) {
+        static_cast<void>(std::as_const(value));
+        asm volatile("" : : : "memory");
+    }
+#endif
+
+} // namespace benchmark_util
+
+// ===================================================================
+// BENCHMARK FRAMEWORK
+// ==================================================================="/gtest.h>
+#include <rlp_encoder.hpp>
+#include <rlp_decoder.hpp>
+#include <vector>
+#include <chrono>
+#include <random>
+#include <algorithm>
+#include <numeric>
+#include <iomanip>
+
+using namespace rlp;
+
+// ===================================================================
 // BENCHMARK FRAMEWORK
 // ===================================================================
 
@@ -107,8 +162,7 @@ TEST_F(BenchmarkTest, BenchmarkUint8Encoding) {
         auto result = encoder.get_bytes();
         value_index++;
         // Prevent optimization
-        volatile auto size = result.size();
-        (void)size;
+        benchmark_util::DoNotOptimize(result.size());
     });
     
     report_performance("uint8 encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS);
@@ -128,8 +182,7 @@ TEST_F(BenchmarkTest, BenchmarkUint32Encoding) {
         auto result = encoder.get_bytes();
         value_index++;
         // Prevent optimization
-        volatile auto size = result.size();
-        (void)size;
+        benchmark_util::DoNotOptimize(result.size());
     });
     
     report_performance("uint32 encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS);
@@ -154,8 +207,7 @@ TEST_F(BenchmarkTest, BenchmarkUint256Encoding) {
         auto result = encoder.get_bytes();
         value_index++;
         // Prevent optimization
-        volatile auto size = result.size();
-        (void)size;
+        benchmark_util::DoNotOptimize(result.size());
     }, 100); // Fewer iterations for uint256
     
     // uint256 encoding is more complex, allow 10x more time
@@ -178,8 +230,7 @@ TEST_F(BenchmarkTest, BenchmarkByteArrayEncoding) {
         auto result = encoder.get_bytes();
         data_index++;
         // Prevent optimization
-        volatile auto size = result.size();
-        (void)size;
+        benchmark_util::DoNotOptimize(result.size());
     });
     
     report_performance("byte array encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS * 2);
@@ -197,8 +248,7 @@ TEST_F(BenchmarkTest, BenchmarkLargeByteArrayEncoding) {
             encoder.add(rlp::ByteView{data.data(), data.size()});
             auto result = encoder.get_bytes();
             // Prevent optimization
-            volatile auto result_size = result.size();
-            (void)result_size;
+            benchmark_util::DoNotOptimize(result.size());
         }, 100); // Fewer iterations for large data
         
         double time_per_byte = avg_time / size;
@@ -223,8 +273,7 @@ TEST_F(BenchmarkTest, BenchmarkListEncoding) {
             encoder.end_list();
             auto result = encoder.get_bytes();
             // Prevent optimization
-            volatile auto size = result.size();
-            (void)size;
+            benchmark_util::DoNotOptimize(result.size());
         }, std::max(1, 1000 / list_size)); // Fewer iterations for larger lists
         
         double time_per_element = avg_time / list_size;
@@ -256,10 +305,8 @@ TEST_F(BenchmarkTest, BenchmarkUint32Decoding) {
     auto result = decoder.read(value);
     value_index++;
     // Prevent optimization
-    volatile bool v_success = result.has_value();
-    volatile uint32_t val = value;
-    (void)v_success;
-    (void)val;
+    benchmark_util::DoNotOptimize(result.has_value());
+    benchmark_util::DoNotOptimize(value);
     });
     
     report_performance("uint32 decoding", avg_time, MAX_UINT32_DECODE_TIME_NS);
@@ -285,8 +332,7 @@ TEST_F(BenchmarkTest, BenchmarkByteArrayDecoding) {
     auto decode_result = decoder.read(result);
     data_index++;
     // Prevent optimization
-    volatile bool v_success = decode_result.has_value();
-    (void)v_success;
+    benchmark_util::DoNotOptimize(decode_result.has_value());
     });
 
     report_performance("byte array decoding", avg_time, MAX_UINT32_DECODE_TIME_NS * 2);
@@ -307,8 +353,7 @@ TEST_F(BenchmarkTest, BenchmarkLargeByteArrayDecoding) {
             rlp::Bytes result;
             auto decode_result = decoder.read(result);
             // Prevent optimization
-            volatile bool v_success = decode_result.has_value();
-            (void)v_success;
+            benchmark_util::DoNotOptimize(decode_result.has_value());
         }, 100); // Fewer iterations for large data
         
         double time_per_byte = avg_time / size;
@@ -346,8 +391,7 @@ TEST_F(BenchmarkTest, BenchmarkListDecoding) {
                 }
             }
             // Prevent optimization
-            volatile bool v_success = list_header.has_value();
-            (void)v_success;
+            benchmark_util::DoNotOptimize(list_header.has_value());
         }, std::max(1, 1000 / list_size)); // Fewer iterations for larger lists
 
         double time_per_element = avg_time / list_size;
@@ -383,8 +427,8 @@ TEST_F(BenchmarkTest, BenchmarkRoundTrip) {
 
     value_index++;
     // Prevent optimization
-    volatile bool v_success = decode_result.has_value() && (decoded == original);
-    (void)v_success;
+    benchmark_util::DoNotOptimize(decode_result.has_value());
+    benchmark_util::DoNotOptimize(decoded == original);
     });
     
     report_performance("uint32 round-trip", avg_time, (MAX_UINT32_ENCODE_TIME_NS + MAX_UINT32_DECODE_TIME_NS));
@@ -414,8 +458,7 @@ TEST_F(BenchmarkTest, BenchmarkMemoryEfficiency) {
             EXPECT_LE(result.size(), expected_max_size);
             
             // Prevent optimization
-            volatile auto result_size = result.size();
-            (void)result_size;
+            benchmark_util::DoNotOptimize(result.size());
         }, 100);
         
         // Memory efficiency test - encoding shouldn't take too long
