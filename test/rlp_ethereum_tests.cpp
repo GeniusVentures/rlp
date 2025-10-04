@@ -12,6 +12,7 @@
 #include "rlp_decoder.hpp"
 #include "common.hpp"
 #include "test_helpers.hpp"
+#include "intx.hpp"
 #include <array>
 #include <vector>
 #include <string>
@@ -836,6 +837,170 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
         encoder.end_list();
         encoder.end_list();
         EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "c4c2c0c0c0");
+    }
+}
+
+// Test big integers (>256 bit) from Ethereum bigint test
+TEST_F(EthereumRlpTest, BigIntegerTests) {
+    // Test uint256 maximum value (2^256 - 1)
+    // This is 32 bytes of 0xFF
+    {
+        // Create max uint256: 0xFFFFFFFF...FFFF (32 bytes)
+        intx::uint256 max_uint256 = 0;
+        for (int i = 0; i < 32; ++i) {
+            max_uint256 = (max_uint256 << 8) | 0xFF;
+        }
+        
+        RlpEncoder encoder;
+        encoder.add(max_uint256);
+        auto encoded = encoder.get_bytes();
+        
+        // Should be encoded as: 0xa0 (32 bytes string) + 32 bytes of 0xff
+        EXPECT_EQ(encoded[0], 0xa0) << "Should use 32-byte string encoding";
+        EXPECT_EQ(encoded.size(), 33) << "Should be 1 byte header + 32 bytes data";
+        
+        // Verify all 32 bytes are 0xff
+        for (size_t i = 1; i < 33; ++i) {
+            EXPECT_EQ(encoded[i], 0xff) << "Byte " << i << " should be 0xff";
+        }
+        
+        // Decode and verify roundtrip
+        RlpDecoder decoder(encoded);
+        intx::uint256 decoded;
+        auto result = decoder.read(decoded);
+        EXPECT_TRUE(result) << "Should decode successfully";
+        EXPECT_EQ(decoded, max_uint256) << "Roundtrip should preserve value";
+        EXPECT_TRUE(decoder.is_finished());
+    }
+
+    // Test specific large uint256 value from Ethereum tests
+    // bigint: 0xa1 0x01 0x00 0x00...0x00 (33 bytes total: 0x01 followed by 32 zeros)
+    // This represents 2^256 encoded incorrectly, but we test large valid uint256 values
+    {
+        // Test a large uint256: 0x0100000000000000000000000000000000000000000000000000000000000000
+        // This is 2^248
+        intx::uint256 large_value = intx::uint256{1} << 248;
+        
+        RlpEncoder encoder;
+        encoder.add(large_value);
+        auto encoded = encoder.get_bytes();
+        
+        // Should encode as string with proper length
+        EXPECT_GT(encoded.size(), 1) << "Should have header and data";
+        
+        // Decode and verify
+        RlpDecoder decoder(encoded);
+        intx::uint256 decoded;
+        auto result = decoder.read(decoded);
+        EXPECT_TRUE(result) << "Should decode successfully";
+        EXPECT_EQ(decoded, large_value) << "Should preserve 2^248";
+        EXPECT_TRUE(decoder.is_finished());
+    }
+
+    // Test various uint256 boundary values
+    {
+        // Test 2^128
+        intx::uint256 val_128 = intx::uint256{1} << 128;
+        test_roundtrip(val_128);
+        
+        // Test 2^192
+        intx::uint256 val_192 = intx::uint256{1} << 192;
+        test_roundtrip(val_192);
+        
+        // Test 2^255 (largest power of 2 that fits in uint256)
+        intx::uint256 val_255 = intx::uint256{1} << 255;
+        test_roundtrip(val_255);
+    }
+
+    // Test Ethereum-specific large values
+    {
+        // Test a value like total supply of ETH in wei (slightly over 120M ETH)
+        // 120,000,000 ETH * 10^18 wei/ETH
+        intx::uint256 eth_supply = intx::uint256{120'000'000} * intx::uint256{1'000'000'000'000'000'000ULL};
+        
+        RlpEncoder encoder;
+        encoder.add(eth_supply);
+        auto encoded = encoder.get_bytes();
+        
+        RlpDecoder decoder(encoded);
+        intx::uint256 decoded;
+        EXPECT_TRUE(decoder.read(decoded));
+        EXPECT_EQ(decoded, eth_supply) << "Should preserve large ETH supply value";
+    }
+
+    // Test exact hex from Ethereum bigint test
+    // From rlptest.json: "bigint" test with encoding 0xa1 followed by 33 bytes
+    // Note: This represents a value > 2^256 which doesn't fit in uint256
+    // We test the largest valid uint256 values instead
+    {
+        // Create a uint256 with specific pattern for testing
+        // Use hex string: 0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20
+        intx::uint256 pattern_value = 0;
+        for (int i = 0; i < 32; ++i) {
+            pattern_value = (pattern_value << 8) | static_cast<uint8_t>(i + 1);
+        }
+        
+        RlpEncoder encoder;
+        encoder.add(pattern_value);
+        auto encoded = encoder.get_bytes();
+        
+        // Should be 0xa0 (32 byte string) + 32 bytes of data
+        EXPECT_EQ(encoded[0], 0xa0);
+        EXPECT_EQ(encoded.size(), 33);
+        
+        // Verify the pattern
+        for (size_t i = 0; i < 32; ++i) {
+            EXPECT_EQ(encoded[i + 1], static_cast<uint8_t>(i + 1));
+        }
+        
+        // Verify roundtrip
+        RlpDecoder decoder(encoded);
+        intx::uint256 decoded;
+        EXPECT_TRUE(decoder.read(decoded));
+        EXPECT_EQ(decoded, pattern_value);
+    }
+
+    // Test that uint256 zero is encoded as empty string (0x80)
+    {
+        intx::uint256 zero{0};
+        
+        RlpEncoder encoder;
+        encoder.add(zero);
+        auto encoded = encoder.get_bytes();
+        
+        EXPECT_EQ(bytes_to_hex(encoded), "80") << "uint256 zero should encode as 0x80";
+        
+        RlpDecoder decoder(encoded);
+        intx::uint256 decoded;
+        EXPECT_TRUE(decoder.read(decoded));
+        EXPECT_EQ(decoded, zero);
+    }
+
+    // Test uint256 value that fits in different byte sizes
+    {
+        // 1 byte value (0x7F)
+        intx::uint256 val_1byte{0x7F};
+        RlpEncoder enc1;
+        enc1.add(val_1byte);
+        EXPECT_EQ(bytes_to_hex(enc1.get_bytes()), "7f");
+        
+        // 1 byte value requiring string encoding (0x80)
+        intx::uint256 val_1byte_str{0x80};
+        RlpEncoder enc2;
+        enc2.add(val_1byte_str);
+        EXPECT_EQ(bytes_to_hex(enc2.get_bytes()), "8180");
+        
+        // 8 byte value
+        intx::uint256 val_8byte{0x0102030405060708ULL};
+        RlpEncoder enc3;
+        enc3.add(val_8byte);
+        auto encoded = enc3.get_bytes();
+        EXPECT_EQ(encoded[0], 0x88) << "Should use 8-byte string encoding";
+        
+        // 16 byte value
+        intx::uint256 val_16byte = (intx::uint256{0x0102030405060708ULL} << 64) | 
+                                   intx::uint256{0x090a0b0c0d0e0f10ULL};
+        test_roundtrip(val_16byte);
     }
 }
 
