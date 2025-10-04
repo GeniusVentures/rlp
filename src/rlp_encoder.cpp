@@ -47,7 +47,23 @@ void RlpEncoder::add(ByteView bytes) {
     }
 }
 
+/**
+ * Appends raw bytes directly to the internal buffer without RLP encoding.
+ * 
+ * Use this method only if you have already encoded the data according to RLP rules,
+ * or if you need to append a pre-encoded RLP fragment. Unlike add(), this method
+ * does not perform any encoding or validation, and may result in malformed RLP output
+ * if used incorrectly.
+ *
+ * Prefer add() for normal usage. Use addRaw() only if you know what you are doing.
+ *
+ * @param bytes Raw bytes to append. Must not be empty.
+ * @throws std::invalid_argument if bytes is empty.
+ */
 void RlpEncoder::addRaw(ByteView bytes) {
+    if (bytes.empty()) {
+        throw std::invalid_argument("addRaw: input bytes must not be empty");
+    }
     buffer_.append(bytes);
 }
 
