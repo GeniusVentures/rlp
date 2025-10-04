@@ -21,8 +21,19 @@ namespace rlp {
             case DecodingError::kInvalidVrsValue: return "RLP Invalid VRS Value";
             case DecodingError::kListLengthMismatch: return "RLP List Length Mismatch";
             case DecodingError::kNotInList: return "RLP Operation requires being in a list context";
+            case DecodingError::kMalformedHeader: return "RLP Malformed Header";
             default: return "RLP Unknown Error";
         }
     }
 
+    std::string hexToString(rlp::ByteView bv)
+    {
+        std::stringstream ss;
+        ss<<std::setfill('0') << std::hex;
+        for(auto &byte : bv)
+        {
+            ss <<std::setw(2) << (int)byte;
+        }
+        return ss.str();
+    }
 } // namespace rlp

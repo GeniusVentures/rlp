@@ -6,7 +6,7 @@
 #include "common.hpp"
 #include "intx.hpp"
 #include "endian.hpp"
-
+#include <iostream>
 namespace rlp {
 
 class RlpEncoder {
@@ -15,6 +15,7 @@ class RlpEncoder {
 
     // --- Add basic types ---
     void add(ByteView bytes); // Add raw bytes (encoded as RLP string)
+    void addRaw(ByteView bytes); // Add raw bytes (encoded as RLP string) without header
     // Add unsigned integrals (using SFINAE for C++17)
     template <typename T>
         auto add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;

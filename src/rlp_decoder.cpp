@@ -15,34 +15,39 @@ Result<Header> decode_header_impl(ByteView& v) noexcept {
         return DecodingError::kInputTooShort;
     }
 
-    Header h{.list = false, .payload_length = 0, .header_length = 0};
+    Header h{.list = false, .payload_size_bytes = 0, .header_size_bytes = 0};
     const uint8_t b{v[0]};
     const size_t input_len = v.length();
 
+    // Reserved bytes (0xf9–0xff) as single bytes are always invalid
+    if (input_len == 1 && b >= 0xf9 && b <= 0xff) {
+        return DecodingError::kMalformedHeader;
+    }
+
     if (b < kShortStringOffset) { // 0x80
-        // Single byte literal
-        h.payload_length = 1;
-        h.header_length = 0; // Header is implicit
+        // Single byte literal (valid for 0x00–0x7f)
+        h.payload_size_bytes = 1;
+        h.header_size_bytes = 0; // Header is implicit
         // Do not consume 'v' here, payload is the byte itself
     } else if (b <= kMaxShortStringLen + kShortStringOffset) { // 0xB7
         // Short string
-        h.header_length = 1;
-        if (input_len < h.header_length) return DecodingError::kInputTooShort;
-        h.payload_length = b - kShortStringOffset;
-        if (h.payload_length == 1) {
-            if (input_len < h.header_length + 1) return DecodingError::kInputTooShort;
+        h.header_size_bytes = 1;
+        if (input_len < h.header_size_bytes) return DecodingError::kInputTooShort;
+        h.payload_size_bytes = b - kShortStringOffset;
+        if (h.payload_size_bytes == 1) {
+            if (input_len < h.header_size_bytes + 1) return DecodingError::kInputTooShort;
             if (static_cast<uint8_t>(v[1]) < kShortStringOffset) {
                 return DecodingError::kNonCanonicalSize; // byte < 0x80 must be encoded as itself
             }
         }
-        v.remove_prefix(h.header_length); // Consume header byte
+        v.remove_prefix(h.header_size_bytes); // Consume header byte
     } else if (b < kShortListOffset) { // 0xC0
         // Long string
-        h.header_length = 1 + (b - kLongStringOffset);
-        if (input_len < h.header_length) return DecodingError::kInputTooShort;
+        h.header_size_bytes = 1 + (b - kLongStringOffset);
+        if (input_len < h.header_size_bytes) return DecodingError::kInputTooShort;
 
         uint64_t len64{0};
-        ByteView len_bytes = v.substr(1, h.header_length - 1);
+        ByteView len_bytes = v.substr(1, h.header_size_bytes - 1);
 
         auto len_res = endian::from_big_compact(len_bytes, len64);
         if (!len_res) return len_res.error();
@@ -54,23 +59,23 @@ Result<Header> decode_header_impl(ByteView& v) noexcept {
         if (len64 > std::numeric_limits<size_t>::max()) {
             return DecodingError::kOverflow;
         }
-        h.payload_length = static_cast<size_t>(len64);
-        v.remove_prefix(h.header_length); // Consume header + length bytes
+        h.payload_size_bytes = static_cast<size_t>(len64);
+        v.remove_prefix(h.header_size_bytes); // Consume header + length bytes
     } else if (b <= kMaxShortListLen + kShortListOffset) { // 0xF7
         // Short list
         h.list = true;
-        h.header_length = 1;
-        if (input_len < h.header_length) return DecodingError::kInputTooShort;
-        h.payload_length = b - kShortListOffset;
-        v.remove_prefix(h.header_length); // Consume header byte
+        h.header_size_bytes = 1;
+        if (input_len < h.header_size_bytes) return DecodingError::kInputTooShort;
+        h.payload_size_bytes = b - kShortListOffset;
+        v.remove_prefix(h.header_size_bytes); // Consume header byte
     } else {
         // Long list
         h.list = true;
-        h.header_length = 1 + (b - kLongListOffset);
-        if (input_len < h.header_length) return DecodingError::kInputTooShort;
+        h.header_size_bytes = 1 + (b - kLongListOffset);
+        if (input_len < h.header_size_bytes) return DecodingError::kInputTooShort;
 
         uint64_t len64{0};
-        ByteView len_bytes = v.substr(1, h.header_length - 1);
+        ByteView len_bytes = v.substr(1, h.header_size_bytes - 1);
 
         auto len_res = endian::from_big_compact(len_bytes, len64);
         if (!len_res) return len_res.error();
@@ -81,14 +86,14 @@ Result<Header> decode_header_impl(ByteView& v) noexcept {
         if (len64 > std::numeric_limits<size_t>::max()) {
             return DecodingError::kOverflow;
         }
-        h.payload_length = static_cast<size_t>(len64);
-        v.remove_prefix(h.header_length); // Consume header + length bytes
+        h.payload_size_bytes = static_cast<size_t>(len64);
+        v.remove_prefix(h.header_size_bytes); // Consume header + length bytes
     }
 
     // Final check: Is remaining data sufficient for the payload?
     // Exception: single byte literal case already checked implicitly by v not being empty.
     if (b >= kShortStringOffset) { // Check only if header was consumed
-        if (v.length() < h.payload_length) {
+        if (v.length() < h.payload_size_bytes) {
             return DecodingError::kInputTooShort;
         }
     } else { // Single byte literal case, check original length implicitly via initial check
@@ -128,10 +133,10 @@ Result<bool> RlpDecoder::is_string() const noexcept {
     return (b < kShortListOffset); // Covers single byte, short string, long string
 }
 
-Result<size_t> RlpDecoder::peek_payload_length() const noexcept {
+Result<size_t> RlpDecoder::peek_payload_size_bytes() const noexcept {
     ByteView temp_view = view_; // Copy view to peek without consuming
     BOOST_OUTCOME_TRY(auto h, decode_header_impl(temp_view));
-    return h.payload_length;
+    return h.payload_size_bytes;
 }
 
 Result<Header> RlpDecoder::peek_header() const noexcept {
@@ -150,13 +155,13 @@ DecodingResult RlpDecoder::read(Bytes& out) {
 
     BOOST_OUTCOME_TRY(skip_header_internal()); // Consume header from member view_
 
-    if (view_.length() < h.payload_length) return DecodingError::kInputTooShort; // Double check
+    if (view_.length() < h.payload_size_bytes) return DecodingError::kInputTooShort; // Double check
 
     // Assign payload
-    out.assign(reinterpret_cast<const uint8_t*>(view_.data()), h.payload_length);
+    out.assign(reinterpret_cast<const uint8_t*>(view_.data()), h.payload_size_bytes);
 
     // Consume payload
-    view_.remove_prefix(h.payload_length);
+    view_.remove_prefix(h.payload_size_bytes);
 
     return outcome::success(); // Success
 }
@@ -168,7 +173,7 @@ DecodingResult RlpDecoder::read(intx::uint256& out) {
 
 // --- List Handling (Consume) ---
 
-Result<size_t> RlpDecoder::read_list_header() noexcept {
+Result<size_t> RlpDecoder::read_list_header_bytes() noexcept {
     BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
 
     if (!h.list) {
@@ -177,7 +182,7 @@ Result<size_t> RlpDecoder::read_list_header() noexcept {
 
     BOOST_OUTCOME_TRY(skip_header_internal()); // Consume header from member view_
 
-    return h.payload_length; // Return payload length
+    return h.payload_size_bytes; // Return payload length in bytes
 }
 
 DecodingResult RlpDecoder::skip_item() noexcept {
@@ -186,8 +191,8 @@ DecodingResult RlpDecoder::skip_item() noexcept {
     BOOST_OUTCOME_TRY(skip_header_internal()); // Consume header
 
     // Consume payload
-    if (view_.length() < h.payload_length) return DecodingError::kInputTooShort;
-    view_.remove_prefix(h.payload_length);
+    if (view_.length() < h.payload_size_bytes) return DecodingError::kInputTooShort;
+    view_.remove_prefix(h.payload_size_bytes);
 
     return outcome::success(); // Success
 }
@@ -238,16 +243,16 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
         return DecodingError::kUnexpectedList;
     }
 
-    ByteView payload_view = view_.substr(h.header_length, h.payload_length); // View payload
+    ByteView payload_view = view_.substr(h.header_size_bytes, h.payload_size_bytes); // View payload
 
     // Perform checks on payload_view before decoding
-    if (h.payload_length > 1 && payload_view[0] == 0) {
+    if (h.payload_size_bytes > 1 && payload_view[0] == 0) {
         return DecodingError::kLeadingZero;
     }
     // Allow 0x00 to decode to 0, handled by from_big_compact.
     // Redundant check removed for clarity.
 
-    if (h.payload_length > 32) { // Max bytes for uint256
+    if (h.payload_size_bytes > 32) { // Max bytes for uint256
         return DecodingError::kOverflow;
     }
 
@@ -255,16 +260,16 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
     BOOST_OUTCOME_TRY(endian::from_big_compact(payload_view, out));
 
     // Check canonical single byte encoding AFTER decoding value
-    if (h.payload_length == 1 && out < kRlpSingleByteThreshold) {
-        // Ensure header was just the byte itself (header_length == 0)
-        if (h.header_length > 0) {
+    if (h.payload_size_bytes == 1 && out < kRlpSingleByteThreshold) {
+        // Ensure header was just the byte itself (header_size_bytes == 0)
+        if (h.header_size_bytes > 0) {
             return DecodingError::kNonCanonicalSize;
         }
     }
 
     // Consume header + payload from the main view_
-    if (view_.length() < h.header_length + h.payload_length) return DecodingError::kInputTooShort;
-    view_.remove_prefix(h.header_length + h.payload_length);
+    if (view_.length() < h.header_size_bytes + h.payload_size_bytes) return DecodingError::kInputTooShort;
+    view_.remove_prefix(h.header_size_bytes + h.payload_size_bytes);
 
     return outcome::success(); // Success
 }
