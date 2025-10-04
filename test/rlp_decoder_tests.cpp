@@ -1,36 +1,11 @@
 #include <gtest/gtest.h>
 #include <rlp_decoder.hpp>
+#include "test_helpers.hpp"
 #include <vector>
 #include <array>
-#include <sstream>
-#include <iomanip>
 
 using namespace rlp;
-
-// Helper to convert Bytes to hex string for comparison
-std::string to_hex(rlp::ByteView bytes) {
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0');
-    for (uint8_t b : bytes) {
-        ss << std::setw(2) << static_cast<int>(b);
-    }
-    return ss.str();
-}
-
-// Helper to convert hex string (without 0x) to Bytes
-rlp::Bytes from_hex(std::string_view hex) {
-    if (hex.length() % 2 != 0) {
-        throw std::invalid_argument("Hex string must have even length");
-    }
-    rlp::Bytes bytes;
-    bytes.reserve(hex.length() / 2);
-    for (size_t i = 0; i < hex.length(); i += 2) {
-        std::string byteString = std::string(hex.substr(i, 2));
-        uint8_t byte = static_cast<uint8_t>(std::stoul(byteString, nullptr, 16));
-        bytes.push_back(byte);
-    }
-    return bytes;
-}
+using namespace rlp::test;
 
 // --- Decoder Tests ---
 

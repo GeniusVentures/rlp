@@ -11,43 +11,18 @@
 #include "rlp_encoder.hpp"
 #include "rlp_decoder.hpp"
 #include "common.hpp"
+#include "test_helpers.hpp"
 #include <array>
 #include <vector>
 #include <string>
-#include <sstream>
-#include <iomanip>
 
 using namespace rlp;
+using namespace rlp::test;
 
 class EthereumRlpTest : public ::testing::Test {
 protected:
     void SetUp() override {}
     void TearDown() override {}
-
-    // Helper function to convert hex string to bytes
-    Bytes hex_to_bytes(const std::string& hex) {
-        Bytes result;
-        if (hex.length() % 2 != 0) {
-            throw std::invalid_argument("Hex string must have even length");
-        }
-        
-        for (size_t i = 0; i < hex.length(); i += 2) {
-            std::string byte_string = hex.substr(i, 2);
-            uint8_t byte = static_cast<uint8_t>(std::stoul(byte_string, nullptr, 16));
-            result.push_back(byte);
-        }
-        return result;
-    }
-
-    // Helper function to convert bytes to hex string
-    std::string bytes_to_hex(const Bytes& bytes) {
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0');
-        for (uint8_t byte : bytes) {
-            ss << std::setw(2) << static_cast<unsigned>(byte);
-        }
-        return ss.str();
-    }
 
     // Test encoding and decoding roundtrip
     template<typename T>
