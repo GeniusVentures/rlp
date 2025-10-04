@@ -107,6 +107,10 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_ethereum_tests.cpp"
                 )
 
+                add_executable(rlp_random_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_random_tests.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -116,6 +120,7 @@ if(BUILD_TESTS)
         target_link_libraries(${PROJECT_NAME}_property_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_comprehensive_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_ethereum_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_random_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
@@ -127,6 +132,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_property_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_property_tests>)
                 add_test(NAME rlp_comprehensive_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_comprehensive_tests>)
                 add_test(NAME rlp_ethereum_tests COMMAND $<TARGET_FILE:rlp_ethereum_tests>)
+                add_test(NAME rlp_random_tests COMMAND $<TARGET_FILE:rlp_random_tests>)
         
 endif()
 

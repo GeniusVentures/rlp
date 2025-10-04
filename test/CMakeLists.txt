@@ -35,6 +35,10 @@ addtest(rlp_ethereum_tests
         rlp_ethereum_tests.cpp
 )
 
+addtest(rlp_random_tests
+        rlp_random_tests.cpp
+)
+
 target_link_libraries(discovery_test PRIVATE rlp)
 target_link_libraries(rlp_endian_tests PRIVATE rlp)
 target_link_libraries(rlp_ethereum_tests PRIVATE rlp)
@@ -44,3 +48,4 @@ target_link_libraries(rlp_edge_cases PRIVATE rlp)
 target_link_libraries(rlp_comprehensive_tests PRIVATE rlp)
 target_link_libraries(rlp_property_tests PRIVATE rlp)
 target_link_libraries(rlp_benchmark_tests PRIVATE rlp)
+target_link_libraries(rlp_random_tests PRIVATE rlp)

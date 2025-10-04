@@ -487,6 +487,358 @@ TEST_F(EthereumRlpTest, ArraysAndVectors) {
     }
 }
 
+// Test invalid RLP encodings from Ethereum invalidRLPTest.json
+TEST_F(EthereumRlpTest, InvalidRlpBytesShouldBeSingleByte) {
+    // bytesShouldBeSingleByte00: 0x8100 - byte 0x00 should be encoded as 0x00, not as string
+    {
+        auto invalid = hex_to_bytes("8100");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject non-canonical encoding of 0x00";
+        // Our implementation detects this as kNonCanonicalSize (single byte should not use string encoding)
+        EXPECT_EQ(decode_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // bytesShouldBeSingleByte01: 0x8101 - byte 0x01 should be encoded as 0x01, not as string
+    {
+        auto invalid = hex_to_bytes("8101");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject non-canonical encoding of 0x01";
+        EXPECT_EQ(decode_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // bytesShouldBeSingleByte7F: 0x817F - byte 0x7F should be encoded as 0x7F, not as string
+    {
+        auto invalid = hex_to_bytes("817f");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject non-canonical encoding of 0x7F";
+        EXPECT_EQ(decode_result.error(), DecodingError::kNonCanonicalSize);
+    }
+}
+
+TEST_F(EthereumRlpTest, InvalidRlpLeadingZeros) {
+    // leadingZerosInLongLengthArray1: 0xb90040... - length has leading zero
+    {
+        auto invalid = hex_to_bytes("b900400102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject length with leading zero";
+        // Our implementation may detect this as kNonCanonicalSize (similar to leading zero case)
+        EXPECT_TRUE(decode_result.error() == DecodingError::kLeadingZero ||
+                   decode_result.error() == DecodingError::kNonCanonicalSize);
+    }
+
+    // leadingZerosInLongLengthArray2: 0xb800 - length encoded with leading zeros
+    {
+        auto invalid = hex_to_bytes("b800");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject length with leading zero";
+        // Our implementation detects this as kNonCanonicalSize
+        EXPECT_TRUE(decode_result.error() == DecodingError::kLeadingZero ||
+                   decode_result.error() == DecodingError::kNonCanonicalSize);
+    }
+
+    // leadingZerosInLongLengthList1: 0xfb00000040... - list length has leading zeros
+    {
+        auto invalid = hex_to_bytes("fb00000040c00102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject list length with leading zeros";
+        // Our implementation may detect this as kNonCanonicalSize
+        EXPECT_TRUE(list_result.error() == DecodingError::kLeadingZero ||
+                   list_result.error() == DecodingError::kNonCanonicalSize);
+    }
+
+    // leadingZerosInLongLengthList2: 0xf800 - list length encoded with leading zeros
+    {
+        auto invalid = hex_to_bytes("f800");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject list length with leading zeros";
+        // Should detect as error (either LeadingZero or NonCanonicalSize)
+        EXPECT_FALSE(list_result.has_value());
+    }
+}
+
+TEST_F(EthereumRlpTest, InvalidRlpNonOptimalLength) {
+    // nonOptimalLongLengthArray1: 0xb81000... - uses long form for length that fits in short form
+    {
+        auto invalid = hex_to_bytes("b81000112233445566778899aabbccddeeff");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject non-optimal length encoding";
+        EXPECT_EQ(decode_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // nonOptimalLongLengthArray2: 0xb801ff - uses long form for single byte length
+    {
+        auto invalid = hex_to_bytes("b801ff");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject non-optimal length encoding";
+        EXPECT_EQ(decode_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // nonOptimalLongLengthList1: 0xf81000... - uses long form for length that fits in short form
+    {
+        auto invalid = hex_to_bytes("f81000c8000102030405060708c8090a0b0c0d0e0f1011");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject non-optimal list length encoding";
+        EXPECT_EQ(list_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // nonOptimalLongLengthList2: 0xf803112233 - uses long form for length that fits in short form
+    {
+        auto invalid = hex_to_bytes("f803112233");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject non-optimal list length encoding";
+        EXPECT_EQ(list_result.error(), DecodingError::kNonCanonicalSize);
+    }
+}
+
+TEST_F(EthereumRlpTest, InvalidRlpIncorrectLength) {
+    // wrongSizeList: 0xf80180 - Example of list encoding
+    // 0xf801 = list with long form encoding length 1
+    // 0x80 = empty string
+    // This uses non-optimal length encoding (should use 0xc1 for list of 1 byte)
+    {
+        auto invalid = hex_to_bytes("f80180");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        // Our implementation correctly rejects this as non-canonical
+        EXPECT_FALSE(list_result) << "Should reject non-optimal list length encoding";
+        EXPECT_EQ(list_result.error(), DecodingError::kNonCanonicalSize);
+    }
+
+    // incorrectLengthInArray: 0xb90021... - declares length 33 but only has 32 bytes
+    {
+        auto invalid = hex_to_bytes("b900210102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject incorrect declared length";
+        // Either LeadingZero (because 0x0021 has leading zero) or InputTooShort
+        EXPECT_TRUE(decode_result.error() == DecodingError::kLeadingZero ||
+                   decode_result.error() == DecodingError::kInputTooShort);
+    }
+
+    // lessThanShortLengthArray1: 0x81 - declares length but no data
+    {
+        auto invalid = hex_to_bytes("81");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject incomplete data";
+        EXPECT_EQ(decode_result.error(), DecodingError::kInputTooShort);
+    }
+
+    // lessThanShortLengthArray2: 0xa00001020304050607... (30 bytes instead of 32)
+    {
+        auto invalid = hex_to_bytes("a000010203040506070809010203040506070809010203040506070809");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject incomplete data";
+        EXPECT_EQ(decode_result.error(), DecodingError::kInputTooShort);
+    }
+
+    // lessThanShortLengthList1: 0xc5010203 - declares length 5 but only has 3 bytes payload
+    {
+        auto invalid = hex_to_bytes("c5010203");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject insufficient list payload";
+        EXPECT_EQ(list_result.error(), DecodingError::kInputTooShort);
+    }
+
+    // lessThanLongLengthArray1: 0xba010000... - very long declared length
+    {
+        auto invalid = hex_to_bytes("ba010000ff");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject unrealistic length";
+        EXPECT_EQ(decode_result.error(), DecodingError::kInputTooShort);
+    }
+
+    // lessThanLongLengthList1: 0xf90180 - declares length 384 but input is much shorter
+    {
+        auto invalid = hex_to_bytes("f90180");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject insufficient data";
+        EXPECT_EQ(list_result.error(), DecodingError::kInputTooShort);
+    }
+}
+
+TEST_F(EthereumRlpTest, InvalidRlpEmptyInput) {
+    // emptyEncoding - empty input
+    {
+        Bytes empty;
+        RlpDecoder decoder(empty);
+        uint8_t value;
+        auto decode_result = decoder.read(value);
+        EXPECT_FALSE(decode_result) << "Should reject empty input";
+        EXPECT_EQ(decode_result.error(), DecodingError::kInputTooShort);
+    }
+}
+
+TEST_F(EthereumRlpTest, InvalidRlpIntegerOverflow) {
+    // int32Overflow: 0xbf0f000000000000021111 - length would overflow
+    {
+        auto invalid = hex_to_bytes("bf0f000000000000021111");
+        RlpDecoder decoder(invalid);
+        Bytes result;
+        auto decode_result = decoder.read(result);
+        EXPECT_FALSE(decode_result) << "Should reject potential overflow";
+        // Could be LeadingZero, NonCanonicalSize, or InputTooShort depending on implementation
+        EXPECT_TRUE(decode_result.error() == DecodingError::kLeadingZero || 
+                   decode_result.error() == DecodingError::kNonCanonicalSize ||
+                   decode_result.error() == DecodingError::kInputTooShort);
+    }
+
+    // int32Overflow2: 0xff0f000000000000021111 - length would overflow
+    {
+        auto invalid = hex_to_bytes("ff0f000000000000021111");
+        RlpDecoder decoder(invalid);
+        auto list_result = decoder.read_list_header_bytes();
+        EXPECT_FALSE(list_result) << "Should reject potential overflow";
+        // Could be LeadingZero, NonCanonicalSize, or InputTooShort depending on implementation
+        EXPECT_TRUE(list_result.error() == DecodingError::kLeadingZero || 
+                   list_result.error() == DecodingError::kNonCanonicalSize ||
+                   list_result.error() == DecodingError::kInputTooShort);
+    }
+}
+
+TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
+    // Test exact hex outputs from rlptest.json for validation
+    
+    // Test: emptystring -> 0x80
+    {
+        RlpEncoder encoder;
+        encoder.add(Bytes{});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "80");
+    }
+
+    // Test: shortstring "dog" -> 0x83646f67
+    {
+        RlpEncoder encoder;
+        encoder.add(Bytes{'d', 'o', 'g'});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "83646f67");
+    }
+
+    // Test: zero -> 0x80
+    {
+        RlpEncoder encoder;
+        encoder.add(uint32_t{0});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "80");
+    }
+
+    // Test: smallint 1 -> 0x01
+    {
+        RlpEncoder encoder;
+        encoder.add(uint8_t{1});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "01");
+    }
+
+    // Test: smallint 16 -> 0x10
+    {
+        RlpEncoder encoder;
+        encoder.add(uint8_t{16});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "10");
+    }
+
+    // Test: smallint 127 -> 0x7f
+    {
+        RlpEncoder encoder;
+        encoder.add(uint8_t{127});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "7f");
+    }
+
+    // Test: mediumint 128 -> 0x8180
+    {
+        RlpEncoder encoder;
+        encoder.add(uint8_t{128});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "8180");
+    }
+
+    // Test: mediumint 1000 -> 0x8203e8
+    {
+        RlpEncoder encoder;
+        encoder.add(uint16_t{1000});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "8203e8");
+    }
+
+    // Test: mediumint 100000 -> 0x830186a0
+    {
+        RlpEncoder encoder;
+        encoder.add(uint32_t{100000});
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "830186a0");
+    }
+
+    // Test: emptylist -> 0xc0
+    {
+        RlpEncoder encoder;
+        encoder.begin_list();
+        encoder.end_list();
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "c0");
+    }
+
+    // Test: stringlist ["dog","god","cat"] -> starts with 0xcc
+    {
+        RlpEncoder encoder;
+        encoder.begin_list();
+        encoder.add(Bytes{'d', 'o', 'g'});
+        encoder.add(Bytes{'g', 'o', 'd'});
+        encoder.add(Bytes{'c', 'a', 't'});
+        encoder.end_list();
+        auto result = bytes_to_hex(encoder.get_bytes());
+        EXPECT_EQ(result.substr(0, 2), "cc") << "List should start with 0xcc";
+        EXPECT_EQ(result, "cc83646f6783676f6483636174");
+    }
+
+    // Test: multilist ["zw",[4],1] -> 0xc6827a77c10401
+    {
+        RlpEncoder encoder;
+        encoder.begin_list();
+        encoder.add(Bytes{'z', 'w'});
+        encoder.begin_list();
+        encoder.add(uint8_t{4});
+        encoder.end_list();
+        encoder.add(uint8_t{1});
+        encoder.end_list();
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "c6827a77c10401");
+    }
+
+    // Test: listsoflists [[],[]] -> 0xc4c2c0c0c0
+    {
+        RlpEncoder encoder;
+        encoder.begin_list();
+        encoder.begin_list();
+        encoder.begin_list();
+        encoder.end_list();
+        encoder.begin_list();
+        encoder.end_list();
+        encoder.end_list();
+        encoder.begin_list();
+        encoder.end_list();
+        encoder.end_list();
+        EXPECT_EQ(bytes_to_hex(encoder.get_bytes()), "c4c2c0c0c0");
+    }
+}
+
 // Google Test main entry point
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
