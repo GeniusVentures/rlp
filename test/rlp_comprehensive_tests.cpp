@@ -350,11 +350,13 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         auto list_header = decoder.read_list_header();
         ASSERT_TRUE(list_header.has_value());
     EXPECT_EQ(list_header.value(), 10u);
-    for (size_t i = 0; i < list_header.value(); ++i) {
-            rlp::Bytes str;
-            ASSERT_TRUE(decoder.read(str)) << "Failed at index: " << i;
-            EXPECT_TRUE(str.empty());
-        }
+    size_t item_count = 0;
+    rlp::Bytes str;
+    while (decoder.read(str)) {
+        EXPECT_TRUE(str.empty());
+        ++item_count;
+    }
+    EXPECT_EQ(item_count, 10u);
     }
 }
 
