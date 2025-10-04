@@ -301,9 +301,9 @@ TEST(RlpDecoder, ErrorInputTooLong) {
     rlp::RlpDecoder decoder(data);
     uint64_t out;
     auto res = decoder.read(out);
-    ASSERT_TRUE(res);  // Should succeed reading 0x0f (value 15)
-    EXPECT_EQ(out, 15);
-    EXPECT_FALSE(decoder.is_finished());  // Should have leftover data 0xaa
+    ASSERT_FALSE(res);  // Should fail because leftover data is present and default is kProhibit
+    EXPECT_EQ(res.error(), rlp::DecodingError::kInputTooLong);
+    // Decoder should not be finished because leftover data is present
 
     rlp::ByteView data2 = bytes;
     rlp::RlpDecoder decoder2(data2);
