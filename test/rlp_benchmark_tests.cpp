@@ -340,7 +340,7 @@ TEST_F(BenchmarkTest, BenchmarkListDecoding) {
             RlpDecoder decoder(encoded);
             auto list_header = decoder.read_list_header();
             if (list_header.has_value()) {
-                for (size_t j = 0; j < list_header.value(); ++j) {
+                for (size_t j = 0; j < static_cast<size_t>(list_size); ++j) {
                     uint32_t value;
                     auto decode_result = decoder.read(value);
                 }
