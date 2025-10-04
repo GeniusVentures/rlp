@@ -233,34 +233,34 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
         RlpDecoder decoder(encoded);
         auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value()) << "Iteration " << iteration;
-    RlpDecoder list_decoder(decoder.remaining().substr(0, list_header.value()));
+        // After reading list header, decoder is positioned at list contents
         for (size_t i = 0; i < original_values.size(); ++i) {
             std::visit([&](auto&& original_val) {
                 using T = std::decay_t<decltype(original_val)>;
                 if constexpr (std::is_same_v<T, uint8_t>) {
                     uint8_t decoded;
-                    ASSERT_TRUE(list_decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
+                    ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
                     EXPECT_EQ(decoded, original_val) << "Iteration " << iteration << ", element " << i;
                 } else if constexpr (std::is_same_v<T, uint16_t>) {
                     uint16_t decoded;
-                    ASSERT_TRUE(list_decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
+                    ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
                     EXPECT_EQ(decoded, original_val) << "Iteration " << iteration << ", element " << i;
                 } else if constexpr (std::is_same_v<T, uint32_t>) {
                     uint32_t decoded;
-                    ASSERT_TRUE(list_decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
+                    ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
                     EXPECT_EQ(decoded, original_val) << "Iteration " << iteration << ", element " << i;
                 } else if constexpr (std::is_same_v<T, bool>) {
                     bool decoded;
-                    ASSERT_TRUE(list_decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
+                    ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
                     EXPECT_EQ(decoded, original_val) << "Iteration " << iteration << ", element " << i;
                 } else if constexpr (std::is_same_v<T, rlp::Bytes>) {
                     rlp::Bytes decoded;
-                    ASSERT_TRUE(list_decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
+                    ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", element " << i;
                     EXPECT_EQ(decoded, original_val) << "Iteration " << iteration << ", element " << i;
                 }
             }, original_values[i]);
         }
-        EXPECT_TRUE(list_decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
     }, 200);
 }
 
