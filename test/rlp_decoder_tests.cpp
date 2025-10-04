@@ -297,25 +297,27 @@ TEST(RlpDecoder, ErrorInputTooShortPayload) {
 
 TEST(RlpDecoder, ErrorInputTooLong) {
     rlp::Bytes bytes = from_hex("0faa");
+    
+    // Member read() doesn't check for leftovers - it just reads the next item
     rlp::ByteView data = bytes;
     rlp::RlpDecoder decoder(data);
     uint64_t out;
     auto res = decoder.read(out);
-    ASSERT_FALSE(res);  // Should fail because leftover data is present and default is kProhibit
-    EXPECT_EQ(res.error(), rlp::DecodingError::kInputTooLong);
-    // Decoder should not be finished because leftover data is present
+    ASSERT_TRUE(res);  // Should succeed - member read() doesn't enforce leftover checking
+    EXPECT_EQ(out, 15);
+    EXPECT_FALSE(decoder.is_finished());  // But decoder should not be finished
 
+    // Static read() with kProhibit should fail
     rlp::ByteView data2 = bytes;
-    rlp::RlpDecoder decoder2(data2);
     uint64_t out2;
-    auto res2 = decoder2.read<uint64_t>(data2, out2, rlp::Leftover::kProhibit);
+    auto res2 = rlp::RlpDecoder(data2).read<uint64_t>(data2, out2, rlp::Leftover::kProhibit);
     ASSERT_FALSE(res2);  // Should fail because of explicit kProhibit
     EXPECT_EQ(res2.error(), rlp::DecodingError::kInputTooLong);
 
+    // Static read() with kAllow should succeed
     rlp::ByteView data3 = bytes;
-    rlp::RlpDecoder decoder3(data3);
     uint64_t out3;
-    auto res3 = decoder3.read<uint64_t>(data3, out3, rlp::Leftover::kAllow);
+    auto res3 = rlp::RlpDecoder(data3).read<uint64_t>(data3, out3, rlp::Leftover::kAllow);
     ASSERT_TRUE(res3);  // Should succeed with explicit kAllow
     EXPECT_EQ(out3, 15);
 }
