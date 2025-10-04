@@ -191,8 +191,8 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
         int list_size = list_size_dist(rng_);
         RlpEncoder encoder;
         encoder.begin_list();
-    using VariantType = std::variant<uint8_t, uint16_t, uint32_t, bool, rlp::Bytes>;
-    std::vector<VariantType> original_values;
+        using VariantType = std::variant<uint8_t, uint16_t, uint32_t, bool, rlp::Bytes>;
+        std::vector<VariantType> original_values;
         for (int i = 0; i < list_size; ++i) {
             int type = type_dist(rng_);
             switch (type) {
