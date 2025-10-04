@@ -333,7 +333,7 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         RlpDecoder decoder(encoded);
         auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value());
-    EXPECT_EQ(list_header.value_or(0), 0);
+        EXPECT_EQ(list_header.value(), 0);
     }
 
     // List of empty strings
@@ -349,8 +349,8 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         RlpDecoder decoder(encoded);
         auto list_header = decoder.read_list_header_bytes();
         ASSERT_TRUE(list_header.has_value());
-    EXPECT_EQ(list_header.value(), 10u);
-    size_t item_count = 0;
+        EXPECT_EQ(list_header.value(), 10u);
+        size_t item_count = 0;
     rlp::Bytes str;
     while (decoder.read(str)) {
         EXPECT_TRUE(str.empty());
