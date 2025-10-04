@@ -1,5 +1,5 @@
-#include "../include/rlp_encoder.hpp"
-#include "../include/rlp_decoder.hpp"
+#include <rlp_encoder.hpp>
+#include <rlp_decoder.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 
