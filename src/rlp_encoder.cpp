@@ -1,6 +1,7 @@
 #include <rlp_encoder.hpp> // Direct include
 #include <endian.hpp>  // Direct include
 #include <stdexcept>   // For std::runtime_error
+#include <cstring>     // For std::memcpy
 
 namespace rlp {
 
@@ -38,8 +39,11 @@ void RlpEncoder::add(ByteView bytes) {
     if (bytes.length() == 1 && static_cast<uint8_t>(bytes[0]) < kRlpSingleByteThreshold) {
         buffer_.push_back(bytes[0]);
     } else {
-        buffer_.append(encode_header_bytes(false, bytes.length()));
-        buffer_.append(bytes);
+        Bytes header = encode_header_bytes(false, bytes.length());
+        size_t old_size = buffer_.size();
+        buffer_.resize(old_size + header.length() + bytes.length());
+        std::memcpy(buffer_.data() + old_size, header.data(), header.length());
+        std::memcpy(buffer_.data() + old_size + header.length(), bytes.data(), bytes.length());
     }
 }
 
@@ -55,8 +59,11 @@ void RlpEncoder::add(const intx::uint256& n) {
         buffer_.push_back(static_cast<uint8_t>(n));
     } else {
         const Bytes be{endian::to_big_compact(n)};
-        buffer_.append(encode_header_bytes(false, be.length()));
-        buffer_.append(be);
+        Bytes header = encode_header_bytes(false, be.length());
+        size_t old_size = buffer_.size();
+        buffer_.resize(old_size + header.length() + be.length());
+        std::memcpy(buffer_.data() + old_size, header.data(), header.length());
+        std::memcpy(buffer_.data() + old_size + header.length(), be.data(), be.length());
     }
 }
 
@@ -72,14 +79,11 @@ void RlpEncoder::end_list() {
     size_t start_pos = list_start_positions_.back();
     list_start_positions_.pop_back();
 
-    size_t current_pos = buffer_.size();
-    Bytes payload(buffer_.begin() + start_pos, buffer_.end());
-    size_t payload_len = payload.size();
+    size_t payload_len = buffer_.size() - start_pos;
     Bytes header = encode_header_bytes(true, payload_len);
 
-    buffer_.resize(start_pos); // Remove payload
-    buffer_.insert(buffer_.end(), header.begin(), header.end()); // Insert header
-    buffer_.insert(buffer_.end(), payload.begin(), payload.end()); // Insert payload
+    // Insert header at start_pos by making room and copying
+    buffer_.insert(buffer_.begin() + start_pos, header.begin(), header.end());
 }
 
 const Bytes& RlpEncoder::get_bytes() const {
