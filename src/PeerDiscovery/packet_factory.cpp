@@ -22,7 +22,6 @@ PacketResult PacketFactory::send_ping_and_wait(
     std::vector<uint8_t> msg;
     auto sign_result = sign_and_build_packet(ping.get(), priv_key_hex, msg);
     if (!sign_result) {
-        std::cerr << "Failed to sign and build packet: " << sign_result.error().message() << std::endl;
         return outcome::failure(sign_result.error());
     }
 
