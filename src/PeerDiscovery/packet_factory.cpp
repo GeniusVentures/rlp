@@ -3,6 +3,7 @@
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 #include <iostream>
+#include <stdexcept>
 
 #include <PeerDiscovery/Discv4Ping.hpp>
 #include <PeerDiscovery/Discv4Pong.hpp>
@@ -16,10 +17,10 @@ void PacketFactory::send_ping_and_wait(
     const std::vector<uint8_t>& priv_key_hex,
     SendCallback callback) {
 
-    auto ping = std::make_shared<Discv4Ping>(from_ip, f_udp, f_tcp, to_ip, t_udp, t_tcp);
+    auto ping = std::make_unique<Discv4Ping>(from_ip, f_udp, f_tcp, to_ip, t_udp, t_tcp);
 
     std::vector<uint8_t> msg;
-    sign_and_build_packet(std::static_pointer_cast<Discv4Packet>(ping), priv_key_hex, msg);
+    sign_and_build_packet(ping.get(), priv_key_hex, msg);
 
     // Create socket
     udp::socket socket(io, udp::v4());
@@ -50,9 +51,13 @@ void PacketFactory::send_ping_and_wait(
 }
 
 void PacketFactory::sign_and_build_packet(
-    std::shared_ptr<Discv4Packet> packet,
+    Discv4Packet* packet,
     const std::vector<uint8_t>& priv_key_hex,
     std::vector<uint8_t>& out) {
+
+    if (packet == nullptr) {
+        throw std::invalid_argument("packet cannot be null");
+    }
 
     auto payload = packet->rlp_payload();
 

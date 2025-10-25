@@ -40,7 +40,7 @@ public:
 
 private:
     static void sign_and_build_packet(
-        std::shared_ptr<Discv4Packet> packet,
+        Discv4Packet* packet,
         const std::vector<uint8_t>& priv_key_hex,
         std::vector<uint8_t>& out);
 
