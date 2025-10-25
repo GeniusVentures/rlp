@@ -3,14 +3,14 @@
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 #include <iostream>
-#include <stdexcept>
+#include <boost/outcome/try.hpp>
 
 #include <PeerDiscovery/Discv4Ping.hpp>
 #include <PeerDiscovery/Discv4Pong.hpp>
 
 namespace discv4 {
 
-void PacketFactory::send_ping_and_wait(
+PacketResult PacketFactory::send_ping_and_wait(
     asio::io_context& io,
     const std::string& from_ip, uint16_t f_udp, uint16_t f_tcp,
     const std::string& to_ip,   uint16_t t_udp, uint16_t t_tcp,
@@ -20,7 +20,7 @@ void PacketFactory::send_ping_and_wait(
     auto ping = std::make_unique<Discv4Ping>(from_ip, f_udp, f_tcp, to_ip, t_udp, t_tcp);
 
     std::vector<uint8_t> msg;
-    sign_and_build_packet(ping.get(), priv_key_hex, msg);
+    BOOST_OUTCOME_TRY(sign_and_build_packet(ping.get(), priv_key_hex, msg));
 
     // Create socket
     udp::socket socket(io, udp::v4());
@@ -48,15 +48,17 @@ void PacketFactory::send_ping_and_wait(
 
     // Run io_context (in a loop)
     io.run();
+
+    return outcome::success();
 }
 
-void PacketFactory::sign_and_build_packet(
+PacketResult PacketFactory::sign_and_build_packet(
     Discv4Packet* packet,
     const std::vector<uint8_t>& priv_key_hex,
     std::vector<uint8_t>& out) {
 
     if (packet == nullptr) {
-        throw std::invalid_argument("packet cannot be null");
+        return outcome::failure(PacketError::kNullPacket);
     }
 
     auto payload = packet->rlp_payload();
@@ -73,7 +75,7 @@ void PacketFactory::sign_and_build_packet(
 
     if (!success) {
         secp256k1_context_destroy(ctx);
-        throw std::runtime_error("sign failed");
+        return outcome::failure(PacketError::kSignFailure);
     }
 
     uint8_t serialized[65];
@@ -91,6 +93,8 @@ void PacketFactory::sign_and_build_packet(
     auto payload_hash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(out.begin() + 32, out.end());
     std::array<uint8_t, 32> payload_array = payload_hash;
     std::copy(payload_array.begin(), payload_array.end(), out.begin());
+
+    return outcome::success();
 }
 
 void PacketFactory::send_packet(
