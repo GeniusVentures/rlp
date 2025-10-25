@@ -20,7 +20,11 @@ PacketResult PacketFactory::send_ping_and_wait(
     auto ping = std::make_unique<Discv4Ping>(from_ip, f_udp, f_tcp, to_ip, t_udp, t_tcp);
 
     std::vector<uint8_t> msg;
-    BOOST_OUTCOME_TRY(sign_and_build_packet(ping.get(), priv_key_hex, msg));
+    auto sign_result = sign_and_build_packet(ping.get(), priv_key_hex, msg);
+    if (!sign_result) {
+        std::cerr << "Failed to sign and build packet: " << sign_result.error().message() << std::endl;
+        return outcome::failure(sign_result.error());
+    }
 
     // Create socket
     udp::socket socket(io, udp::v4());
