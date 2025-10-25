@@ -1,11 +1,11 @@
 // discv4_packet.cpp
 #include <PeerDiscovery/Discv4Packet.hpp>
-#include <stdexcept>
+#include <utility>
 
 namespace discv4 {
 
-// Forward declaration
-class Discv4Ping;
+Discv4Packet::Discv4Packet(uint8_t packet_type, uint8_t version, std::string name)
+    : packet_type_(packet_type), version_(version), name_(std::move(name)) {}
 
 // ----------------------------
 //  keccak_256 (using nil::crypto3)

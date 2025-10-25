@@ -37,19 +37,27 @@ public:
     virtual std::vector<uint8_t> rlp_payload() = 0;
 
     // Return the packet type (e.g., 0x01 for Ping)
-    virtual uint8_t packet_type() const = 0;
+    uint8_t packet_type() const noexcept { return packet_type_; }
 
     // Return the protocol version (e.g., 0x04)
-    virtual uint8_t version() const = 0;
+    uint8_t version() const noexcept { return version_; }
 
     // Return the name of this packet type
-    virtual std::string name() const = 0;
+    std::string name() const { return name_; }
 
     // Static helper: validate packet hash (used to verify incoming packets)
     static bool validate_hash(const std::vector<uint8_t>& payload, const uint8_t* hash);
 
     // Static helper: get Keccak-256 digest
     static std::array<uint8_t, 32> keccak_256(const std::vector<uint8_t>& payload);
+
+protected:
+    Discv4Packet(uint8_t packet_type, uint8_t version, std::string name);
+
+private:
+    uint8_t packet_type_;
+    uint8_t version_;
+    std::string name_;
 };
 
 } // namespace discv4

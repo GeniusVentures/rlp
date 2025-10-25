@@ -41,17 +41,15 @@ private:
     uint32_t expires;
 
 public:
-    Discv4Ping(const std::string& from_ip, uint16_t f_udp, uint16_t f_tcp,
-               const std::string& to_ip,   uint16_t t_udp, uint16_t t_tcp)
-        : from_ep(from_ip, f_udp, f_tcp), to_ep(to_ip, t_udp, t_tcp) {
+        Discv4Ping(const std::string& from_ip, uint16_t f_udp, uint16_t f_tcp,
+                             const std::string& to_ip,   uint16_t t_udp, uint16_t t_tcp)
+                : Discv4Packet(0x01, 0x04, "Ping"),
+                    from_ep(from_ip, f_udp, f_tcp), to_ep(to_ip, t_udp, t_tcp) {
         expires = static_cast<uint32_t>(std::time(nullptr)) + 60;
     }
 
     // Implement base methods
-    std::vector<uint8_t> rlp_payload() override;
-    uint8_t packet_type() const override { return 0x01; }
-    uint8_t version() const override { return 0x04; }
-    std::string name() const override { return "Ping"; }
+        std::vector<uint8_t> rlp_payload() override;
 
     // Getters
     const Endpoint& from_endpoint() const { return from_ep; }
