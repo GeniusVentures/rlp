@@ -43,7 +43,7 @@ public:
     uint8_t version() const noexcept { return version_; }
 
     // Return the name of this packet type
-    std::string name() const { return name_; }
+    const std::string& name() const { return name_; }
 
     // Static helper: validate packet hash (used to verify incoming packets)
     static bool validate_hash(const std::vector<uint8_t>& payload, const uint8_t* hash);
