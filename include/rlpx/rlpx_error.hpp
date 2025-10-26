@@ -4,6 +4,7 @@
 #pragma once
 
 #include <boost/outcome/result.hpp>
+#include <boost/outcome/try.hpp>
 #include "rlpx_types.hpp"
 
 namespace rlpx {
@@ -63,21 +64,21 @@ enum class CryptoError {
 };
 
 template<typename T>
-using Result = outcome::result<T, SessionError>;
+using Result = outcome::result<T, SessionError, outcome::policy::all_narrow>;
 
 template<typename T>
-using AuthResult = outcome::result<T, AuthError>;
+using AuthResult = outcome::result<T, AuthError, outcome::policy::all_narrow>;
 
 template<typename T>
-using FramingResult = outcome::result<T, FramingError>;
+using FramingResult = outcome::result<T, FramingError, outcome::policy::all_narrow>;
 
 template<typename T>
-using CryptoResult = outcome::result<T, CryptoError>;
+using CryptoResult = outcome::result<T, CryptoError, outcome::policy::all_narrow>;
 
-using VoidResult = outcome::result<void, SessionError>;
-using AuthVoidResult = outcome::result<void, AuthError>;
-using FramingVoidResult = outcome::result<void, FramingError>;
-using CryptoVoidResult = outcome::result<void, CryptoError>;
+using VoidResult = outcome::result<void, SessionError, outcome::policy::all_narrow>;
+using AuthVoidResult = outcome::result<void, AuthError, outcome::policy::all_narrow>;
+using FramingVoidResult = outcome::result<void, FramingError, outcome::policy::all_narrow>;
+using CryptoVoidResult = outcome::result<void, CryptoError, outcome::policy::all_narrow>;
 
 // Error message conversion
 const char* to_string(SessionError error) noexcept;

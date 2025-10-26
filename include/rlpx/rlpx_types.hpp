@@ -77,4 +77,31 @@ inline constexpr uint8_t kPongMessageId = 0x03;
 // Protocol version
 inline constexpr uint8_t kProtocolVersion = 5;
 
+// Conversion functions for interop with rlp library
+namespace detail {
+    // Forward declare rlp::ByteView for conversion
+    using RlpByteView = std::basic_string_view<uint8_t>;
+    using RlpBytes = std::basic_string<uint8_t>;
+    
+    // Convert rlpx::ByteView to rlp::ByteView
+    inline RlpByteView to_rlp_view(ByteView view) noexcept {
+        return RlpByteView(reinterpret_cast<const uint8_t*>(view.data()), view.size());
+    }
+    
+    // Convert rlp::ByteView to rlpx::ByteView
+    inline ByteView from_rlp_view(RlpByteView view) noexcept {
+        return ByteView(view.data(), view.size());
+    }
+    
+    // Convert rlpx::ByteBuffer to rlp::Bytes
+    inline RlpBytes to_rlp_bytes(const ByteBuffer& buffer) {
+        return RlpBytes(buffer.begin(), buffer.end());
+    }
+    
+    // Convert rlp::Bytes to rlpx::ByteBuffer
+    inline ByteBuffer from_rlp_bytes(const RlpBytes& bytes) {
+        return ByteBuffer(bytes.begin(), bytes.end());
+    }
+}
+
 } // namespace rlpx

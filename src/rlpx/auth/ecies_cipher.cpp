@@ -3,6 +3,7 @@
 
 #include <rlpx/auth/ecies_cipher.hpp>
 #include <secp256k1.h>
+#include <secp256k1_ecdh.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/hmac.h>
