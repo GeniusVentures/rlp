@@ -13,6 +13,7 @@ add_library(rlpx STATIC
     ${CMAKE_CURRENT_LIST_DIR}/framing/frame_cipher.cpp
     ${CMAKE_CURRENT_LIST_DIR}/framing/message_stream.cpp
     ${CMAKE_CURRENT_LIST_DIR}/protocol/messages.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/socket/socket_transport.cpp
     ${CMAKE_CURRENT_LIST_DIR}/rlpx_session.cpp
 )
 
