@@ -48,3 +48,6 @@ install(FILES
         # Add impl/endian.ipp if it exists in include/impl/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp # Install into <prefix>/include/rlp/
 )
+
+# Add RLPx subdirectory
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx)
