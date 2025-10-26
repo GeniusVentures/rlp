@@ -10,9 +10,10 @@ add_library(rlpx STATIC
     ${CMAKE_CURRENT_LIST_DIR}/crypto/ecdh.cpp
     ${CMAKE_CURRENT_LIST_DIR}/crypto/hmac.cpp
     ${CMAKE_CURRENT_LIST_DIR}/crypto/aes.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/framing/frame_cipher.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/framing/message_stream.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/protocol/messages.cpp
     # Additional source files will be added as they are implemented
-    # ${CMAKE_CURRENT_LIST_DIR}/framing/frame_cipher.cpp
-    # ${CMAKE_CURRENT_LIST_DIR}/framing/message_stream.cpp
     # ${CMAKE_CURRENT_LIST_DIR}/rlpx_session.cpp
 )
 
@@ -29,6 +30,7 @@ target_link_libraries(rlpx PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     Microsoft.GSL::GSL
+    rlp
 )
 
 # Ensure C++17 standard
