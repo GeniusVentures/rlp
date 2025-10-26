@@ -48,6 +48,20 @@ enum class FramingError {
     kDecompressionFailed
 };
 
+enum class CryptoError {
+    kAesEncryptFailed,
+    kAesDecryptFailed,
+    kHmacFailed,
+    kKdfFailed,
+    kEcdhFailed,
+    kInvalidKeySize,
+    kInvalidIvSize,
+    kInvalidPublicKey,
+    kInvalidPrivateKey,
+    kOpenSslError,
+    kSecp256k1Error
+};
+
 template<typename T>
 using Result = outcome::result<T, SessionError>;
 
@@ -57,13 +71,18 @@ using AuthResult = outcome::result<T, AuthError>;
 template<typename T>
 using FramingResult = outcome::result<T, FramingError>;
 
+template<typename T>
+using CryptoResult = outcome::result<T, CryptoError>;
+
 using VoidResult = outcome::result<void, SessionError>;
 using AuthVoidResult = outcome::result<void, AuthError>;
 using FramingVoidResult = outcome::result<void, FramingError>;
+using CryptoVoidResult = outcome::result<void, CryptoError>;
 
 // Error message conversion
 const char* to_string(SessionError error) noexcept;
 const char* to_string(AuthError error) noexcept;
 const char* to_string(FramingError error) noexcept;
+const char* to_string(CryptoError error) noexcept;
 
 } // namespace rlpx

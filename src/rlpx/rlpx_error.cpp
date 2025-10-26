@@ -52,4 +52,21 @@ const char* to_string(FramingError error) noexcept {
     }
 }
 
+const char* to_string(CryptoError error) noexcept {
+    switch (error) {
+        case CryptoError::kAesEncryptFailed: return "AES encryption failed";
+        case CryptoError::kAesDecryptFailed: return "AES decryption failed";
+        case CryptoError::kHmacFailed: return "HMAC computation failed";
+        case CryptoError::kKdfFailed: return "Key derivation failed";
+        case CryptoError::kEcdhFailed: return "ECDH computation failed";
+        case CryptoError::kInvalidKeySize: return "Invalid key size";
+        case CryptoError::kInvalidIvSize: return "Invalid IV size";
+        case CryptoError::kInvalidPublicKey: return "Invalid public key";
+        case CryptoError::kInvalidPrivateKey: return "Invalid private key";
+        case CryptoError::kOpenSslError: return "OpenSSL error";
+        case CryptoError::kSecp256k1Error: return "secp256k1 error";
+        default: return "Unknown crypto error";
+    }
+}
+
 } // namespace rlpx
