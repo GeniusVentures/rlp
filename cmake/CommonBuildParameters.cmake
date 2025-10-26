@@ -156,6 +156,9 @@ if(BUILD_TESTS)
         add_executable(rlpx_message_routing_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/message_routing_test.cpp"
         )
+        add_executable(rlpx_socket_lifecycle_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/socket_lifecycle_test.cpp"
+        )
         
         target_link_libraries(rlpx_crypto_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_frame_cipher_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
@@ -163,6 +166,7 @@ if(BUILD_TESTS)
         target_link_libraries(rlpx_session_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_state_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_message_routing_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+        target_link_libraries(rlpx_socket_lifecycle_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
@@ -181,6 +185,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlpx_session_tests COMMAND $<TARGET_FILE:rlpx_session_tests>)
                 add_test(NAME rlpx_state_tests COMMAND $<TARGET_FILE:rlpx_state_tests>)
                 add_test(NAME rlpx_message_routing_tests COMMAND $<TARGET_FILE:rlpx_message_routing_tests>)
+                add_test(NAME rlpx_socket_lifecycle_tests COMMAND $<TARGET_FILE:rlpx_socket_lifecycle_tests>)
         
 endif()
 
