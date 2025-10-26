@@ -12,7 +12,7 @@
 #include "rlp/rlp_decoder.hpp"
 #include "rlp/common.hpp"
 #include "test_helpers.hpp"
-#include "intx.hpp"
+#include "rlp/intx.hpp"
 #include <array>
 #include <vector>
 #include <string>

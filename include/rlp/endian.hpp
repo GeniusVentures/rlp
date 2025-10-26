@@ -1,8 +1,8 @@
 #ifndef RLP_ENDIAN_HPP
 #define RLP_ENDIAN_HPP
 
-#include <intx.hpp>
-#include <common.hpp> // Use direct include
+#include "intx.hpp"
+#include "common.hpp" // Use direct include
 #include <type_traits> // Include for enable_if
 
 namespace rlp::endian {

@@ -9,7 +9,7 @@
 #ifndef RLP_TEST_HELPERS_HPP
 #define RLP_TEST_HELPERS_HPP
 
-#include "common.hpp"
+#include <rlp/common.hpp>
 #include <string>
 #include <sstream>
 #include <iomanip>

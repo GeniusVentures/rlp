@@ -161,9 +161,9 @@ private:
             auto payload = encoder.move_bytes();
             payload.insert(payload.begin(), packet_type);
             
-            // Hash the payload - convert to std::vector for keccak_256
+            // Hash the payload - convert to std::vector for Keccak256
             std::vector<uint8_t> payload_vec(payload.begin(), payload.end());
-            auto hash = Discv4Packet::keccak_256(payload_vec);
+            auto hash = Discv4Packet::Keccak256(payload_vec);
             
             // Sign with secp256k1
             auto ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -195,7 +195,7 @@ private:
             
             // Calculate and insert the packet hash
             std::vector<uint8_t> packet_hash_input(pong_packet.begin() + 32, pong_packet.end());
-            auto packet_hash = Discv4Packet::keccak_256(packet_hash_input);
+            auto packet_hash = Discv4Packet::Keccak256(packet_hash_input);
             std::copy(packet_hash.begin(), packet_hash.end(), pong_packet.begin());
             
             // Send PONG
@@ -252,16 +252,16 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
             
             // Validate PONG structure - the server echoes back the client's actual port
             // The client binds to port 53093, so that's what should be in the PONG
-            EXPECT_EQ(pong.to_endpoint.udp_port, 53093) 
+            EXPECT_EQ(pong.toEndpoint.udpPort, 53093) 
                 << "PONG should contain the client's actual UDP port";
-            EXPECT_EQ(pong.to_endpoint.tcp_port, 53093)
+            EXPECT_EQ(pong.toEndpoint.tcpPort, 53093)
                 << "PONG should contain the client's actual TCP port";
-            
+
             // Validate IP address is localhost
-            EXPECT_EQ(pong.to_endpoint.ip[0], 127);
-            EXPECT_EQ(pong.to_endpoint.ip[1], 0);
-            EXPECT_EQ(pong.to_endpoint.ip[2], 0);
-            EXPECT_EQ(pong.to_endpoint.ip[3], 1);
+            EXPECT_EQ(pong.toEndpoint.ip[0], 127);
+            EXPECT_EQ(pong.toEndpoint.ip[1], 0);
+            EXPECT_EQ(pong.toEndpoint.ip[2], 0);
+            EXPECT_EQ(pong.toEndpoint.ip[3], 1);
             
             // Validate expiration is in the future
             auto now = std::chrono::duration_cast<std::chrono::seconds>(
@@ -306,7 +306,7 @@ TEST(PeerDiscovery, PingPacketStructure) {
     // Create a PING packet
     Discv4Ping ping("127.0.0.1", 30303, 30303, "127.0.0.1", 30399, 30399);
     
-    auto payload = ping.rlp_payload();
+    auto payload = ping.RlpPayload();
     
     // Verify packet type is PING (0x01)
     ASSERT_GT(payload.size(), 0);

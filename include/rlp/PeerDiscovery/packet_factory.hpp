@@ -1,6 +1,6 @@
 // packet_factory.h
-#ifndef PACKET_FACTORY_H
-#define PACKET_FACTORY_H
+#ifndef RLP_PEERDISCOVERY_PACKET_FACTORY_HPP
+#define RLP_PEERDISCOVERY_PACKET_FACTORY_HPP
 
 #include <memory>
 #include <vector>
@@ -15,8 +15,8 @@ namespace asio = boost::asio;
 using udp = asio::ip::udp;
 
 // RLP
-#include <rlp_encoder.hpp>
-#include <rlp_decoder.hpp>
+#include <rlp/rlp_encoder.hpp>
+#include <rlp/rlp_decoder.hpp>
 
 // nil::crypto3
 #include <nil/crypto3/hash/algorithm/hash.hpp>
@@ -39,28 +39,29 @@ using PacketResult = outcome::result<void, PacketError>;
 
 using SendCallback = std::function<void(const std::vector<uint8_t>&, const udp::endpoint&)>;
 
-class PacketFactory {
+class PacketFactory
+{
 public:
     // Send Ping and await Pong asynchronously
     static PacketResult send_ping_and_wait(
         asio::io_context& io,
-        const std::string& from_ip, uint16_t f_udp, uint16_t f_tcp,
-        const std::string& to_ip,   uint16_t t_udp, uint16_t t_tcp,
-        const std::vector<uint8_t>& priv_key_hex,
-        SendCallback callback);
+        const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
+        const std::string& toIp, uint16_t tUdp, uint16_t tTcp,
+        const std::vector<uint8_t>& privKeyHex,
+        SendCallback callback );
 
 private:
     static PacketResult sign_and_build_packet(
         Discv4Packet* packet,
-        const std::vector<uint8_t>& priv_key_hex,
-        std::vector<uint8_t>& out);
+        const std::vector<uint8_t>& privKeyHex,
+        std::vector<uint8_t>& out );
 
     static void send_packet(
         asio::ip::udp::socket& socket,
         const std::vector<uint8_t>& msg,
-        const udp::endpoint& target);
+        const udp::endpoint& target );
 };
 
 } // namespace discv4
 
-#endif // PACKET_FACTORY_H
+#endif // RLP_PEERDISCOVERY_PACKET_FACTORY_HPP
