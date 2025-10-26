@@ -1,5 +1,5 @@
-#include <rlp_decoder.hpp> // Direct include
-#include <endian.hpp>  // Direct include
+#include <rlp/rlp_decoder.hpp> // Direct include
+#include <rlp/endian.hpp>  // Direct include
 #include <cstring>     // For memcpy
 #include <stdexcept>   // For std::length_error
 

@@ -1,12 +1,12 @@
 // packet_factory.cpp
-#include <PeerDiscovery/packet_factory.hpp>
+#include <rlp/PeerDiscovery/packet_factory.hpp>
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 #include <iostream>
 #include <boost/outcome/try.hpp>
 
-#include <PeerDiscovery/Discv4Ping.hpp>
-#include <PeerDiscovery/Discv4Pong.hpp>
+#include <rlp/PeerDiscovery/Discv4Ping.hpp>
+#include <rlp/PeerDiscovery/Discv4Pong.hpp>
 
 namespace discv4 {
 

@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <variant>
-#include <rlp_encoder.hpp>
-#include <rlp_decoder.hpp>
+#include <rlp/rlp_encoder.hpp>
+#include <rlp/rlp_decoder.hpp>
 #include <vector>
 #include <random>
 #include <chrono>

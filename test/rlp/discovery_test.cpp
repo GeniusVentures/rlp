@@ -8,11 +8,11 @@
  */
 
 #include <gtest/gtest.h>
-#include <PeerDiscovery/discovery.hpp>
-#include <PeerDiscovery/packet_factory.hpp>
-#include <PeerDiscovery/Discv4Ping.hpp>
-#include <PeerDiscovery/Discv4Pong.hpp>
-#include <PeerDiscovery/Discv4Packet.hpp>
+#include <rlp/PeerDiscovery/discovery.hpp>
+#include <rlp/PeerDiscovery/packet_factory.hpp>
+#include <rlp/PeerDiscovery/Discv4Ping.hpp>
+#include <rlp/PeerDiscovery/Discv4Pong.hpp>
+#include <rlp/PeerDiscovery/Discv4Packet.hpp>
 #include <vector>
 #include <array>
 #include <thread>

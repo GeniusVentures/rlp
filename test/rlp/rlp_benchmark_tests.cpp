@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
-#include <rlp_encoder.hpp>
-#include <rlp_decoder.hpp>
+#include <rlp/rlp_encoder.hpp>
+#include <rlp/rlp_decoder.hpp>
 #include <vector>
 #include <chrono>
 #include <random>
@@ -54,8 +54,8 @@ namespace benchmark_util {
 // ===================================================================
 // BENCHMARK FRAMEWORK
 // ==================================================================="/gtest.h>
-#include <rlp_encoder.hpp>
-#include <rlp_decoder.hpp>
+#include <rlp/rlp_encoder.hpp>
+#include <rlp/rlp_decoder.hpp>
 #include <vector>
 #include <chrono>
 #include <random>

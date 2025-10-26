@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <rlp_encoder.hpp>
+#include <rlp/rlp_encoder.hpp>
 #include "test_helpers.hpp"
 #include <vector>
 #include <array>

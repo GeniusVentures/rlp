@@ -1,7 +1,7 @@
 // Copyright 2025 GeniusVentures
 // SPDX-License-Identifier: Apache-2.0
 
-#include <rlpx_error.hpp>
+#include <rlpx/rlpx_error.hpp>
 
 namespace rlpx {
 

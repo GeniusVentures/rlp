@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include <rlp_encoder.hpp>
-#include <rlp_decoder.hpp>
-#include <endian.hpp>
+#include <rlp/rlp_encoder.hpp>
+#include <rlp/rlp_decoder.hpp>
+#include <rlp/endian.hpp>
 #include <vector>
 #include <array>
 #include <cstdint>

@@ -1,4 +1,4 @@
-#include <common.hpp> // Direct include
+#include <rlp/common.hpp> // Direct include
 
 // Currently empty. Could be used for:
 // 1. Defining an std::error_category for rlp::DecodingError if integrating

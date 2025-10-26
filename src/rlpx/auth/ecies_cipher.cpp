@@ -1,7 +1,7 @@
 // Copyright 2025 GeniusVentures
 // SPDX-License-Identifier: Apache-2.0
 
-#include <auth/ecies_cipher.hpp>
+#include <rlpx/auth/ecies_cipher.hpp>
 #include <secp256k1.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
