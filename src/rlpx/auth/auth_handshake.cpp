@@ -37,8 +37,11 @@ AuthResult<ByteBuffer> create_auth_message(
     }
 
     // Compute static shared secret
-    BOOST_OUTCOME_TRY(static_shared_secret, 
-                      rlpx::crypto::Ecdh::compute_shared_secret(remote_public_key, local_private_key));
+    auto static_shared_secret_result = rlpx::crypto::Ecdh::compute_shared_secret(remote_public_key, local_private_key);
+    if (!static_shared_secret_result) {
+        return static_shared_secret_result.error();
+    }
+    auto static_shared_secret = static_shared_secret_result.value();
 
     // XOR with nonce
     std::array<uint8_t, 32> message_hash;
@@ -100,7 +103,11 @@ AuthResult<AuthKeyMaterial> parse_auth_message(
         .shared_mac_data = {}
     };
 
-    BOOST_OUTCOME_TRY(auth_body, EciesCipher::decrypt(params));
+    auto auth_body_result = EciesCipher::decrypt(params);
+    if (!auth_body_result) {
+        return auth_body_result.error();
+    }
+    auto auth_body = std::move(auth_body_result.value());
 
     // Parse auth body: signature(65) || eph-pubk-hash(32) || pubk(64) || nonce(32) || version(1)
     if ( auth_body.size() < 65 + 32 + 64 + 32 + 1 ) {
@@ -179,7 +186,11 @@ AuthResult<void> parse_ack_message(
         .shared_mac_data = {}
     };
 
-    BOOST_OUTCOME_TRY(ack_body, EciesCipher::decrypt(params));
+    auto ack_body_result = EciesCipher::decrypt(params);
+    if (!ack_body_result) {
+        return ack_body_result.error();
+    }
+    auto ack_body = std::move(ack_body_result.value());
 
     // Parse ack body: eph-pubk(64) || nonce(32) || version(1)
     if ( ack_body.size() < 64 + 32 + 1 ) {

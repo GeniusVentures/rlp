@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <rlpx/auth/ecies_cipher.hpp>
+#include <rlpx/crypto/ecdh.hpp>
 #include <secp256k1.h>
-#include <secp256k1_ecdh.h>
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/hmac.h>
@@ -201,31 +201,13 @@ AuthResult<SharedSecret> EciesCipher::compute_shared_secret(
     gsl::span<const uint8_t, kPrivateKeySize> private_key
 ) noexcept {
     try {
-        secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        if ( !ctx ) {
+        // Use the existing ECDH implementation
+        auto result = rlpx::crypto::Ecdh::compute_shared_secret(public_key, private_key);
+        if (!result) {
+            // Convert CryptoError to AuthError
             return AuthError::kSharedSecretFailed;
         }
-        
-        // Parse public key (add 0x04 prefix for uncompressed format)
-        std::array<uint8_t, 65> pub_key_full{};
-        pub_key_full[0] = 0x04;
-        std::memcpy(pub_key_full.data() + 1, public_key.data(), public_key.size());
-        
-        secp256k1_pubkey pubkey;
-        if ( !secp256k1_ec_pubkey_parse(ctx, &pubkey, pub_key_full.data(), pub_key_full.size()) ) {
-            secp256k1_context_destroy(ctx);
-            return AuthError::kInvalidPublicKey;
-        }
-        
-        // Compute ECDH
-        SharedSecret shared{};
-        if ( !secp256k1_ecdh(ctx, shared.data(), &pubkey, private_key.data(), nullptr, nullptr) ) {
-            secp256k1_context_destroy(ctx);
-            return AuthError::kSharedSecretFailed;
-        }
-        
-        secp256k1_context_destroy(ctx);
-        return shared;
+        return result.value();
         
     } catch (...) {
         return AuthError::kSharedSecretFailed;

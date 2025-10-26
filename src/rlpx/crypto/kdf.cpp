@@ -66,7 +66,11 @@ CryptoResult<ByteBuffer> Kdf::derive(
 }
 
 CryptoResult<AesKey> Kdf::derive_aes_key(ByteView shared_secret, ByteView info) noexcept {
-    BOOST_OUTCOME_TRY(key_data, derive(shared_secret, kAesKeySize, info));
+    auto key_data_result = derive(shared_secret, kAesKeySize, info);
+    if (!key_data_result) {
+        return key_data_result.error();
+    }
+    auto key_data = std::move(key_data_result.value());
     
     if ( key_data.size() != kAesKeySize ) {
         return CryptoError::kInvalidKeySize;
@@ -78,7 +82,11 @@ CryptoResult<AesKey> Kdf::derive_aes_key(ByteView shared_secret, ByteView info) 
 }
 
 CryptoResult<MacKey> Kdf::derive_mac_key(ByteView shared_secret, ByteView info) noexcept {
-    BOOST_OUTCOME_TRY(key_data, derive(shared_secret, kMacKeySize, info));
+    auto key_data_result = derive(shared_secret, kMacKeySize, info);
+    if (!key_data_result) {
+        return key_data_result.error();
+    }
+    auto key_data = std::move(key_data_result.value());
     
     if ( key_data.size() != kMacKeySize ) {
         return CryptoError::kInvalidKeySize;
@@ -91,7 +99,11 @@ CryptoResult<MacKey> Kdf::derive_mac_key(ByteView shared_secret, ByteView info) 
 
 CryptoResult<Kdf::DerivedKeys> Kdf::derive_keys(ByteView shared_secret, ByteView info) noexcept {
     const size_t total_len = kAesKeySize + kMacKeySize;
-    BOOST_OUTCOME_TRY(key_data, derive(shared_secret, total_len, info));
+    auto key_data_result = derive(shared_secret, total_len, info);
+    if (!key_data_result) {
+        return key_data_result.error();
+    }
+    auto key_data = std::move(key_data_result.value());
     
     if ( key_data.size() != total_len ) {
         return CryptoError::kKdfFailed;
