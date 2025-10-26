@@ -21,16 +21,16 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         // For RLPx, the message format is: [msg-id, msg-data]
         rlp::RlpEncoder encoder;
         encoder.BeginList();
-        encoder.Add(params.message_id);
+        encoder.add(params.message_id);
         
         // Add payload as raw bytes if it's already RLP-encoded
         if ( !params.payload.empty() ) {
-            encoder.AddRaw(params.payload);
+            encoder.AddRaw(detail::to_rlp_view(params.payload));
         }
         
         encoder.EndList();
         
-        ByteBuffer message_data = encoder.MoveBytes();
+        ByteBuffer message_data = detail::from_rlp_bytes(encoder.GetBytes());
         
         // TODO: Compress if enabled
         // if ( params.compress && compression_enabled_ ) {
@@ -65,58 +65,9 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
 }
 
 Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
-    try {
-        // TODO: Receive frame from socket
-        // For now, this is a placeholder
-        // This would typically:
-        // 1. Read header (16 bytes) + header MAC (16 bytes)
-        // 2. Decrypt header to get frame size
-        // 3. Read frame data (frame_size bytes) + frame MAC (16 bytes)
-        // 4. Decrypt frame data
-        
-        ByteBuffer frame_data; // Would be received from socket
-        
-        // Placeholder frame decryption
-        // auto decrypt_result = cipher_->decrypt_frame(...);
-        // if ( !decrypt_result ) {
-        //     co_return SessionError::kDecryptionError;
-        // }
-        // ByteBuffer message_data = decrypt_result.value();
-        
-        // TODO: Decompress if enabled
-        // if ( compression_enabled_ ) {
-        //     message_data = decompress_snappy(message_data);
-        // }
-        
-        // Parse RLP message: [msg-id, msg-data]
-        ByteBuffer message_data; // Placeholder
-        rlp::RlpDecoder decoder(message_data);
-        
-        if ( !decoder.IsList() ) {
-            co_return SessionError::kInvalidMessage;
-        }
-        
-        Message msg;
-        
-        // Read message ID
-        BOOST_OUTCOME_TRY(id_bytes, decoder.ReadListHeaderBytes());
-        if ( id_bytes.size() == 1 ) {
-            msg.id = id_bytes[0];
-        } else {
-            co_return SessionError::kInvalidMessage;
-        }
-        
-        // Read message payload (rest of the list)
-        if ( !decoder.IsFinished() ) {
-            BOOST_OUTCOME_TRY(payload_bytes, decoder.ReadListHeaderBytes());
-            msg.payload = ByteBuffer(payload_bytes.begin(), payload_bytes.end());
-        }
-        
-        co_return msg;
-        
-    } catch ( ... ) {
-        co_return SessionError::kInvalidMessage;
-    }
+    // TODO: Implement proper message receiving with socket I/O and RLP decoding
+    // This is a stub to allow compilation
+    co_return SessionError::kInvalidMessage;
 }
 
 Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) noexcept {

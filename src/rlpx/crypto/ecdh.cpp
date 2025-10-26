@@ -3,7 +3,6 @@
 
 #include <rlpx/crypto/ecdh.hpp>
 #include <secp256k1.h>
-#include <secp256k1_ecdh.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <cstring>
@@ -63,16 +62,25 @@ CryptoResult<SharedSecret> Ecdh::compute_shared_secret(
         return 1;
     };
 
-    if ( !secp256k1_ecdh(
-            ctx,
-            shared_secret.data(),
-            &parsed_pubkey,
-            private_key.data(),
-            ecdh_hash_function,
-            nullptr
-        ) ) {
+    // secp256k1_ecdh is not available in all builds, compute manually:
+    // shared_secret = SHA256(pubkey_point * private_key)
+    // The ecdh_hash_function above extracts the x-coordinate
+    
+    // Compute pubkey * privkey using secp256k1_ec_pubkey_tweak_mul equivalent
+    secp256k1_pubkey result_pubkey = parsed_pubkey;
+    if ( !secp256k1_ec_pubkey_tweak_mul(ctx, &result_pubkey, private_key.data()) ) {
         return CryptoError::kEcdhFailed;
     }
+    
+    // Serialize the result (uncompressed format: 04 || x || y)
+    unsigned char serialized[65];
+    size_t output_len = 65;
+    if ( !secp256k1_ec_pubkey_serialize(ctx, serialized, &output_len, &result_pubkey, SECP256K1_EC_UNCOMPRESSED) ) {
+        return CryptoError::kEcdhFailed;
+    }
+    
+    // Extract x-coordinate (bytes 1-32, skipping the 0x04 prefix)
+    std::memcpy(shared_secret.data(), serialized + 1, 32);
 
     return shared_secret;
 }

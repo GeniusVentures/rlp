@@ -35,7 +35,11 @@ CryptoResult<ByteBuffer> Hmac::compute(ByteView key, ByteView data) noexcept {
 }
 
 CryptoResult<MacDigest> Hmac::compute_mac(ByteView key, ByteView data) noexcept {
-    BOOST_OUTCOME_TRY(full_hmac, compute(key, data));
+    auto full_hmac_result = compute(key, data);
+    if ( !full_hmac_result ) {
+        return full_hmac_result.error();
+    }
+    const auto& full_hmac = full_hmac_result.value();
     
     if ( full_hmac.size() < kMacSize ) {
         return CryptoError::kHmacFailed;

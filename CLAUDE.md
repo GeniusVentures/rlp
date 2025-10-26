@@ -31,6 +31,10 @@
 - Always prefer const variables, const parameters, const functions. use const by default
 - Keep right balance in programming between object and functional programming. Prefer functional in general with less state.
 - Public methods should be as objects, but internal implementations can go more with functional programming patterns.
+- Conform to Effective C++ book principles as close as possible
+- Conform to Modern Effective C++ book principles as close as possible
+- Conform to Effective STL book principles as close as possible
+- Conform to API Design for C++ book principles as close as possible
 
 
 ## Testing Practice

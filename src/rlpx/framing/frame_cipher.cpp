@@ -5,6 +5,7 @@
 #include <rlpx/crypto/aes.hpp>
 #include <rlpx/crypto/hmac.hpp>
 #include <openssl/sha.h>
+#include <openssl/crypto.h>
 #include <cstring>
 
 namespace rlpx::framing {
@@ -133,10 +134,14 @@ FramingResult<size_t> FrameCipher::decrypt_header(
 
 FramingResult<ByteBuffer> FrameCipher::decrypt_frame(const FrameDecryptParams& params) noexcept {
     // First decrypt and verify header to get frame size
-    BOOST_OUTCOME_TRY(frame_size, decrypt_header(
+    auto frame_size_result = decrypt_header(
         gsl::span<const uint8_t, kFrameHeaderSize>(params.header_ciphertext.data(), kFrameHeaderSize),
         gsl::span<const uint8_t, kMacSize>(params.header_mac.data(), kMacSize)
-    ));
+    );
+    if ( !frame_size_result ) {
+        return frame_size_result.error();
+    }
+    uint32_t frame_size = frame_size_result.value();
 
     // Verify frame size matches provided data
     if ( params.frame_ciphertext.size() != frame_size ) {

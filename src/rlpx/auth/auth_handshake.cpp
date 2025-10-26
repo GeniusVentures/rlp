@@ -39,7 +39,7 @@ AuthResult<ByteBuffer> create_auth_message(
     // Compute static shared secret
     auto static_shared_secret_result = rlpx::crypto::Ecdh::compute_shared_secret(remote_public_key, local_private_key);
     if (!static_shared_secret_result) {
-        return static_shared_secret_result.error();
+        return AuthError::kSharedSecretFailed;
     }
     auto static_shared_secret = static_shared_secret_result.value();
 

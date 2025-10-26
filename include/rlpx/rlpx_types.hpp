@@ -9,6 +9,7 @@
 #include <vector>
 #include <optional>
 #include <gsl/span>
+#include <rlp/common.hpp>  // For rlp::Bytes and rlp::ByteView types
 
 namespace rlpx {
 
@@ -78,29 +79,25 @@ inline constexpr uint8_t kPongMessageId = 0x03;
 inline constexpr uint8_t kProtocolVersion = 5;
 
 // Conversion functions for interop with rlp library
-namespace detail {
-    // Forward declare rlp::ByteView for conversion
-    using RlpByteView = std::basic_string_view<uint8_t>;
-    using RlpBytes = std::basic_string<uint8_t>;
-    
-    // Convert rlpx::ByteView to rlp::ByteView
-    inline RlpByteView to_rlp_view(ByteView view) noexcept {
-        return RlpByteView(reinterpret_cast<const uint8_t*>(view.data()), view.size());
+namespace detail {    
+    // Convert rlpx::ByteView (gsl::span) to rlp::ByteView (std::basic_string_view)
+    inline rlp::ByteView to_rlp_view(rlpx::ByteView view) noexcept {
+        return rlp::ByteView(view.data(), view.size());
     }
     
     // Convert rlp::ByteView to rlpx::ByteView
-    inline ByteView from_rlp_view(RlpByteView view) noexcept {
-        return ByteView(view.data(), view.size());
+    inline rlpx::ByteView from_rlp_view(rlp::ByteView view) noexcept {
+        return rlpx::ByteView(view.data(), view.size());
     }
     
     // Convert rlpx::ByteBuffer to rlp::Bytes
-    inline RlpBytes to_rlp_bytes(const ByteBuffer& buffer) {
-        return RlpBytes(buffer.begin(), buffer.end());
+    inline rlp::Bytes to_rlp_bytes(const rlpx::ByteBuffer& buffer) {
+        return rlp::Bytes(buffer.begin(), buffer.end());
     }
     
     // Convert rlp::Bytes to rlpx::ByteBuffer
-    inline ByteBuffer from_rlp_bytes(const RlpBytes& bytes) {
-        return ByteBuffer(bytes.begin(), bytes.end());
+    inline rlpx::ByteBuffer from_rlp_bytes(const rlp::Bytes& bytes) {
+        return rlpx::ByteBuffer(bytes.begin(), bytes.end());
     }
 }
 
