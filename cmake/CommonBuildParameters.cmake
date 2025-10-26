@@ -147,10 +147,14 @@ if(BUILD_TESTS)
         add_executable(rlpx_protocol_messages_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/protocol_messages_test.cpp"
         )
+        add_executable(rlpx_session_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/rlpx_session_test.cpp"
+        )
         
         target_link_libraries(rlpx_crypto_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_frame_cipher_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_protocol_messages_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+        target_link_libraries(rlpx_session_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
@@ -166,6 +170,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
                 add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
                 add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)
+                add_test(NAME rlpx_session_tests COMMAND $<TARGET_FILE:rlpx_session_tests>)
         
 endif()
 

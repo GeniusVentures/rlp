@@ -47,8 +47,25 @@ target_include_directories(rlpx_protocol_messages_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# RlpxSession integration tests
+add_executable(rlpx_session_tests
+    ${CMAKE_CURRENT_LIST_DIR}/rlpx_session_test.cpp
+)
+
+target_link_libraries(rlpx_session_tests PRIVATE
+    rlpx
+    rlp
+    GTest::gtest
+    GTest::gtest_main
+)
+
+target_include_directories(rlpx_session_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # Add tests to CTest
 include(GoogleTest)
 gtest_discover_tests(rlpx_crypto_tests)
 gtest_discover_tests(rlpx_frame_cipher_tests)
 gtest_discover_tests(rlpx_protocol_messages_tests)
+gtest_discover_tests(rlpx_session_tests)
