@@ -49,3 +49,6 @@ target_link_libraries(rlp_comprehensive_tests PRIVATE rlp)
 target_link_libraries(rlp_property_tests PRIVATE rlp)
 target_link_libraries(rlp_benchmark_tests PRIVATE rlp)
 target_link_libraries(rlp_random_tests PRIVATE rlp)
+
+# Add RLPx tests subdirectory
+add_subdirectory(rlpx)
