@@ -6,15 +6,24 @@
 #include "rlpx_types.hpp"
 #include "rlpx_error.hpp"
 #include "framing/message_stream.hpp"
+#include "protocol/messages.hpp"
 #include <boost/asio/awaitable.hpp>
 #include <atomic>
 #include <memory>
+#include <functional>
 
 namespace rlpx {
 
 // Hide Boost types (Law of Demeter)
 template<typename T>
 using Awaitable = boost::asio::awaitable<T>;
+
+// Message handler callback types
+using MessageHandler = std::function<void(const protocol::Message&)>;
+using HelloHandler = std::function<void(const protocol::HelloMessage&)>;
+using DisconnectHandler = std::function<void(const protocol::DisconnectMessage&)>;
+using PingHandler = std::function<void(const protocol::PingMessage&)>;
+using PongHandler = std::function<void(const protocol::PongMessage&)>;
 
 // Session creation parameters for outbound connections
 struct SessionConnectParams {
@@ -76,6 +85,27 @@ public:
     [[nodiscard]] Awaitable<VoidResult>
     disconnect(DisconnectReason reason) noexcept;
 
+    // Message handler registration
+    void set_hello_handler(HelloHandler handler) noexcept {
+        hello_handler_ = std::move(handler);
+    }
+
+    void set_disconnect_handler(DisconnectHandler handler) noexcept {
+        disconnect_handler_ = std::move(handler);
+    }
+
+    void set_ping_handler(PingHandler handler) noexcept {
+        ping_handler_ = std::move(handler);
+    }
+
+    void set_pong_handler(PongHandler handler) noexcept {
+        pong_handler_ = std::move(handler);
+    }
+
+    void set_generic_handler(MessageHandler handler) noexcept {
+        generic_handler_ = std::move(handler);
+    }
+
     // State queries
     [[nodiscard]] SessionState state() const noexcept {
         return state_.load(std::memory_order_acquire);
@@ -105,6 +135,9 @@ private:
     [[nodiscard]] Awaitable<VoidResult> run_send_loop() noexcept;
     [[nodiscard]] Awaitable<VoidResult> run_receive_loop() noexcept;
 
+    // Message routing
+    void route_message(const protocol::Message& msg) noexcept;
+
     // State transition helpers
     [[nodiscard]] bool try_transition_state(SessionState from, SessionState to) noexcept;
     [[nodiscard]] bool is_terminal_state(SessionState state) const noexcept;
@@ -124,6 +157,13 @@ private:
     class MessageChannel;
     std::unique_ptr<MessageChannel> send_channel_;
     std::unique_ptr<MessageChannel> recv_channel_;
+
+    // Message handlers
+    HelloHandler hello_handler_;
+    DisconnectHandler disconnect_handler_;
+    PingHandler ping_handler_;
+    PongHandler pong_handler_;
+    MessageHandler generic_handler_;
 };
 
 } // namespace rlpx

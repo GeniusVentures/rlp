@@ -221,6 +221,55 @@ Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
     co_return outcome::success();
 }
 
+// Message routing
+void RlpxSession::route_message(const protocol::Message& msg) noexcept {
+    // Route based on message ID
+    switch (msg.id) {
+        case kHelloMessageId:
+            if (hello_handler_) {
+                auto hello_result = protocol::HelloMessage::decode(msg.payload);
+                if (hello_result.has_value()) {
+                    hello_handler_(hello_result.value());
+                }
+            }
+            break;
+
+        case kDisconnectMessageId:
+            if (disconnect_handler_) {
+                auto disconnect_result = protocol::DisconnectMessage::decode(msg.payload);
+                if (disconnect_result.has_value()) {
+                    disconnect_handler_(disconnect_result.value());
+                }
+            }
+            break;
+
+        case kPingMessageId:
+            if (ping_handler_) {
+                auto ping_result = protocol::PingMessage::decode(msg.payload);
+                if (ping_result.has_value()) {
+                    ping_handler_(ping_result.value());
+                }
+            }
+            break;
+
+        case kPongMessageId:
+            if (pong_handler_) {
+                auto pong_result = protocol::PongMessage::decode(msg.payload);
+                if (pong_result.has_value()) {
+                    pong_handler_(pong_result.value());
+                }
+            }
+            break;
+
+        default:
+            // Unknown message type - call generic handler if set
+            if (generic_handler_) {
+                generic_handler_(msg);
+            }
+            break;
+    }
+}
+
 // State transition helpers
 bool RlpxSession::try_transition_state(SessionState from, SessionState to) noexcept {
     SessionState expected = from;
