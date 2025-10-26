@@ -25,7 +25,7 @@ ByteBuffer aes_encrypt(ByteView plaintext, ByteView key, ByteView iv) noexcept {
     ByteBuffer ciphertext(plaintext.size());
     
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) return {};
+    if ( !ctx ) return {};
     
     EVP_EncryptInit_ex(ctx, EVP_aes_256_ctr(), nullptr, key.data(), iv.data());
     
@@ -60,7 +60,7 @@ AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) no
     try {
         // Generate ephemeral keypair
         secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        if (!ctx) {
+        if ( !ctx ) {
             return AuthError::kEciesEncryptFailed;
         }
         
@@ -68,7 +68,7 @@ AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) no
         RAND_bytes(ephemeral_private_key.data(), static_cast<int>(ephemeral_private_key.size()));
         
         secp256k1_pubkey ephemeral_public_key;
-        if (!secp256k1_ec_pubkey_create(ctx, &ephemeral_public_key, ephemeral_private_key.data())) {
+        if ( !secp256k1_ec_pubkey_create(ctx, &ephemeral_public_key, ephemeral_private_key.data()) ) {
             secp256k1_context_destroy(ctx);
             return AuthError::kInvalidPublicKey;
         }
@@ -76,7 +76,7 @@ AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) no
         // Compute shared secret
         auto shared_result = compute_shared_secret(params.recipient_public_key, 
                                                    ephemeral_private_key);
-        if (!shared_result) {
+        if ( !shared_result ) {
             secp256k1_context_destroy(ctx);
             return shared_result.error();
         }
@@ -126,7 +126,7 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
     try {
         // Parse message: [public_key(65) || iv(16) || ciphertext || mac(32)]
         constexpr size_t kMinSize = 65 + 16 + 32;
-        if (params.ciphertext.size() < kMinSize) {
+        if ( params.ciphertext.size() < kMinSize ) {
             return AuthError::kEciesDecryptFailed;
         }
         
@@ -138,14 +138,14 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
         
         // Parse ephemeral public key
         secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
-        if (!ctx) {
+        if ( !ctx ) {
             return AuthError::kEciesDecryptFailed;
         }
         
         secp256k1_pubkey ephemeral_public_key;
-        if (!secp256k1_ec_pubkey_parse(ctx, &ephemeral_public_key, 
+        if ( !secp256k1_ec_pubkey_parse(ctx, &ephemeral_public_key, 
                                        ephemeral_public_key_data.data(), 
-                                       ephemeral_public_key_data.size())) {
+                                       ephemeral_public_key_data.size()) ) {
             secp256k1_context_destroy(ctx);
             return AuthError::kInvalidPublicKey;
         }
@@ -156,7 +156,7 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
         
         auto shared_result = compute_shared_secret(ephemeral_pub_key, 
                                                    params.recipient_private_key);
-        if (!shared_result) {
+        if ( !shared_result ) {
             secp256k1_context_destroy(ctx);
             return shared_result.error();
         }
@@ -175,7 +175,7 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
         mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
         
         auto expected_mac = hmac_sha256(mac_key, mac_input);
-        if (std::memcmp(mac.data(), expected_mac.data(), 32) != 0) {
+        if ( std::memcmp(mac.data(), expected_mac.data(), 32) != 0 ) {
             secp256k1_context_destroy(ctx);
             return AuthError::kEciesDecryptFailed;
         }
@@ -201,7 +201,7 @@ AuthResult<SharedSecret> EciesCipher::compute_shared_secret(
 ) noexcept {
     try {
         secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        if (!ctx) {
+        if ( !ctx ) {
             return AuthError::kSharedSecretFailed;
         }
         
@@ -211,14 +211,14 @@ AuthResult<SharedSecret> EciesCipher::compute_shared_secret(
         std::memcpy(pub_key_full.data() + 1, public_key.data(), public_key.size());
         
         secp256k1_pubkey pubkey;
-        if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, pub_key_full.data(), pub_key_full.size())) {
+        if ( !secp256k1_ec_pubkey_parse(ctx, &pubkey, pub_key_full.data(), pub_key_full.size()) ) {
             secp256k1_context_destroy(ctx);
             return AuthError::kInvalidPublicKey;
         }
         
         // Compute ECDH
         SharedSecret shared{};
-        if (!secp256k1_ecdh(ctx, shared.data(), &pubkey, private_key.data(), nullptr, nullptr)) {
+        if ( !secp256k1_ecdh(ctx, shared.data(), &pubkey, private_key.data(), nullptr, nullptr) ) {
             secp256k1_context_destroy(ctx);
             return AuthError::kSharedSecretFailed;
         }

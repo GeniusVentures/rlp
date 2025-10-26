@@ -12,12 +12,12 @@ namespace discv4 {
 
 rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
     // Skipping hash (32 bytes), sign (65 bytes), packet type (1 byte)
-    if (raw.size() <= kHeaderSize)
+    if ( raw.size() <= kHeaderSize )
     {
         return rlp::DecodingError::kUnexpectedString;
     }
 
-    if (raw.at(kHeaderSize) != kPacketTypePong)
+    if ( raw.at(kHeaderSize) != kPacketTypePong )
     {
         return rlp::DecodingError::kUnexpectedString;
     }
