@@ -20,6 +20,17 @@ FrameSecrets create_test_secrets() {
     return secrets;
 }
 
+// Helper to create flipped secrets for decrypt side
+// (alice's egress = bob's ingress, alice's ingress = bob's egress)
+FrameSecrets create_flipped_secrets() {
+    FrameSecrets secrets;
+    secrets.aes_secret.fill(0x42);
+    secrets.mac_secret.fill(0x55);
+    secrets.egress_mac_seed.fill(0xBB);  // Swapped
+    secrets.ingress_mac_seed.fill(0xAA);  // Swapped
+    return secrets;
+}
+
 TEST(FrameCipherTest, ConstructorInitialization) {
     auto secrets = create_test_secrets();
     FrameCipher cipher(secrets);
@@ -103,8 +114,8 @@ TEST(FrameCipherTest, DecryptHeader) {
     std::memcpy(header_ct.data(), encrypted.value().data(), kFrameHeaderSize);
     std::memcpy(header_mac.data(), encrypted.value().data() + kFrameHeaderSize, kMacSize);
     
-    // Decrypt header with new cipher (same secrets)
-    FrameCipher cipher_decrypt(secrets);
+    // Decrypt header with flipped secrets (alice's egress = bob's ingress)
+    FrameCipher cipher_decrypt(create_flipped_secrets());
     auto size_result = cipher_decrypt.decrypt_header(header_ct, header_mac);
     
     ASSERT_TRUE(size_result.has_value());
@@ -135,7 +146,8 @@ TEST(FrameCipherTest, DecryptHeaderInvalidMac) {
     // Corrupt MAC
     header_mac[0] ^= 0xFF;
     
-    FrameCipher cipher_decrypt(secrets);
+    // Try to decrypt with flipped secrets
+    FrameCipher cipher_decrypt(create_flipped_secrets());
     auto size_result = cipher_decrypt.decrypt_header(header_ct, header_mac);
     
     EXPECT_FALSE(size_result.has_value());
@@ -179,8 +191,8 @@ TEST(FrameCipherTest, EncryptDecryptRoundtrip) {
     std::array<uint8_t, kMacSize> frame_mac;
     std::memcpy(frame_mac.data(), encrypted.value().data() + offset, kMacSize);
     
-    // Decrypt
-    FrameCipher cipher_decrypt(secrets);
+    // Decrypt with flipped secrets (alice's egress = bob's ingress)
+    FrameCipher cipher_decrypt(create_flipped_secrets());
     FrameDecryptParams decrypt_params{
         .header_ciphertext = ByteView(header_ct.data(), header_ct.size()),
         .header_mac = ByteView(header_mac.data(), header_mac.size()),

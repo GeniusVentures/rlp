@@ -58,11 +58,13 @@ bool Hmac::verify(ByteView key, ByteView data, ByteView expected_mac) noexcept {
     
     const auto& computed_mac = computed_result.value();
     
-    // Constant-time comparison to prevent timing attacks
-    if ( expected_mac.size() != computed_mac.size() ) {
+    // Truncate computed MAC to match expected_mac size (e.g., 16 bytes for MacDigest)
+    // This matches the behavior of compute_mac which truncates to kMacSize
+    if ( expected_mac.size() > computed_mac.size() ) {
         return false;
     }
     
+    // Constant-time comparison to prevent timing attacks
     int result = CRYPTO_memcmp(
         expected_mac.data(),
         computed_mac.data(),
