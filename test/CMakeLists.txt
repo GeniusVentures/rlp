@@ -1,42 +1,42 @@
 # Define the test executables
 addtest(rlp_encoder_tests
-        rlp_encoder_tests.cpp
+        rlp/rlp_encoder_tests.cpp
 )
 
 addtest(rlp_decoder_tests
-        rlp_decoder_tests.cpp
+        rlp/rlp_decoder_tests.cpp
 )
 
 addtest(rlp_edge_cases
-        rlp_edge_cases.cpp
+        rlp/rlp_edge_cases.cpp
 )
 
 addtest(rlp_comprehensive_tests
-        rlp_comprehensive_tests.cpp
+        rlp/rlp_comprehensive_tests.cpp
 )
 
 addtest(rlp_property_tests
-        rlp_property_tests.cpp
+        rlp/rlp_property_tests.cpp
 )
 
 addtest(rlp_benchmark_tests
-        rlp_benchmark_tests.cpp
+        rlp/rlp_benchmark_tests.cpp
 )
 
 addtest(discovery_test
-        discovery_test.cpp
+        rlp/discovery_test.cpp
 )
 
 addtest(rlp_endian_tests
-        rlp_endian_tests.cpp
+        rlp/rlp_endian_tests.cpp
 )
 
 addtest(rlp_ethereum_tests
-        rlp_ethereum_tests.cpp
+        rlp/rlp_ethereum_tests.cpp
 )
 
 addtest(rlp_random_tests
-        rlp_random_tests.cpp
+        rlp/rlp_random_tests.cpp
 )
 
 target_link_libraries(discovery_test PRIVATE rlp)
@@ -49,3 +49,6 @@ target_link_libraries(rlp_comprehensive_tests PRIVATE rlp)
 target_link_libraries(rlp_property_tests PRIVATE rlp)
 target_link_libraries(rlp_benchmark_tests PRIVATE rlp)
 target_link_libraries(rlp_random_tests PRIVATE rlp)
+
+# Add RLPx tests subdirectory
+add_subdirectory(rlpx)

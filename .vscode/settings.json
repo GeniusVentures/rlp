@@ -67,5 +67,6 @@
         "xloctime": "cpp",
         "xmemory": "cpp",
         "xstring": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "H:/code/genius/rlp/src"
 }

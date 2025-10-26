@@ -23,6 +23,21 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
+# --------------------------------------------------------
+# Set config of OpenSSL
+find_package(OpenSSL REQUIRED)
+
+# --------------------------------------------------------
+# Set config of Microsoft GSL (header-only library)
+set(GSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Microsoft.GSL/include")
+include_directories(${GSL_INCLUDE_DIR})
+# Create interface library for GSL
+add_library(Microsoft.GSL INTERFACE IMPORTED)
+set_target_properties(Microsoft.GSL PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${GSL_INCLUDE_DIR}"
+)
+add_library(Microsoft.GSL::GSL ALIAS Microsoft.GSL)
+
 # Boost should be loaded before libp2p v0.1.2
 # --------------------------------------------------------
 # Set config of Boost project
@@ -71,44 +86,44 @@ include("${CMAKE_CURRENT_LIST_DIR}/../src/CMakeLists.txt")
 
 if(BUILD_TESTS)
         add_executable(${PROJECT_NAME}_encoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_encoder_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_encoder_tests.cpp"
         )
 
         add_executable(${PROJECT_NAME}_decoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_decoder_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_decoder_tests.cpp"
         )
 
         add_executable(discovery_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/discovery_test.cpp"
         )
 
         add_executable(${PROJECT_NAME}_endian_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_endian_tests.cpp"
         )
 
         add_executable(${PROJECT_NAME}_edge_cases
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_edge_cases.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_edge_cases.cpp"
         )
 
         # Use main benchmark and property test files
                 add_executable(${PROJECT_NAME}_benchmark_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_benchmark_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_benchmark_tests.cpp"
                 )
 
                 add_executable(${PROJECT_NAME}_property_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_property_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_property_tests.cpp"
                 )
 
                 add_executable(${PROJECT_NAME}_comprehensive_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_comprehensive_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_comprehensive_tests.cpp"
                 )
 
                 add_executable(rlp_ethereum_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_ethereum_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_tests.cpp"
                 )
 
                 add_executable(rlp_random_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_random_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_random_tests.cpp"
                 )
 
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -121,6 +136,21 @@ if(BUILD_TESTS)
         target_link_libraries(${PROJECT_NAME}_comprehensive_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_ethereum_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_random_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+        
+        # Add RLPx tests
+        add_executable(rlpx_crypto_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/crypto_test.cpp"
+        )
+        add_executable(rlpx_frame_cipher_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/frame_cipher_test.cpp"
+        )
+        add_executable(rlpx_protocol_messages_tests
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/protocol_messages_test.cpp"
+        )
+        
+        target_link_libraries(rlpx_crypto_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
+        target_link_libraries(rlpx_frame_cipher_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
+        target_link_libraries(rlpx_protocol_messages_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
@@ -133,6 +163,9 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_comprehensive_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_comprehensive_tests>)
                 add_test(NAME rlp_ethereum_tests COMMAND $<TARGET_FILE:rlp_ethereum_tests>)
                 add_test(NAME rlp_random_tests COMMAND $<TARGET_FILE:rlp_random_tests>)
+                add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
+                add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
+                add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)
         
 endif()
 
