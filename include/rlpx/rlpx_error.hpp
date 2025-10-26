@@ -23,7 +23,10 @@ enum class SessionError {
     kDecryptionError,
     kInvalidMessage,
     kInvalidFrameSize,
-    kBufferOverflow
+    kBufferOverflow,
+    kConnectionFailed,
+    kNotConnected,
+    kDisconnected
 };
 
 enum class AuthError {
