@@ -280,13 +280,15 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
     };
     
     // Send PING to localhost mock server
-    discv4::PacketFactory::send_ping_and_wait(
+    auto send_result = discv4::PacketFactory::send_ping_and_wait(
         io,
         "127.0.0.1", 30303, 30303,  // From address
         "127.0.0.1", mock_port, mock_port,  // To address (mock server)
         priv_key,
         callback
     );
+
+    ASSERT_TRUE(send_result.has_value()) << "send_ping_and_wait failed";
     
     // Verify test outcomes
     EXPECT_TRUE(mock_server.received_ping()) << "Mock server should receive PING";

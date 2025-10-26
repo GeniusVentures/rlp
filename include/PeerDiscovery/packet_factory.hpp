@@ -6,6 +6,8 @@
 #include <vector>
 #include <functional>
 
+#include <boost/outcome/result.hpp>
+
 #include <boost/asio.hpp>
 
 // Boost.Asio
@@ -26,12 +28,21 @@ namespace discv4 {
 // Forward declarations
 class Discv4Packet;
 
+namespace outcome = BOOST_OUTCOME_V2_NAMESPACE;
+
+enum class PacketError {
+    kNullPacket,
+    kSignFailure,
+};
+
+using PacketResult = outcome::result<void, PacketError>;
+
 using SendCallback = std::function<void(const std::vector<uint8_t>&, const udp::endpoint&)>;
 
 class PacketFactory {
 public:
     // Send Ping and await Pong asynchronously
-    static void send_ping_and_wait(
+    static PacketResult send_ping_and_wait(
         asio::io_context& io,
         const std::string& from_ip, uint16_t f_udp, uint16_t f_tcp,
         const std::string& to_ip,   uint16_t t_udp, uint16_t t_tcp,
@@ -39,8 +50,8 @@ public:
         SendCallback callback);
 
 private:
-    static void sign_and_build_packet(
-        std::shared_ptr<Discv4Packet> packet,
+    static PacketResult sign_and_build_packet(
+        Discv4Packet* packet,
         const std::vector<uint8_t>& priv_key_hex,
         std::vector<uint8_t>& out);
 
