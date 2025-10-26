@@ -26,9 +26,9 @@ struct Discv4Pong
     uint32_t expiration = 0;            // Unix timestamp
     uint64_t ersErq = 0;               // Optional ENR sequence number of the sender
 
-    static rlp::Result<Discv4Pong> parse( rlp::ByteView raw );
+    static rlp::Result<Discv4Pong> Parse( rlp::ByteView raw );
 
-    static rlp::DecodingResult parse_endpoint( rlp::RlpDecoder& decoder, Discv4Pong::Endpoint& endpoint );
+    static rlp::DecodingResult ParseEndpoint( rlp::RlpDecoder& decoder, Discv4Pong::Endpoint& endpoint );
 };
 
 } // namespace discv4

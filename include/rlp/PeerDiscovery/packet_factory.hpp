@@ -43,7 +43,7 @@ class PacketFactory
 {
 public:
     // Send Ping and await Pong asynchronously
-    static PacketResult send_ping_and_wait(
+    static PacketResult SendPingAndWait(
         asio::io_context& io,
         const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
         const std::string& toIp, uint16_t tUdp, uint16_t tTcp,
@@ -51,12 +51,12 @@ public:
         SendCallback callback );
 
 private:
-    static PacketResult sign_and_build_packet(
+    static PacketResult SignAndBuildPacket(
         Discv4Packet* packet,
         const std::vector<uint8_t>& privKeyHex,
         std::vector<uint8_t>& out );
 
-    static void send_packet(
+    static void SendPacket(
         asio::ip::udp::socket& socket,
         const std::vector<uint8_t>& msg,
         const udp::endpoint& target );

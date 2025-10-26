@@ -10,7 +10,7 @@
 
 namespace discv4 {
 
-PacketResult PacketFactory::send_ping_and_wait(
+PacketResult PacketFactory::SendPingAndWait(
     asio::io_context& io,
     const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
     const std::string& toIp, uint16_t tUdp, uint16_t tTcp,
@@ -21,7 +21,7 @@ PacketResult PacketFactory::send_ping_and_wait(
     auto ping = std::make_unique<Discv4Ping>( fromIp, fUdp, fTcp, toIp, tUdp, tTcp );
 
     std::vector<uint8_t> msg;
-    auto signResult = sign_and_build_packet( ping.get(), privKeyHex, msg );
+    auto signResult = SignAndBuildPacket( ping.get(), privKeyHex, msg );
     if ( !signResult )
     {
         return outcome::failure( signResult.error() );
@@ -35,7 +35,7 @@ PacketResult PacketFactory::send_ping_and_wait(
     // Send
     udp::endpoint target( boost::asio::ip::address_v4::from_string( toIp ), tUdp );
     udp::endpoint sender;
-    send_packet( socket, msg, target );
+    SendPacket( socket, msg, target );
 
     rlp::ByteView msbBv( msg.data(), msg.size() );
     std::cout << "Sending PING: " << rlp::hexToString( msbBv ) << "\n\n";
@@ -58,7 +58,7 @@ PacketResult PacketFactory::send_ping_and_wait(
     return outcome::success();
 }
 
-PacketResult PacketFactory::sign_and_build_packet(
+PacketResult PacketFactory::SignAndBuildPacket(
     Discv4Packet* packet,
     const std::vector<uint8_t>& privKeyHex,
     std::vector<uint8_t>& out )
@@ -106,7 +106,7 @@ PacketResult PacketFactory::sign_and_build_packet(
     return outcome::success();
 }
 
-void PacketFactory::send_packet(
+void PacketFactory::SendPacket(
     asio::ip::udp::socket& socket,
     const std::vector<uint8_t>& msg,
     const udp::endpoint& target )

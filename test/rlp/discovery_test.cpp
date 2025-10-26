@@ -242,7 +242,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
         pong_received = true;
         
         ByteView raw_packet_data(data.data(), data.size());
-        auto parse_result = Discv4Pong::parse(raw_packet_data);
+        auto parse_result = Discv4Pong::Parse(raw_packet_data);
         
         EXPECT_TRUE(parse_result.has_value()) << "PONG parsing should succeed";
         
@@ -280,7 +280,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
     };
     
     // Send PING to localhost mock server
-    auto send_result = discv4::PacketFactory::send_ping_and_wait(
+    auto send_result = discv4::PacketFactory::SendPingAndWait(
         io,
         "127.0.0.1", 30303, 30303,  // From address
         "127.0.0.1", mock_port, mock_port,  // To address (mock server)
@@ -288,7 +288,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
         callback
     );
 
-    ASSERT_TRUE(send_result.has_value()) << "send_ping_and_wait failed";
+    ASSERT_TRUE(send_result.has_value()) << "SendPingAndWait failed";
     
     // Verify test outcomes
     EXPECT_TRUE(mock_server.received_ping()) << "Mock server should receive PING";
@@ -399,7 +399,7 @@ TEST(PeerDiscovery, TimeoutHandling) {
         }
     });
     
-    // Note: This will timeout in send_ping_and_wait's receive_from
+    // Note: This will timeout in SendPingAndWait's receive_from
     // In production code, you'd want to add timeout logic to PacketFactory
     // For now, we'll just verify the test infrastructure works
     test_completed = true;
