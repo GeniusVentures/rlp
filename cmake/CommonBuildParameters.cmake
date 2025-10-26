@@ -71,44 +71,44 @@ include("${CMAKE_CURRENT_LIST_DIR}/../src/CMakeLists.txt")
 
 if(BUILD_TESTS)
         add_executable(${PROJECT_NAME}_encoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_encoder_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_encoder_tests.cpp"
         )
 
         add_executable(${PROJECT_NAME}_decoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_decoder_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_decoder_tests.cpp"
         )
 
         add_executable(discovery_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/discovery_test.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/discovery_test.cpp"
         )
 
         add_executable(${PROJECT_NAME}_endian_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_endian_tests.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_endian_tests.cpp"
         )
 
         add_executable(${PROJECT_NAME}_edge_cases
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_edge_cases.cpp"
+                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_edge_cases.cpp"
         )
 
         # Use main benchmark and property test files
                 add_executable(${PROJECT_NAME}_benchmark_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_benchmark_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_benchmark_tests.cpp"
                 )
 
                 add_executable(${PROJECT_NAME}_property_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_property_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_property_tests.cpp"
                 )
 
                 add_executable(${PROJECT_NAME}_comprehensive_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_comprehensive_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_comprehensive_tests.cpp"
                 )
 
                 add_executable(rlp_ethereum_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_ethereum_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_tests.cpp"
                 )
 
                 add_executable(rlp_random_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp_random_tests.cpp"
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_random_tests.cpp"
                 )
 
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
