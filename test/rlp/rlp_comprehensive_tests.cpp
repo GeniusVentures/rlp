@@ -99,7 +99,7 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint16_t{256}); // Should succeed
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
         uint8_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -109,7 +109,7 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint32_t{65536}); // Should succeed
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
         uint16_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -119,7 +119,7 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint64_t{4294967296ULL}); // Should succeed
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
         uint32_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -143,10 +143,10 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
     // Try to read list as string
     {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes str;
@@ -157,11 +157,11 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
     {
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{reinterpret_cast<const uint8_t*>("hello"), 5}); // Should succeed
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes list;
-        EXPECT_FALSE(decoder.read_list_header_bytes()); // Should not be a list
+        EXPECT_FALSE(decoder.ReadListHeaderBytes()); // Should not be a list
     }
 
     // Try to read string as integer
@@ -179,27 +179,27 @@ TEST_F(RlpErrorConditionsTest, EncoderEdgeCases) {
     // Unclosed list should throw
     {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
         // Don't call end_list()
         EXPECT_THROW({
-            [[maybe_unused]] auto bytes = encoder.get_bytes();
+            [[maybe_unused]] auto bytes = encoder.GetBytes();
         }, std::logic_error);
     }
     
     // Multiple end_list calls should throw
     {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
-        encoder.end_list();
-        EXPECT_THROW(encoder.end_list(), std::logic_error);
+        encoder.EndList();
+        EXPECT_THROW(encoder.EndList(), std::logic_error);
     }
     
     // Empty encoder should work
     {
         RlpEncoder encoder;
-        auto bytes = encoder.get_bytes();
+        auto bytes = encoder.GetBytes();
         EXPECT_TRUE(bytes.empty());
     }
 }
@@ -215,7 +215,7 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint8_t val : {uint8_t(0), uint8_t(1), uint8_t(127), uint8_t(128), uint8_t(254), uint8_t(255)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint8_t result;
@@ -227,7 +227,7 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint16_t val : {uint16_t(0), uint16_t(1), uint16_t(255), uint16_t(256), uint16_t(32767), uint16_t(32768), uint16_t(65534), uint16_t(65535)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint16_t result;
@@ -239,7 +239,7 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint32_t val : {uint32_t(0), uint32_t(1), uint32_t(65535), uint32_t(65536), uint32_t(2147483647U), uint32_t(2147483648U), uint32_t(4294967294U), uint32_t(4294967295U)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint32_t result;
@@ -253,7 +253,7 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
                          uint64_t(18446744073709551614ULL), uint64_t(18446744073709551615ULL)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint64_t result;
@@ -272,19 +272,19 @@ TEST_F(RlpErrorConditionsTest, DeepNesting) {
     
     RlpEncoder encoder;
     for (int i = 0; i < max_depth; ++i) {
-        encoder.begin_list();
+        encoder.BeginList();
     }
     encoder.add(uint8_t{42});
     for (int i = 0; i < max_depth; ++i) {
-        encoder.end_list();
+        encoder.EndList();
     }
     
-    auto encoded = encoder.get_bytes();
+    auto encoded = encoder.GetBytes();
     RlpDecoder decoder(encoded);
     
     // Navigate to the deeply nested value
     for (int i = 0; i < max_depth; ++i) {
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value()) << "Failed at nesting level: " << i;
     }
     uint8_t result;
@@ -299,7 +299,7 @@ TEST_F(RlpErrorConditionsTest, LargeDataStructures) {
     
     RlpEncoder encoder;
     encoder.add(rlp::ByteView{large_data.data(), large_data.size()});
-    auto encoded = encoder.get_bytes();
+    auto encoded = encoder.GetBytes();
     
     RlpDecoder decoder(encoded);
     rlp::Bytes result;
@@ -315,7 +315,7 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
     {
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{});
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes result;
@@ -326,12 +326,12 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
     // Empty list
     {
         RlpEncoder encoder;
-        encoder.begin_list();
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.BeginList();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
 
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value());
         EXPECT_EQ(list_header.value(), 0);
     }
@@ -339,15 +339,15 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
     // List of empty strings
     {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         for (int i = 0; i < 10; ++i) {
             encoder.add(rlp::ByteView{});
         }
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
 
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value());
         EXPECT_EQ(list_header.value(), 10u);
         size_t item_count = 0;

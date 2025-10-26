@@ -138,27 +138,27 @@ private:
             
             // Encode the "to" endpoint (sender's endpoint from PING)
             RlpEncoder endpoint_encoder;
-            endpoint_encoder.begin_list();
+            endpoint_encoder.BeginList();
             
             // Use the actual sender's IP and port
             endpoint_encoder.add(ByteView(from_ip.data(), from_ip.size()));
             endpoint_encoder.add(from_port);
             endpoint_encoder.add(from_port);
-            endpoint_encoder.end_list();
-            auto endpoint_bytes = endpoint_encoder.move_bytes();
+            endpoint_encoder.EndList();
+            auto endpoint_bytes = endpoint_encoder.MoveBytes();
             
             // Get current timestamp + 60 seconds
             uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + 60;
             
             // Encode PONG payload
             RlpEncoder encoder;
-            encoder.begin_list();
-            encoder.addRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
+            encoder.BeginList();
+            encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
             encoder.add(ByteView(ping_hash.data(), ping_hash.size())); // Echo ping hash
             encoder.add(expiration);
-            encoder.end_list();
+            encoder.EndList();
             
-            auto payload = encoder.move_bytes();
+            auto payload = encoder.MoveBytes();
             payload.insert(payload.begin(), packet_type);
             
             // Hash the payload - convert to std::vector for Keccak256
@@ -316,7 +316,7 @@ TEST(PeerDiscovery, PingPacketStructure) {
     ByteView payload_view(payload.data() + 1, payload.size() - 1); // Skip packet type
     RlpDecoder decoder(payload_view);
     
-    auto list_size = decoder.read_list_header_bytes();
+    auto list_size = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(list_size.has_value()) << "PING should contain a list";
     EXPECT_GT(list_size.value(), 0) << "PING list should not be empty";
 }
@@ -331,13 +331,13 @@ TEST(PeerDiscovery, PongPacketParsing) {
     
     // Encode endpoint
     RlpEncoder endpoint_encoder;
-    endpoint_encoder.begin_list();
+    endpoint_encoder.BeginList();
     uint8_t ip_bytes[4] = {127, 0, 0, 1};
     endpoint_encoder.add(ByteView(ip_bytes, 4));
     endpoint_encoder.add(uint16_t{30303});
     endpoint_encoder.add(uint16_t{30303});
-    endpoint_encoder.end_list();
-    auto endpoint_bytes = endpoint_encoder.move_bytes();
+    endpoint_encoder.EndList();
+    auto endpoint_bytes = endpoint_encoder.MoveBytes();
     
     // Create ping hash (32 bytes)
     std::array<uint8_t, 32> ping_hash;
@@ -346,13 +346,13 @@ TEST(PeerDiscovery, PongPacketParsing) {
     uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + 60;
     
     // Encode PONG
-    encoder.begin_list();
-    encoder.addRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
+    encoder.BeginList();
+    encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
     encoder.add(ByteView(ping_hash.data(), ping_hash.size()));
     encoder.add(expiration);
-    encoder.end_list();
+    encoder.EndList();
     
-    auto payload = encoder.move_bytes();
+    auto payload = encoder.MoveBytes();
     payload.insert(payload.begin(), packet_type);
     
     // Create a minimal valid packet (we'll skip signature for this unit test)

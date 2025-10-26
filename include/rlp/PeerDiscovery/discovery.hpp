@@ -185,12 +185,12 @@ private:
 
 rlp::Bytes EncodeEndpoint(rlp::ByteView ip, uint16_t udpPort, uint16_t tcpPort) {
     rlp::RlpEncoder encoder;
-    encoder.begin_list();
+    encoder.BeginList();
     encoder.add(ip);
     encoder.add(udpPort);
     encoder.add(tcpPort);
-    encoder.end_list();
-    rlp::Bytes endpoint_msg = encoder.move_bytes();
+    encoder.EndList();
+    rlp::Bytes endpoint_msg = encoder.MoveBytes();
 
     return endpoint_msg;
 }
@@ -223,13 +223,13 @@ rlp::Bytes EncodePing() {
     uint32_t expire_in_1_minute = now + 60;
 
     rlp::RlpEncoder encoder;
-    encoder.begin_list();
+    encoder.BeginList();
     encoder.add(version);
-    encoder.addRaw(rlp::ByteView(endpoint_from));
-    encoder.addRaw(rlp::ByteView(endpoint_to));
+    encoder.AddRaw(rlp::ByteView(endpoint_from));
+    encoder.AddRaw(rlp::ByteView(endpoint_to));
     encoder.add(expire_in_1_minute);
-    encoder.end_list();
-    rlp::Bytes ping_msg = encoder.move_bytes();
+    encoder.EndList();
+    rlp::Bytes ping_msg = encoder.MoveBytes();
 
     ping_msg.insert(ping_msg.begin(), packet_type);
 

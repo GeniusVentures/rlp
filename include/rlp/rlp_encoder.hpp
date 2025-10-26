@@ -15,37 +15,37 @@ class RlpEncoder {
 
     // --- Add basic types ---
     void add(ByteView bytes); // Add raw bytes (encoded as RLP string)
-    void addRaw(ByteView bytes); // Add raw bytes (encoded as RLP string) without header
+    void AddRaw(ByteView bytes); // Add raw bytes (encoded as RLP string) without header
     // Add unsigned integrals (using SFINAE for C++17)
     template <typename T>
         auto add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>>;
     void add(const intx::uint256& n); // Explicit overload for uint256
-    void begin_list();
-    void end_list(); // Calculates and inserts the list header
+    void BeginList();
+    void EndList(); // Calculates and inserts the list header
 
     // --- Convenience for Vectors ---
     // Note: Implementation needs to be here or in .ipp due to template
     template <typename T>
     void add(const std::vector<T>& vec) {
-        begin_list();
+        BeginList();
         for (const auto& item : vec) {
             add(item); // Recursively call add for each element
         }
-        end_list();
+        EndList();
     }
      // Convenience for Spans (similar)
     template <typename T>
     void add(std::span<const T> vec_span) {
-        begin_list();
+        BeginList();
         for (const auto& item : vec_span) {
             add(item); // Recursively call add for each element
         }
-        end_list();
+        EndList();
     }
 
     // --- Output ---
-    [[nodiscard]] const Bytes& get_bytes() const;
-    Bytes&& move_bytes();
+    [[nodiscard]] const Bytes& GetBytes() const;
+    Bytes&& MoveBytes();
     void clear() noexcept; // Reset the encoder
 
    private:

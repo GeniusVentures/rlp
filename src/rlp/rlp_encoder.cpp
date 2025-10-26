@@ -55,14 +55,14 @@ void RlpEncoder::add(ByteView bytes) {
  * does not perform any encoding or validation, and may result in malformed RLP output
  * if used incorrectly.
  *
- * Prefer add() for normal usage. Use addRaw() only if you know what you are doing.
+ * Prefer add() for normal usage. Use AddRaw() only if you know what you are doing.
  *
  * @param bytes Raw bytes to append. Must not be empty.
  * @throws std::invalid_argument if bytes is empty.
  */
-void RlpEncoder::addRaw(ByteView bytes) {
+void RlpEncoder::AddRaw(ByteView bytes) {
     if ( bytes.empty() ) {
-        throw std::invalid_argument("addRaw: input bytes must not be empty");
+        throw std::invalid_argument("AddRaw: input bytes must not be empty");
     }
     buffer_.append(bytes);
 }
@@ -83,13 +83,13 @@ void RlpEncoder::add(const intx::uint256& n) {
     }
 }
 
-void RlpEncoder::begin_list() {
+void RlpEncoder::BeginList() {
     list_start_positions_.push_back(buffer_.size());
 }
 
-void RlpEncoder::end_list() {
+void RlpEncoder::EndList() {
     if ( list_start_positions_.empty() ) {
-        throw std::logic_error("RLP end_list called without matching begin_list");
+        throw std::logic_error("RLP EndList called without matching BeginList");
     }
 
     size_t start_pos = list_start_positions_.back();
@@ -102,14 +102,14 @@ void RlpEncoder::end_list() {
     buffer_.insert(buffer_.begin() + start_pos, header.begin(), header.end());
 }
 
-const Bytes& RlpEncoder::get_bytes() const {
+const Bytes& RlpEncoder::GetBytes() const {
     if ( !list_start_positions_.empty() ) {
         throw std::logic_error("RLP encoder has unclosed lists");
     }
     return buffer_;
 }
 
-Bytes&& RlpEncoder::move_bytes() {
+Bytes&& RlpEncoder::MoveBytes() {
      if ( !list_start_positions_.empty() ) {
         throw std::logic_error("RLP encoder has unclosed lists");
     }

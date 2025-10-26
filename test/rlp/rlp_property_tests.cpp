@@ -80,13 +80,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint8) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint8_t decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", value: " << static_cast<int>(original);
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -96,13 +96,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint16) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint16_t decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", value: " << original;
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -112,13 +112,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint32) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint32_t decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", value: " << original;
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -128,13 +128,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint64) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         uint64_t decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", value: " << original;
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -144,13 +144,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint256) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         intx::uint256 decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration;
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     }, 100); // Fewer iterations for uint256 due to complexity
 }
 
@@ -160,13 +160,13 @@ TEST_F(PropertyBasedTest, RoundtripPropertyBool) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         RlpDecoder decoder(encoded);
         bool decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", value: " << original;
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -175,12 +175,12 @@ TEST_F(PropertyBasedTest, RoundtripPropertyByteArrays) {
         auto original = random_bytes(0, 500);
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{original.data(), original.size()});
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
         rlp::Bytes decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", size: " << original.size();
         EXPECT_EQ(decoded, original) << "Iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     });
 }
 
@@ -190,7 +190,7 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
         std::uniform_int_distribution<int> type_dist(0, 4);
         int list_size = list_size_dist(rng_);
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         using VariantType = std::variant<uint8_t, uint16_t, uint32_t, bool, rlp::Bytes>;
         std::vector<VariantType> original_values;
         for (int i = 0; i < list_size; ++i) {
@@ -228,10 +228,10 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
                 }
             }
         }
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value()) << "Iteration " << iteration;
         // After reading list header, decoder is positioned at list contents
         for (size_t i = 0; i < original_values.size(); ++i) {
@@ -260,7 +260,7 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
                 }
             }, original_values[i]);
         }
-        EXPECT_TRUE(decoder.is_finished()) << "Iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Iteration " << iteration;
     }, 200);
 }
 
@@ -281,7 +281,7 @@ TEST_F(PropertyBasedTest, FuzzDecoderWithRandomData) {
         [[maybe_unused]] auto str_result_code = decoder.read(str_result);
         decoder = RlpDecoder(random_data); // Reset
 
-        [[maybe_unused]] auto list_header_result = decoder.read_list_header_bytes();
+        [[maybe_unused]] auto list_header_result = decoder.ReadListHeaderBytes();
         decoder = RlpDecoder(random_data); // Reset
 
         uint8_t u8_val;
@@ -331,7 +331,7 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
                 std::uniform_int_distribution<int> list_size_dist(0, 5);
                 int list_size = list_size_dist(rng_);
                 
-                encoder.begin_list();
+                encoder.BeginList();
                 for (int i = 0; i < list_size; ++i) {
                     std::uniform_int_distribution<int> recurse_dist(0, 1);
                     if (recurse_dist(rng_) == 0) {
@@ -340,34 +340,34 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
                         generate_random_structure(0); // Force leaf
                     }
                 }
-                encoder.end_list();
+                encoder.EndList();
             }
         };
         
         generate_random_structure(complexity);
         
         // Encode and then decode - should not crash
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         RlpDecoder decoder(encoded);
         
         // Try to decode as much as possible without specific expectations
         // This tests that valid RLP data produced by encoder can always be decoded
         std::function<void(RlpDecoder&)> try_decode = [&](RlpDecoder& dec) {
-            if (dec.is_finished()) return;
+            if (dec.IsFinished()) return;
 
             // Try list first
-            auto list_header = dec.read_list_header_bytes();
+            auto list_header = dec.ReadListHeaderBytes();
             if (list_header.has_value()) {
                 // list_header.value() is the payload length in bytes
                 // Track remaining bytes in this list payload
-                ByteView remaining_before = dec.remaining();
+                ByteView remaining_before = dec.Remaining();
                 size_t payload_size_bytes = list_header.value();
                 size_t consumed = 0;
                 
-                while (consumed < payload_size_bytes && !dec.is_finished()) {
-                    ByteView before_item = dec.remaining();
+                while (consumed < payload_size_bytes && !dec.IsFinished()) {
+                    ByteView before_item = dec.Remaining();
                     try_decode(dec);
-                    ByteView after_item = dec.remaining();
+                    ByteView after_item = dec.Remaining();
                     size_t item_consumed = before_item.size() - after_item.size();
                     consumed += item_consumed;
                     
@@ -390,7 +390,7 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
             }
 
             // If nothing works, skip one byte to avoid infinite loop
-            if (!dec.is_finished()) {
+            if (!dec.IsFinished()) {
                 return;
             }
         };
@@ -412,11 +412,11 @@ TEST_F(PropertyBasedTest, EncodingIsDeterministic) {
         // Encode the same value multiple times
         RlpEncoder encoder1;
         encoder1.add(value);
-        auto encoded1 = encoder1.get_bytes();
+        auto encoded1 = encoder1.GetBytes();
         
         RlpEncoder encoder2;
         encoder2.add(value);
-        auto encoded2 = encoder2.get_bytes();
+        auto encoded2 = encoder2.GetBytes();
         
         EXPECT_EQ(encoded1, encoded2) << "Iteration " << iteration << ", value: " << value;
     });
@@ -433,7 +433,7 @@ TEST_F(PropertyBasedTest, EncodingIsMinimal) {
         
         RlpEncoder encoder;
         encoder.add(value);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         // Verify the encoding follows RLP rules for minimal representation
         if (value == 0) {

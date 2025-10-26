@@ -12,13 +12,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint8_t original = 255;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         uint8_t decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // Test uint16_t
@@ -26,13 +26,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint16_t original = 65535;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         uint16_t decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // Test uint32_t
@@ -40,13 +40,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint32_t original = 4294967295U;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         uint32_t decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // Test uint64_t
@@ -54,13 +54,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint64_t original = 18446744073709551615ULL;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         uint64_t decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // Test bool
@@ -68,13 +68,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         bool original = true;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         bool decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // Test bool false
@@ -82,13 +82,13 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         bool original = false;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.get_bytes();
+        rlp::Bytes encoded = encoder.GetBytes();
         
         rlp::RlpDecoder decoder(encoded);
         bool decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(decoded, original);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -96,28 +96,28 @@ TEST(RlpEdgeCases, TemplateUint256) {
     rlp::RlpEncoder encoder;
     intx::uint256 original = intx::from_string<intx::uint256>("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
     encoder.add(original);
-    rlp::Bytes encoded = encoder.get_bytes();
+    rlp::Bytes encoded = encoder.GetBytes();
     
     rlp::RlpDecoder decoder(encoded);
     intx::uint256 decoded;
     ASSERT_TRUE(decoder.read(decoded));
     EXPECT_EQ(decoded, original);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpEdgeCases, TemplateSequentialInList) {
     rlp::RlpEncoder encoder;
-    encoder.begin_list();
+    encoder.BeginList();
     encoder.add(static_cast<uint8_t>(42));
     encoder.add(static_cast<uint16_t>(1337));
     encoder.add(static_cast<uint32_t>(0xDEADBEEF));
     encoder.add(true);
     encoder.add(false);
-    encoder.end_list();
-    rlp::Bytes encoded = encoder.get_bytes();
+    encoder.EndList();
+    rlp::Bytes encoded = encoder.GetBytes();
     
     rlp::RlpDecoder decoder(encoded);
-    auto list_len = decoder.read_list_header_bytes();
+    auto list_len = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(list_len);
     
     uint8_t val1;
@@ -140,7 +140,7 @@ TEST(RlpEdgeCases, TemplateSequentialInList) {
     ASSERT_TRUE(decoder.read(val5));
     EXPECT_EQ(val5, false);
     
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 } // namespace

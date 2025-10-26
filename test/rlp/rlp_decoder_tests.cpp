@@ -15,7 +15,7 @@ TEST(RlpDecoder, DecodeEmptyString) {
     rlp::Bytes out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_TRUE(out.empty());
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeSingleByteLiteral) {
@@ -24,7 +24,7 @@ TEST(RlpDecoder, DecodeSingleByteLiteral) {
     rlp::Bytes out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(to_hex(out), "7b");
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeSingleByteString) {
@@ -33,7 +33,7 @@ TEST(RlpDecoder, DecodeSingleByteString) {
     rlp::Bytes out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(to_hex(out), "80");
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeShortString) {
@@ -42,7 +42,7 @@ TEST(RlpDecoder, DecodeShortString) {
     rlp::Bytes out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(to_hex(out), "abba");
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeLongString) {
@@ -56,7 +56,7 @@ TEST(RlpDecoder, DecodeLongString) {
     EXPECT_EQ(out.size(), 60);
     EXPECT_EQ(out[0], 'a');
     EXPECT_EQ(out[59], 'a');
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUintZero) {
@@ -65,7 +65,7 @@ TEST(RlpDecoder, DecodeUintZero) {
     uint64_t out = 99;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 0);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUintSmall) {
@@ -74,7 +74,7 @@ TEST(RlpDecoder, DecodeUintSmall) {
     uint64_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 15);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUintMedium) {
@@ -83,7 +83,7 @@ TEST(RlpDecoder, DecodeUintMedium) {
     uint64_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 0x400);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUintLarge) {
@@ -92,7 +92,7 @@ TEST(RlpDecoder, DecodeUintLarge) {
     uint64_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 0xFFCCB5DDFFEE1483);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint8Small) {
@@ -101,7 +101,7 @@ TEST(RlpDecoder, DecodeUint8Small) {
     uint8_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 100);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint8Big) {
@@ -110,7 +110,7 @@ TEST(RlpDecoder, DecodeUint8Big) {
     uint8_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 200);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint16Small) {
@@ -119,7 +119,7 @@ TEST(RlpDecoder, DecodeUint16Small) {
     uint16_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 100);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint16Big) {
@@ -128,7 +128,7 @@ TEST(RlpDecoder, DecodeUint16Big) {
     uint16_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 300);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint32Small) {
@@ -137,7 +137,7 @@ TEST(RlpDecoder, DecodeUint32Small) {
     uint32_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 100);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint32Big) {
@@ -146,7 +146,7 @@ TEST(RlpDecoder, DecodeUint32Big) {
     uint32_t out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 70000);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint256Zero) {
@@ -155,7 +155,7 @@ TEST(RlpDecoder, DecodeUint256Zero) {
     intx::uint256 out = 99;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, 0);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeUint256Large) {
@@ -164,7 +164,7 @@ TEST(RlpDecoder, DecodeUint256Large) {
     intx::uint256 out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, intx::from_string<intx::uint256>("0x10203E405060708090A0B0C0D0E0F2"));
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeBoolTrue) {
@@ -173,7 +173,7 @@ TEST(RlpDecoder, DecodeBoolTrue) {
     bool out;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, true);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeBoolFalse) {
@@ -182,22 +182,22 @@ TEST(RlpDecoder, DecodeBoolFalse) {
     bool out = true;
     EXPECT_TRUE(decoder.read(out));
     EXPECT_EQ(out, false);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeEmptyList) {
     rlp::Bytes data = from_hex("c0");
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header_bytes();
+    auto len_res = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 0);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeSimpleList) {
     rlp::Bytes data = from_hex("c481aa81bb");
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header_bytes();
+    auto len_res = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 4);
 
@@ -206,29 +206,29 @@ TEST(RlpDecoder, DecodeSimpleList) {
     EXPECT_EQ(to_hex(item1), "aa");
     EXPECT_TRUE(decoder.read(item2));
     EXPECT_EQ(to_hex(item2), "bb");
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeNestedList) {
     rlp::Bytes bytes = from_hex("c401c20203");
     rlp::ByteView data = bytes;
     rlp::RlpDecoder decoder(data);
-    auto len_res = decoder.read_list_header_bytes();
+    auto len_res = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(len_res);
     EXPECT_EQ(len_res.value(), 4);
 
-    rlp::ByteView outer_list_data = decoder.remaining();
+    rlp::ByteView outer_list_data = decoder.Remaining();
     uint64_t item1;
     auto res1 = decoder.read(outer_list_data, item1, rlp::Leftover::kAllow);
     ASSERT_TRUE(res1);
     EXPECT_EQ(item1, 1);
 
     rlp::RlpDecoder inner_decoder(outer_list_data);
-    auto inner_len_res = inner_decoder.read_list_header_bytes();
+    auto inner_len_res = inner_decoder.ReadListHeaderBytes();
     ASSERT_TRUE(inner_len_res);
     EXPECT_EQ(inner_len_res.value(), 2);
 
-    rlp::ByteView inner_list_data = inner_decoder.remaining();
+    rlp::ByteView inner_list_data = inner_decoder.Remaining();
     uint64_t item2, item3;
     auto res2 = inner_decoder.read(inner_list_data, item2, rlp::Leftover::kAllow);
     ASSERT_TRUE(res2);
@@ -250,7 +250,7 @@ TEST(RlpDecoder, DecodeVectorUint) {
     ASSERT_EQ(v.size(), 2);
     EXPECT_EQ(v[0], 0xBBCCB5);
     EXPECT_EQ(v[1], 0xFFC0B5);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeFixedArray) {
@@ -262,7 +262,7 @@ TEST(RlpDecoder, DecodeFixedArray) {
     EXPECT_EQ(arr[0], 0xaa);
     EXPECT_EQ(arr[1], 0xbb);
     EXPECT_EQ(arr[2], 0xcc);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, DecodeFixedArraySingleByteLiteral) {
@@ -272,7 +272,7 @@ TEST(RlpDecoder, DecodeFixedArraySingleByteLiteral) {
     auto res = decoder.read(arr);
     ASSERT_TRUE(res);
     EXPECT_EQ(arr[0], 0x7a);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 // --- Error Cases ---
@@ -305,7 +305,7 @@ TEST(RlpDecoder, ErrorInputTooLong) {
     auto res = decoder.read(out);
     ASSERT_TRUE(res);  // Should succeed - member read() doesn't enforce leftover checking
     EXPECT_EQ(out, 15);
-    EXPECT_FALSE(decoder.is_finished());  // But decoder should not be finished
+    EXPECT_FALSE(decoder.IsFinished());  // But decoder should not be finished
 
     // Static read() with kProhibit should fail
     rlp::ByteView data2 = bytes;
@@ -361,7 +361,7 @@ TEST(RlpDecoder, ErrorUnexpectedList) {
 TEST(RlpDecoder, ErrorUnexpectedString) {
     rlp::Bytes data = from_hex("0f");
     rlp::RlpDecoder decoder(data);
-    auto res = decoder.read_list_header_bytes();
+    auto res = decoder.ReadListHeaderBytes();
     ASSERT_FALSE(res);
     EXPECT_EQ(res.error(), rlp::DecodingError::kUnexpectedString);
 }
@@ -413,7 +413,7 @@ TEST(RlpDecoder, ReadTemplateUint8) {
     uint8_t result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, 200);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateUint16) {
@@ -422,7 +422,7 @@ TEST(RlpDecoder, ReadTemplateUint16) {
     uint16_t result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, 300);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateUint32) {
@@ -431,7 +431,7 @@ TEST(RlpDecoder, ReadTemplateUint32) {
     uint32_t result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, 70000);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateUint64) {
@@ -440,7 +440,7 @@ TEST(RlpDecoder, ReadTemplateUint64) {
     uint64_t result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, 0xFFCCB5DDFFEE1483);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateUint256) {
@@ -449,7 +449,7 @@ TEST(RlpDecoder, ReadTemplateUint256) {
     intx::uint256 result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, intx::from_string<intx::uint256>("0x10203E405060708090A0B0C0D0E0F2"));
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateBoolTrue) {
@@ -458,7 +458,7 @@ TEST(RlpDecoder, ReadTemplateBoolTrue) {
     bool result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, true);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateBoolFalse) {
@@ -467,7 +467,7 @@ TEST(RlpDecoder, ReadTemplateBoolFalse) {
     bool result;
     ASSERT_TRUE(decoder.read(result));
     EXPECT_EQ(result, false);
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateZeroValues) {
@@ -479,7 +479,7 @@ TEST(RlpDecoder, ReadTemplateZeroValues) {
         uint8_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     {
@@ -487,7 +487,7 @@ TEST(RlpDecoder, ReadTemplateZeroValues) {
         uint16_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     {
@@ -495,7 +495,7 @@ TEST(RlpDecoder, ReadTemplateZeroValues) {
         uint32_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     {
@@ -503,7 +503,7 @@ TEST(RlpDecoder, ReadTemplateZeroValues) {
         uint64_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     {
@@ -511,7 +511,7 @@ TEST(RlpDecoder, ReadTemplateZeroValues) {
         intx::uint256 result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 0);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -525,7 +525,7 @@ TEST(RlpDecoder, ReadTemplateMaxValues) {
         uint8_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 255);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // uint16_t max (65535)
@@ -535,7 +535,7 @@ TEST(RlpDecoder, ReadTemplateMaxValues) {
         uint16_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 65535);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
     
     // uint32_t max (4294967295)
@@ -545,7 +545,7 @@ TEST(RlpDecoder, ReadTemplateMaxValues) {
         uint32_t result;
         ASSERT_TRUE(decoder.read(result));
         EXPECT_EQ(result, 4294967295U);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -589,7 +589,7 @@ TEST(RlpDecoder, ReadTemplateSequentialReads) {
     rlp::Bytes data = from_hex("c3" "01" "02" "03"); // List with [1, 2, 3]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header_bytes();
+    auto list_len = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 3); // List payload length in bytes (not number of items)
     
@@ -605,7 +605,7 @@ TEST(RlpDecoder, ReadTemplateSequentialReads) {
     ASSERT_TRUE(decoder.read(val3));
     EXPECT_EQ(val3, 3);
     
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateComplexSequentialReads) {
@@ -614,7 +614,7 @@ TEST(RlpDecoder, ReadTemplateComplexSequentialReads) {
     rlp::Bytes data = from_hex("c5" "81ff" "82ffff"); // List with [255, 65535]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header_bytes();
+    auto list_len = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 5); // Total payload length
     
@@ -626,7 +626,7 @@ TEST(RlpDecoder, ReadTemplateComplexSequentialReads) {
     ASSERT_TRUE(decoder.read(val2));
     EXPECT_EQ(val2, 65535);
     
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateMixedTypes) {
@@ -634,7 +634,7 @@ TEST(RlpDecoder, ReadTemplateMixedTypes) {
     rlp::Bytes data = from_hex("c5" "80" "01" "64" "81c8"); // List with [false, true, 100, 200]
     rlp::RlpDecoder decoder(data);
     
-    auto list_len = decoder.read_list_header_bytes();
+    auto list_len = decoder.ReadListHeaderBytes();
     ASSERT_TRUE(list_len);
     EXPECT_EQ(list_len.value(), 5); // Total payload length
     
@@ -654,7 +654,7 @@ TEST(RlpDecoder, ReadTemplateMixedTypes) {
     ASSERT_TRUE(decoder.read(uint8_val2));
     EXPECT_EQ(uint8_val2, 200);
     
-    EXPECT_TRUE(decoder.is_finished());
+    EXPECT_TRUE(decoder.IsFinished());
 }
 
 TEST(RlpDecoder, ReadTemplateErrorHandling) {

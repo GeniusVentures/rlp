@@ -28,12 +28,12 @@ public:
         rlp::Bytes encode()
         {
             rlp::RlpEncoder encoder;
-            encoder.begin_list();
+            encoder.BeginList();
             encoder.add( ipBv );
             encoder.add( udpPort );
             encoder.add( tcpPort );
-            encoder.end_list();
-            rlp::Bytes endpointMsg = encoder.move_bytes();
+            encoder.EndList();
+            rlp::Bytes endpointMsg = encoder.MoveBytes();
 
             return endpointMsg;
         }

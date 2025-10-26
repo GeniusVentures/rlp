@@ -14,14 +14,14 @@ class RlpDecoder {
     explicit RlpDecoder(ByteView data) noexcept;
 
     // --- State Checks ---
-    [[nodiscard]] bool is_finished() const noexcept; // No more data left
-    [[nodiscard]] ByteView remaining() const noexcept; // View of remaining data
+    [[nodiscard]] bool IsFinished() const noexcept; // No more data left
+    [[nodiscard]] ByteView Remaining() const noexcept; // View of remaining data
 
     // --- Type Checks (Peek) ---
-    [[nodiscard]] Result<bool> is_list() const noexcept; // Is the next item a list?
-    [[nodiscard]] Result<bool> is_string() const noexcept; // Is the next item a string?
-    [[nodiscard]] Result<size_t> peek_payload_size_bytes() const noexcept; // Get next item's payload size in bytes
-    [[nodiscard]] Result<Header> peek_header() const noexcept; // Get full header info
+    [[nodiscard]] Result<bool> IsList() const noexcept; // Is the next item a list?
+    [[nodiscard]] Result<bool> IsString() const noexcept; // Is the next item a string?
+    [[nodiscard]] Result<size_t> PeekPayloadSizeBytes() const noexcept; // Get next item's payload size in bytes
+    [[nodiscard]] Result<Header> PeekHeader() const noexcept; // Get full header info
 
     // --- Read Basic Types (Consume) ---
     // Returns error or success. Value is output parameter.
@@ -43,17 +43,17 @@ class RlpDecoder {
     // --- List Handling (Consume) ---
     // Reads *only* the list header, returns payload length in bytes, consumes header bytes
     // Name follows C++ span/ranges convention: size_bytes() for byte count
-    Result<size_t> read_list_header_bytes() noexcept;
+    Result<size_t> ReadListHeaderBytes() noexcept;
     
     // Skips the next complete RLP item (header + payload)
-    DecodingResult skip_item() noexcept;
+    DecodingResult SkipItem() noexcept;
 
     // Helper method for reading with a specified ByteView and leftover handling
     template <typename T>
     auto read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
         RlpDecoder temp_decoder(data);
-        BOOST_OUTCOME_TRY(auto h, temp_decoder.peek_header());
+        BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
         ByteView payload_view = temp_decoder.view_.substr(h.header_size_bytes, h.payload_size_bytes);
         BOOST_OUTCOME_TRY(temp_decoder.check_payload<T>(h, payload_view, temp_decoder.view_));
 
@@ -68,7 +68,7 @@ class RlpDecoder {
                 }
                 else
                 {
-                    BOOST_OUTCOME_TRY(temp_decoder.skip_item());
+                    BOOST_OUTCOME_TRY(temp_decoder.SkipItem());
                     return DecodingError::kOverflow;
                 }
             }
@@ -81,13 +81,13 @@ class RlpDecoder {
                 }
                 else
                 {
-                    BOOST_OUTCOME_TRY(temp_decoder.skip_item());
+                    BOOST_OUTCOME_TRY(temp_decoder.SkipItem());
                     return DecodingError::kOverflow;
                 }
             }
             else
             {
-                BOOST_OUTCOME_TRY(temp_decoder.skip_item());
+                BOOST_OUTCOME_TRY(temp_decoder.SkipItem());
                 return DecodingError::kOverflow;
             }
         }
@@ -96,8 +96,8 @@ class RlpDecoder {
             BOOST_OUTCOME_TRY(endian::from_big_compact(payload_view, out));
             temp_decoder.view_.remove_prefix(h.header_size_bytes + h.payload_size_bytes);
         }
-        data = temp_decoder.remaining();
-        if ( leftover == Leftover::kProhibit && !temp_decoder.is_finished() )
+        data = temp_decoder.Remaining();
+        if ( leftover == Leftover::kProhibit && !temp_decoder.IsFinished() )
         {
             return DecodingError::kInputTooLong;
         }
@@ -160,7 +160,7 @@ class RlpDecoder {
     // Note: Implementation needs to be here or in .ipp due to template
     template <typename T>
     DecodingResult read_vector(std::vector<T>& vec) {
-        BOOST_OUTCOME_TRY(size_t payload_len, read_list_header_bytes());
+        BOOST_OUTCOME_TRY(size_t payload_len, ReadListHeaderBytes());
 
         vec.clear();
         ByteView list_payload = view_.substr(0, payload_len); // View only the list payload
@@ -193,7 +193,7 @@ class RlpDecoder {
      // Reads next item into a fixed-size span/array
     template <size_t N>
     DecodingResult read(std::span<uint8_t, N> out_span) {
-         BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
+         BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
          if ( h.list ) {
               return DecodingError::kUnexpectedList;
@@ -238,7 +238,7 @@ class RlpDecoder {
     // Needs to be in header if read<T> is public template method
     template <typename T>
     auto read_integral(T& out) -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
-        BOOST_OUTCOME_TRY(auto h, peek_header());
+        BOOST_OUTCOME_TRY(auto h, PeekHeader());
         
         if (h.list) {
             return DecodingError::kUnexpectedList;
@@ -281,7 +281,7 @@ class RlpDecoder {
     }
     
     DecodingResult read_bool(bool& out) {
-        BOOST_OUTCOME_TRY(auto h, peek_header());
+        BOOST_OUTCOME_TRY(auto h, PeekHeader());
         
         if (h.list) {
             return DecodingError::kUnexpectedList;

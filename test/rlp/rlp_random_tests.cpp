@@ -85,7 +85,7 @@ TEST_F(RandomRlpTest, RandomByteStrings) {
         // Encode
         RlpEncoder encoder;
         encoder.add(data);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         // Decode
         RlpDecoder decoder(encoded);
@@ -95,7 +95,7 @@ TEST_F(RandomRlpTest, RandomByteStrings) {
         ASSERT_TRUE(result) << "Failed to decode at iteration " << iteration 
                            << " with length " << length;
         EXPECT_EQ(data, decoded) << "Roundtrip failed at iteration " << iteration;
-        EXPECT_TRUE(decoder.is_finished()) << "Decoder not finished at iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Decoder not finished at iteration " << iteration;
     }
 }
 
@@ -108,7 +108,7 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint8_t value = random_integer<uint8_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             uint8_t decoded;
@@ -121,7 +121,7 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint16_t value = random_integer<uint16_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             uint16_t decoded;
@@ -134,7 +134,7 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint32_t value = random_integer<uint32_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             uint32_t decoded;
@@ -147,7 +147,7 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint64_t value = random_integer<uint64_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             uint64_t decoded;
@@ -161,7 +161,7 @@ TEST_F(RandomRlpTest, RandomIntegers) {
 TEST_F(RandomRlpTest, RandomLists) {
     for (int iteration = 0; iteration < 50; ++iteration) {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         
         // Random number of elements (0-20)
         std::uniform_int_distribution<int> count_dist(0, 20);
@@ -174,12 +174,12 @@ TEST_F(RandomRlpTest, RandomLists) {
             encoder.add(value);
         }
         
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value()) << "Failed to decode list header at iteration " << iteration;
         
         for (int i = 0; i < element_count; ++i) {
@@ -189,7 +189,7 @@ TEST_F(RandomRlpTest, RandomLists) {
             EXPECT_EQ(values[i], decoded) << "Value mismatch at element " << i;
         }
         
-        EXPECT_TRUE(decoder.is_finished()) << "Decoder not finished at iteration " << iteration;
+        EXPECT_TRUE(decoder.IsFinished()) << "Decoder not finished at iteration " << iteration;
     }
 }
 
@@ -202,7 +202,7 @@ TEST_F(RandomRlpTest, RandomNestedLists) {
         
         // Create nested structure
         for (int i = 0; i < depth; ++i) {
-            encoder.begin_list();
+            encoder.BeginList();
         }
         
         // Add a random value at the deepest level
@@ -211,17 +211,17 @@ TEST_F(RandomRlpTest, RandomNestedLists) {
         
         // Close all lists
         for (int i = 0; i < depth; ++i) {
-            encoder.end_list();
+            encoder.EndList();
         }
         
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
         
         // Navigate through nested lists
         for (int i = 0; i < depth; ++i) {
-            auto list_header = decoder.read_list_header_bytes();
+            auto list_header = decoder.ReadListHeaderBytes();
             ASSERT_TRUE(list_header.has_value()) 
                 << "Failed to decode list at depth " << i 
                 << " in iteration " << iteration;
@@ -232,7 +232,7 @@ TEST_F(RandomRlpTest, RandomNestedLists) {
         ASSERT_TRUE(decoder.read(decoded)) 
             << "Failed to decode value at iteration " << iteration;
         EXPECT_EQ(value, decoded);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -240,7 +240,7 @@ TEST_F(RandomRlpTest, RandomNestedLists) {
 TEST_F(RandomRlpTest, RandomMixedTypeLists) {
     for (int iteration = 0; iteration < 50; ++iteration) {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         
         // Random number of elements (1-10)
         std::uniform_int_distribution<int> count_dist(1, 10);
@@ -272,12 +272,12 @@ TEST_F(RandomRlpTest, RandomMixedTypeLists) {
             }
         }
         
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value());
         
         for (size_t i = 0; i < values.size(); ++i) {
@@ -296,7 +296,7 @@ TEST_F(RandomRlpTest, RandomMixedTypeLists) {
             }
         }
         
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -309,7 +309,7 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
             
             RlpEncoder encoder;
             encoder.add(data);
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             Bytes decoded;
@@ -317,7 +317,7 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
                 << "Failed at length " << length 
                 << " iteration " << iteration;
             EXPECT_EQ(data, decoded);
-            EXPECT_TRUE(decoder.is_finished());
+            EXPECT_TRUE(decoder.IsFinished());
         }
     }
     
@@ -325,7 +325,7 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
     for (int payload_bytes = 53; payload_bytes <= 58; ++payload_bytes) {
         for (int iteration = 0; iteration < 10; ++iteration) {
             RlpEncoder encoder;
-            encoder.begin_list();
+            encoder.BeginList();
             
             // Add elements to reach approximately payload_bytes
             int bytes_added = 0;
@@ -337,11 +337,11 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
                 bytes_added += 1; // Each uint8 takes 1 byte (assuming < 128)
             }
             
-            encoder.end_list();
-            auto encoded = encoder.get_bytes();
+            encoder.EndList();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
-            auto list_header = decoder.read_list_header_bytes();
+            auto list_header = decoder.ReadListHeaderBytes();
             ASSERT_TRUE(list_header.has_value());
             
             for (uint8_t expected : values) {
@@ -350,7 +350,7 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
                 EXPECT_EQ(expected, decoded);
             }
             
-            EXPECT_TRUE(decoder.is_finished());
+            EXPECT_TRUE(decoder.IsFinished());
         }
     }
 }
@@ -365,7 +365,7 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
             // Empty string
             RlpEncoder encoder;
             encoder.add(Bytes{});
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             EXPECT_EQ(bytes_to_hex(encoded), "80");
             
             RlpDecoder decoder(encoded);
@@ -375,53 +375,53 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
         } else if (choice == 1) {
             // Empty list
             RlpEncoder encoder;
-            encoder.begin_list();
-            encoder.end_list();
-            auto encoded = encoder.get_bytes();
+            encoder.BeginList();
+            encoder.EndList();
+            auto encoded = encoder.GetBytes();
             EXPECT_EQ(bytes_to_hex(encoded), "c0");
             
             RlpDecoder decoder(encoded);
-            auto list_header = decoder.read_list_header_bytes();
+            auto list_header = decoder.ReadListHeaderBytes();
             ASSERT_TRUE(list_header.has_value());
-            EXPECT_TRUE(decoder.is_finished());
+            EXPECT_TRUE(decoder.IsFinished());
         } else if (choice == 2) {
             // List with empty strings
             RlpEncoder encoder;
-            encoder.begin_list();
+            encoder.BeginList();
             int count = random_depth();
             for (int i = 0; i < count; ++i) {
                 encoder.add(Bytes{});
             }
-            encoder.end_list();
-            auto encoded = encoder.get_bytes();
+            encoder.EndList();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
-            auto list_header = decoder.read_list_header_bytes();
+            auto list_header = decoder.ReadListHeaderBytes();
             ASSERT_TRUE(list_header.has_value());
             for (int i = 0; i < count; ++i) {
                 Bytes decoded;
                 ASSERT_TRUE(decoder.read(decoded));
                 EXPECT_TRUE(decoded.empty());
             }
-            EXPECT_TRUE(decoder.is_finished());
+            EXPECT_TRUE(decoder.IsFinished());
         } else {
             // Nested empty lists
             int depth = random_depth();
             RlpEncoder encoder;
             for (int i = 0; i < depth; ++i) {
-                encoder.begin_list();
+                encoder.BeginList();
             }
             for (int i = 0; i < depth; ++i) {
-                encoder.end_list();
+                encoder.EndList();
             }
-            auto encoded = encoder.get_bytes();
+            auto encoded = encoder.GetBytes();
             
             RlpDecoder decoder(encoded);
             for (int i = 0; i < depth; ++i) {
-                auto list_header = decoder.read_list_header_bytes();
+                auto list_header = decoder.ReadListHeaderBytes();
                 ASSERT_TRUE(list_header.has_value());
             }
-            EXPECT_TRUE(decoder.is_finished());
+            EXPECT_TRUE(decoder.IsFinished());
         }
     }
 }
@@ -430,7 +430,7 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
 TEST_F(RandomRlpTest, RandomLargeStructures) {
     for (int iteration = 0; iteration < 10; ++iteration) {
         RlpEncoder encoder;
-        encoder.begin_list();
+        encoder.BeginList();
         
         // Create a large list with 1000 elements
         std::vector<uint16_t> values;
@@ -440,15 +440,15 @@ TEST_F(RandomRlpTest, RandomLargeStructures) {
             encoder.add(value);
         }
         
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
         
         // Verify encoding is large
         EXPECT_GT(encoded.size(), 2000); // Should be > 2000 bytes
         
         // Decode and verify
         RlpDecoder decoder(encoded);
-        auto list_header = decoder.read_list_header_bytes();
+        auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value());
         
         for (int i = 0; i < 1000; ++i) {
@@ -457,7 +457,7 @@ TEST_F(RandomRlpTest, RandomLargeStructures) {
             EXPECT_EQ(values[i], decoded);
         }
         
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -467,44 +467,44 @@ TEST_F(RandomRlpTest, RandomComplexNested) {
         RlpEncoder encoder;
         
         // Create a structure like: [[a, b], [c, [d, e]], f]
-        encoder.begin_list();
+        encoder.BeginList();
         
         // First sublist [a, b]
-        encoder.begin_list();
+        encoder.BeginList();
         uint8_t a = random_integer<uint8_t>();
         uint8_t b = random_integer<uint8_t>();
         encoder.add(a);
         encoder.add(b);
-        encoder.end_list();
+        encoder.EndList();
         
         // Second sublist [c, [d, e]]
-        encoder.begin_list();
+        encoder.BeginList();
         uint8_t c = random_integer<uint8_t>();
         encoder.add(c);
-        encoder.begin_list();
+        encoder.BeginList();
         uint8_t d = random_integer<uint8_t>();
         uint8_t e = random_integer<uint8_t>();
         encoder.add(d);
         encoder.add(e);
-        encoder.end_list();
-        encoder.end_list();
+        encoder.EndList();
+        encoder.EndList();
         
         // Single element f
         uint8_t f = random_integer<uint8_t>();
         encoder.add(f);
         
-        encoder.end_list();
-        auto encoded = encoder.get_bytes();
+        encoder.EndList();
+        auto encoded = encoder.GetBytes();
         
         // Decode and verify structure
         RlpDecoder decoder(encoded);
         
         // Outer list
-        auto outer_list = decoder.read_list_header_bytes();
+        auto outer_list = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(outer_list.has_value());
         
         // First sublist [a, b]
-        auto list1 = decoder.read_list_header_bytes();
+        auto list1 = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list1.has_value());
         uint8_t decoded_a, decoded_b;
         ASSERT_TRUE(decoder.read(decoded_a));
@@ -513,13 +513,13 @@ TEST_F(RandomRlpTest, RandomComplexNested) {
         EXPECT_EQ(b, decoded_b);
         
         // Second sublist [c, [d, e]]
-        auto list2 = decoder.read_list_header_bytes();
+        auto list2 = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list2.has_value());
         uint8_t decoded_c;
         ASSERT_TRUE(decoder.read(decoded_c));
         EXPECT_EQ(c, decoded_c);
         
-        auto list3 = decoder.read_list_header_bytes();
+        auto list3 = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list3.has_value());
         uint8_t decoded_d, decoded_e;
         ASSERT_TRUE(decoder.read(decoded_d));
@@ -532,7 +532,7 @@ TEST_F(RandomRlpTest, RandomComplexNested) {
         ASSERT_TRUE(decoder.read(decoded_f));
         EXPECT_EQ(f, decoded_f);
         
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 
@@ -553,14 +553,14 @@ TEST_F(RandomRlpTest, RandomArrays) {
         RlpEncoder encoder;
         Bytes bytes_data(array_data.begin(), array_data.end());
         encoder.add(bytes_data);
-        auto encoded = encoder.get_bytes();
+        auto encoded = encoder.GetBytes();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
         Bytes decoded;
         ASSERT_TRUE(decoder.read(decoded));
         EXPECT_EQ(bytes_data, decoded);
-        EXPECT_TRUE(decoder.is_finished());
+        EXPECT_TRUE(decoder.IsFinished());
     }
 }
 

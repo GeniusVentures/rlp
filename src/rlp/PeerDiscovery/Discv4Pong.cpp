@@ -29,14 +29,14 @@ rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
     Discv4Pong pong;
     
     // Check if the packet is a list (PONG should be a list with 3 elements)
-    BOOST_OUTCOME_TRY( bool is_list, decoder.is_list() );
+    BOOST_OUTCOME_TRY( bool is_list, decoder.IsList() );
     if ( !is_list )
     {
         return rlp::DecodingError::kUnexpectedString;
     }
 
     // Read the list header
-    BOOST_OUTCOME_TRY( size_t list_length, decoder.read_list_header_bytes() );
+    BOOST_OUTCOME_TRY( size_t list_length, decoder.ReadListHeaderBytes() );
     
     // Parse to_endpoint (first element - should be a list of 3 elements)
     BOOST_OUTCOME_TRY( parse_endpoint( decoder, pong.toEndpoint ) );
@@ -57,7 +57,7 @@ rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
     pong.expiration |= expiration[3] << 0;
     
     // Verify we consumed all the data
-    if ( !decoder.is_finished() ) 
+    if ( !decoder.IsFinished() ) 
     {
         // Parse expiration (forth optional element - uint32)
         // TODO Fix decoder.read function
@@ -70,7 +70,7 @@ rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
         pong.ersErq |= ersErqArray[4] << 8;
         pong.ersErq |= ersErqArray[5] << 0;
 
-        if ( !decoder.is_finished() ) 
+        if ( !decoder.IsFinished() ) 
         {
             return rlp::DecodingError::kInputTooLong;
         }
@@ -82,14 +82,14 @@ rlp::Result<Discv4Pong> Discv4Pong::parse(rlp::ByteView raw) {
 rlp::DecodingResult Discv4Pong::parse_endpoint( rlp::RlpDecoder& decoder, Discv4Pong::Endpoint& endpoint )
 {
     // Check if next item is a list (endpoint should be [ip, udp_port, tcp_port])
-    BOOST_OUTCOME_TRY( bool is_list, decoder.is_list() );
+    BOOST_OUTCOME_TRY( bool is_list, decoder.IsList() );
     if ( !is_list ) 
     {
         return rlp::DecodingError::kUnexpectedString;
     }
     
     // Read endpoint list header
-    BOOST_OUTCOME_TRY( size_t endpointListLength, decoder.read_list_header_bytes() );
+    BOOST_OUTCOME_TRY( size_t endpointListLength, decoder.ReadListHeaderBytes() );
     
     // Parse IP address (4 bytes)
     BOOST_OUTCOME_TRY( decoder.read( endpoint.ip ) );

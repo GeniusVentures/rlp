@@ -112,34 +112,34 @@ Result<Header> decode_header_impl(ByteView& v) noexcept {
 RlpDecoder::RlpDecoder(ByteView data) noexcept : view_(data) {}
 
 // --- State Checks ---
-bool RlpDecoder::is_finished() const noexcept {
+bool RlpDecoder::IsFinished() const noexcept {
     return view_.empty();
 }
 
-ByteView RlpDecoder::remaining() const noexcept {
+ByteView RlpDecoder::Remaining() const noexcept {
     return view_;
 }
 
 // --- Type Checks (Peek) ---
-Result<bool> RlpDecoder::is_list() const noexcept {
+Result<bool> RlpDecoder::IsList() const noexcept {
     if ( view_.empty() ) return DecodingError::kInputTooShort;
     uint8_t b = view_[0];
     return (b >= kShortListOffset); // Covers short and long lists
 }
 
-Result<bool> RlpDecoder::is_string() const noexcept {
+Result<bool> RlpDecoder::IsString() const noexcept {
     if ( view_.empty() ) return DecodingError::kInputTooShort;
     uint8_t b = view_[0];
     return (b < kShortListOffset); // Covers single byte, short string, long string
 }
 
-Result<size_t> RlpDecoder::peek_payload_size_bytes() const noexcept {
+Result<size_t> RlpDecoder::PeekPayloadSizeBytes() const noexcept {
     ByteView temp_view = view_; // Copy view to peek without consuming
     BOOST_OUTCOME_TRY(auto h, decode_header_impl(temp_view));
     return h.payload_size_bytes;
 }
 
-Result<Header> RlpDecoder::peek_header() const noexcept {
+Result<Header> RlpDecoder::PeekHeader() const noexcept {
     ByteView temp_view = view_; // Copy view to peek without consuming
     return decode_header_impl(temp_view); // Decode from the copy
 }
@@ -147,7 +147,7 @@ Result<Header> RlpDecoder::peek_header() const noexcept {
 // --- Read Basic Types (Consume) ---
 
 DecodingResult RlpDecoder::read(Bytes& out) {
-    BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek header first
+    BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek header first
 
     if ( h.list ) {
         return DecodingError::kUnexpectedList;
@@ -173,8 +173,8 @@ DecodingResult RlpDecoder::read(intx::uint256& out) {
 
 // --- List Handling (Consume) ---
 
-Result<size_t> RlpDecoder::read_list_header_bytes() noexcept {
-    BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
+Result<size_t> RlpDecoder::ReadListHeaderBytes() noexcept {
+    BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
     if ( !h.list ) {
         return DecodingError::kUnexpectedString;
@@ -185,8 +185,8 @@ Result<size_t> RlpDecoder::read_list_header_bytes() noexcept {
     return h.payload_size_bytes; // Return payload length in bytes
 }
 
-DecodingResult RlpDecoder::skip_item() noexcept {
-    BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
+DecodingResult RlpDecoder::SkipItem() noexcept {
+    BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
     BOOST_OUTCOME_TRY(skip_header_internal()); // Consume header
 
@@ -237,7 +237,7 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
 
     DecodingResult RlpDecoder::read_uint256(intx::uint256& out) {
     // *** Implement directly instead of calling public template ***
-    BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
+    BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
     if ( h.list ) {
         return DecodingError::kUnexpectedList;
