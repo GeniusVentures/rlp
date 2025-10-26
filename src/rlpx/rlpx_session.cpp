@@ -5,6 +5,7 @@
 #include <rlpx/auth/auth_handshake.hpp>
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
+#include <rlpx/socket/socket_transport.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
@@ -13,6 +14,7 @@
 #include <boost/asio/read.hpp>
 #include <queue>
 #include <mutex>
+#include <chrono>
 
 namespace rlpx {
 
@@ -100,15 +102,70 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
 // Factory for outbound connections
 Awaitable<Result<std::unique_ptr<RlpxSession>>>
 RlpxSession::connect(const SessionConnectParams& params) noexcept {
-    // TODO: Phase 3.5 - Implement outbound connection
-    // 1. Create TCP socket and connect to remote_host:remote_port
-    // 2. Perform RLPx handshake as initiator
-    // 3. Exchange Hello messages
-    // 4. Create MessageStream with FrameCipher
-    // 5. Start send/receive loops
-    
-    // For now, return error indicating not implemented
-    co_return SessionError::kConnectionFailed;
+    try {
+        // Step 1: Establish TCP connection with timeout
+        auto executor = co_await boost::asio::this_coro::executor;
+        
+        constexpr auto kConnectionTimeout = std::chrono::seconds(10);
+        auto transport_result = co_await socket::connect_with_timeout(
+            executor,
+            params.remote_host,
+            params.remote_port,
+            kConnectionTimeout
+        );
+        
+        if (!transport_result) {
+            co_return transport_result.error();
+        }
+        
+        auto transport = std::move(transport_result.value());
+        
+        // Step 2: Perform RLPx handshake as initiator
+        // TODO: Implement full handshake with AuthHandshake class
+        // For now, create dummy secrets for testing connection flow
+        auth::FrameSecrets secrets;
+        std::memset(secrets.aes_secret.data(), 0, secrets.aes_secret.size());
+        std::memset(secrets.mac_secret.data(), 0, secrets.mac_secret.size());
+        std::memset(secrets.ingress_mac_seed.data(), 0, secrets.ingress_mac_seed.size());
+        std::memset(secrets.egress_mac_seed.data(), 0, secrets.egress_mac_seed.size());
+        
+        // Step 3: Create frame cipher with handshake secrets
+        auto cipher = std::make_unique<framing::FrameCipher>(std::move(secrets));
+        
+        // Step 4: Create message stream
+        auto stream = std::make_unique<framing::MessageStream>(
+            std::move(cipher),
+            std::move(transport)
+        );
+        
+        // Step 5: Create session with peer info
+        PeerInfo peer_info{
+            .public_key = params.peer_public_key,
+            .client_id = std::string(params.client_id),
+            .listen_port = params.listen_port,
+            .remote_address = "",  // TODO: Get from transport
+            .remote_port = params.remote_port
+        };
+        
+        auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
+            std::move(stream),
+            std::move(peer_info),
+            true  // is_initiator
+        ));
+        
+        // Transition to active state
+        session->state_.store(SessionState::kActive, std::memory_order_release);
+        
+        // TODO: Step 6: Exchange Hello messages after handshake
+        // TODO: Step 7: Start send/receive loops
+        // co_spawn(executor, session->run_send_loop(), detached);
+        // co_spawn(executor, session->run_receive_loop(), detached);
+        
+        co_return std::move(session);
+        
+    } catch (...) {
+        co_return SessionError::kConnectionFailed;
+    }
 }
 
 // Factory for inbound connections

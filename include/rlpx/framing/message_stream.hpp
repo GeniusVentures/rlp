@@ -6,6 +6,7 @@
 #include "../rlpx_types.hpp"
 #include "../rlpx_error.hpp"
 #include "frame_cipher.hpp"
+#include "../socket/socket_transport.hpp"
 #include <boost/asio/awaitable.hpp>
 #include <memory>
 
@@ -31,8 +32,11 @@ struct MessageSendParams {
 // Message stream handles framing, encryption, and compression
 class MessageStream {
 public:
-    // Takes ownership of cipher
-    explicit MessageStream(std::unique_ptr<FrameCipher> cipher) noexcept;
+    // Takes ownership of cipher and socket transport
+    MessageStream(
+        std::unique_ptr<FrameCipher> cipher,
+        socket::SocketTransport transport
+    ) noexcept;
 
     // Send message (encodes, compresses if enabled, frames, encrypts)
     [[nodiscard]] Awaitable<VoidResult>
@@ -63,6 +67,7 @@ private:
     receive_frame() noexcept;
 
     std::unique_ptr<FrameCipher> cipher_;
+    socket::SocketTransport transport_;
     bool compression_enabled_{false};
 
     // Reusable buffers to minimize allocations
