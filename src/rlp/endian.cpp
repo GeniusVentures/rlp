@@ -11,7 +11,7 @@ namespace rlp::endian {
 // Signature now matches the header's SFINAE-on-return-type style
 template <typename T>
 auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, Bytes> {
-    if (n == 0) {
+    if ( n == 0 ) {
         return {};
     }
     intx::uint256 val{n};
@@ -30,20 +30,20 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 
     template <typename T>
     auto from_big_compact(ByteView bytes, T& out) -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
-    if (bytes.empty()) {
+    if ( bytes.empty() ) {
         out = 0;
         return outcome::success();
     }
-    if (bytes[0] == 0 && bytes.length() > 1) {
+    if ( bytes[0] == 0 && bytes.length() > 1 ) {
         return DecodingError::kLeadingZero;
     }
-    if (bytes.length() == 1 && bytes[0] == 0) {
+    if ( bytes.length() == 1 && bytes[0] == 0 ) {
         out = 0;
         return outcome::success();
     }
 
     // Check if bytes might be too large for the target type
-    if (bytes.length() > sizeof(intx::uint256)) {
+    if ( bytes.length() > sizeof(intx::uint256) ) {
         return DecodingError::kOverflow;
     }
 
@@ -57,7 +57,7 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
     intx::uint256 val = intx::be::load<intx::uint256>(padded);
 
     // Check if the value fits in the target type
-    if (val > std::numeric_limits<T>::max()) {
+    if ( val > std::numeric_limits<T>::max() ) {
         return DecodingError::kOverflow;
     }
 
@@ -68,7 +68,7 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 // --- Implementation for intx::uint256 --- (Signatures unchanged)
     // --- Implementation for intx::uint256 --- (Signatures unchanged)
     Bytes to_big_compact(const intx::uint256& n) {
-    if (n == 0) {
+    if ( n == 0 ) {
         return {};
     }
     size_t num_bytes = intx::count_significant_bytes(n);
@@ -85,19 +85,19 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 }
 
     DecodingResult from_big_compact(ByteView bytes, intx::uint256& out) {
-    if (bytes.empty()) {
+    if ( bytes.empty() ) {
         out = 0;
         return outcome::success();
     }
-    if (bytes[0] == 0 && bytes.length() > 1) {
+    if ( bytes[0] == 0 && bytes.length() > 1 ) {
         return DecodingError::kLeadingZero;
     }
-    if (bytes.length() == 1 && bytes[0] == 0) {
+    if ( bytes.length() == 1 && bytes[0] == 0 ) {
         out = 0;
         return outcome::success();
     }
 
-    if (bytes.length() > sizeof(intx::uint256)) {
+    if ( bytes.length() > sizeof(intx::uint256) ) {
         return DecodingError::kOverflow;
     }
 

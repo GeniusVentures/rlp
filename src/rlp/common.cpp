@@ -30,7 +30,7 @@ namespace rlp {
     {
         std::stringstream ss;
         ss<<std::setfill('0') << std::hex;
-        for(auto &byte : bv)
+        for ( auto &byte : bv )
         {
             ss <<std::setw(2) << (int)byte;
         }

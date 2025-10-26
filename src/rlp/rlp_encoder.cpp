@@ -15,11 +15,11 @@ Bytes encode_header_bytes(bool list, size_t payload_size_bytes) {
     uint8_t short_offset = list ? kShortListOffset : kShortStringOffset;
     uint8_t long_offset = list ? kLongListOffset : kLongStringOffset;
 
-    if (payload_size_bytes <= kMaxShortStringLen) { // 55 bytes
+    if ( payload_size_bytes <= kMaxShortStringLen ) { // 55 bytes
         header_bytes.push_back(static_cast<uint8_t>(short_offset + payload_size_bytes));
     } else {
         Bytes len_be = endian::to_big_compact(static_cast<uint64_t>(payload_size_bytes));
-        if (len_be.length() > 8) {
+        if ( len_be.length() > 8 ) {
             // RLP spec limits length field to 8 bytes
             throw std::length_error("RLP payload length exceeds 64-bit limit");
         }
@@ -36,7 +36,7 @@ Bytes encode_header_bytes(bool list, size_t payload_size_bytes) {
 
 void RlpEncoder::add(ByteView bytes) {
     // Handle single byte literal case
-    if (bytes.length() == 1 && static_cast<uint8_t>(bytes[0]) < kRlpSingleByteThreshold) {
+    if ( bytes.length() == 1 && static_cast<uint8_t>(bytes[0]) < kRlpSingleByteThreshold ) {
         buffer_.push_back(bytes[0]);
     } else {
         Bytes header = encode_header_bytes(false, bytes.length());
@@ -61,7 +61,7 @@ void RlpEncoder::add(ByteView bytes) {
  * @throws std::invalid_argument if bytes is empty.
  */
 void RlpEncoder::addRaw(ByteView bytes) {
-    if (bytes.empty()) {
+    if ( bytes.empty() ) {
         throw std::invalid_argument("addRaw: input bytes must not be empty");
     }
     buffer_.append(bytes);
@@ -69,9 +69,9 @@ void RlpEncoder::addRaw(ByteView bytes) {
 
 // Explicit overload for uint256
 void RlpEncoder::add(const intx::uint256& n) {
-     if (n == 0) {
+     if ( n == 0 ) {
         buffer_.push_back(kEmptyStringCode);
-    } else if (n < kRlpSingleByteThreshold) {
+    } else if ( n < kRlpSingleByteThreshold ) {
         buffer_.push_back(static_cast<uint8_t>(n));
     } else {
         const Bytes be{endian::to_big_compact(n)};
@@ -88,7 +88,7 @@ void RlpEncoder::begin_list() {
 }
 
 void RlpEncoder::end_list() {
-    if (list_start_positions_.empty()) {
+    if ( list_start_positions_.empty() ) {
         throw std::logic_error("RLP end_list called without matching begin_list");
     }
 
@@ -103,14 +103,14 @@ void RlpEncoder::end_list() {
 }
 
 const Bytes& RlpEncoder::get_bytes() const {
-    if (!list_start_positions_.empty()) {
+    if ( !list_start_positions_.empty() ) {
         throw std::logic_error("RLP encoder has unclosed lists");
     }
     return buffer_;
 }
 
 Bytes&& RlpEncoder::move_bytes() {
-     if (!list_start_positions_.empty()) {
+     if ( !list_start_positions_.empty() ) {
         throw std::logic_error("RLP encoder has unclosed lists");
     }
     return std::move(buffer_);
