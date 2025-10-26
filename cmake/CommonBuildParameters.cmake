@@ -23,6 +23,21 @@ find_package(GTest CONFIG REQUIRED)
 include_directories(${GTest_INCLUDE_DIR})
 add_compile_definitions(CRYPTO3_CODEC_BASE58)
 
+# --------------------------------------------------------
+# Set config of OpenSSL
+find_package(OpenSSL REQUIRED)
+
+# --------------------------------------------------------
+# Set config of Microsoft GSL (header-only library)
+set(GSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Microsoft.GSL/include")
+include_directories(${GSL_INCLUDE_DIR})
+# Create interface library for GSL
+add_library(Microsoft.GSL INTERFACE IMPORTED)
+set_target_properties(Microsoft.GSL PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${GSL_INCLUDE_DIR}"
+)
+add_library(Microsoft.GSL::GSL ALIAS Microsoft.GSL)
+
 # Boost should be loaded before libp2p v0.1.2
 # --------------------------------------------------------
 # Set config of Boost project
