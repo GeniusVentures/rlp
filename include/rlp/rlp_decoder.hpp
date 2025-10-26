@@ -59,9 +59,9 @@ class RlpDecoder {
 
         if constexpr (std::is_same_v<T, bool>)
         {
-            if (h.payload_size_bytes == 1)
+            if ( h.payload_size_bytes == 1 )
             {
-                if (payload_view[0] == 1)
+                if ( payload_view[0] == 1 )
                 {
                     out = true;
                     temp_decoder.view_.remove_prefix(h.header_size_bytes + h.payload_size_bytes);
@@ -72,9 +72,9 @@ class RlpDecoder {
                     return DecodingError::kOverflow;
                 }
             }
-            else if (h.payload_size_bytes == 0)
+            else if ( h.payload_size_bytes == 0 )
             {
-                if (h.header_size_bytes == 1 && temp_decoder.view_[0] == kEmptyStringCode)
+                if ( h.header_size_bytes == 1 && temp_decoder.view_[0] == kEmptyStringCode )
                 {
                     out = false;
                     temp_decoder.view_.remove_prefix(1);
@@ -97,7 +97,7 @@ class RlpDecoder {
             temp_decoder.view_.remove_prefix(h.header_size_bytes + h.payload_size_bytes);
         }
         data = temp_decoder.remaining();
-        if (leftover == Leftover::kProhibit && !temp_decoder.is_finished())
+        if ( leftover == Leftover::kProhibit && !temp_decoder.is_finished() )
         {
             return DecodingError::kInputTooLong;
         }
@@ -107,36 +107,36 @@ class RlpDecoder {
     template <typename T>
     auto check_payload(Header& h, ByteView& payload_view, ByteView& view) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
-        if (h.list)
+        if ( h.list )
         {
             return DecodingError::kUnexpectedList;
         }
-        if (h.payload_size_bytes > 1 && payload_view[0] == 0)
+        if ( h.payload_size_bytes > 1 && payload_view[0] == 0 )
         {
             return DecodingError::kLeadingZero;
         }
-        if (h.payload_size_bytes == 1 && payload_view[0] == 0 && static_cast<uint8_t>(T{0U}) >= kRlpSingleByteThreshold)
+        if ( h.payload_size_bytes == 1 && payload_view[0] == 0 && static_cast<uint8_t>(T{0U}) >= kRlpSingleByteThreshold )
         {
             return DecodingError::kLeadingZero;
         }
-        if (h.payload_size_bytes > sizeof(T))
+        if ( h.payload_size_bytes > sizeof(T) )
         {
             if constexpr (sizeof(T) < 32)
             {
-                if (h.payload_size_bytes > sizeof(T))
+                if ( h.payload_size_bytes > sizeof(T) )
                 {
                     return DecodingError::kOverflow;
                 }
             }
             else
             {
-                if (h.payload_size_bytes > 32)
+                if ( h.payload_size_bytes > 32 )
                 {
                     return DecodingError::kOverflow;
                 }
             }
         }
-        if (view.length() < h.header_size_bytes + h.payload_size_bytes)
+        if ( view.length() < h.header_size_bytes + h.payload_size_bytes )
         {
             return DecodingError::kInputTooShort;
         }
@@ -144,9 +144,9 @@ class RlpDecoder {
         {
             T temp_out;
             BOOST_OUTCOME_TRY(endian::from_big_compact(payload_view, temp_out));
-            if (h.payload_size_bytes == 1 && static_cast<uint8_t>(temp_out) < kRlpSingleByteThreshold)
+            if ( h.payload_size_bytes == 1 && static_cast<uint8_t>(temp_out) < kRlpSingleByteThreshold )
             {
-                if (h.header_size_bytes > 0)
+                if ( h.header_size_bytes > 0 )
                 {
                     return DecodingError::kNonCanonicalSize;
                 }
@@ -166,24 +166,24 @@ class RlpDecoder {
         ByteView list_payload = view_.substr(0, payload_len); // View only the list payload
         ByteView original_list_payload = list_payload; // To check consumption
 
-        while (!list_payload.empty()) {
+        while ( !list_payload.empty() ) {
             vec.emplace_back();
             // Use the main read<T> method, allowing leftovers within the list payload view
             auto read_res = read(list_payload, vec.back(), Leftover::kAllow);
-            if (!read_res) {
+            if ( !read_res ) {
                 vec.pop_back(); // Clean up failed element
                 return read_res.error();
             }
         }
 
         // Check if the entire list payload was consumed
-        if (!list_payload.empty()){
+        if ( !list_payload.empty() ){
              // This implies an error during item decoding that wasn't caught?
              return DecodingError::kListLengthMismatch;
         }
 
         // Consume the list payload from the main view
-        if (view_.length() < payload_len) return DecodingError::kInputTooShort; // Should not happen
+        if ( view_.length() < payload_len ) return DecodingError::kInputTooShort; // Should not happen
         view_.remove_prefix(payload_len);
 
         return outcome::success(); // Success
@@ -195,15 +195,15 @@ class RlpDecoder {
     DecodingResult read(std::span<uint8_t, N> out_span) {
          BOOST_OUTCOME_TRY(auto h, peek_header()); // Peek first
 
-         if (h.list) {
+         if ( h.list ) {
               return DecodingError::kUnexpectedList;
          }
 
          bool single_byte_literal = (h.payload_size_bytes == 1 && h.header_size_bytes == 0);
 
-         if (h.payload_size_bytes != N) {
+         if ( h.payload_size_bytes != N ) {
               // Allow decoding single-byte literal into span<byte, 1>
-              if (!(N == 1 && single_byte_literal)) {
+              if ( !(N == 1 && single_byte_literal) ) {
                   return rlp::DecodingError::kUnexpectedLength;
               }
          }

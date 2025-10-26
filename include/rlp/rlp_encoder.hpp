@@ -71,13 +71,13 @@ inline auto RlpEncoder::add(const T& n) -> std::enable_if_t<is_unsigned_integral
 
 template <typename T>
 inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>> {
-    if (n == 0) {
+    if ( n == 0 ) {
         buffer_.push_back(kEmptyStringCode);
         return;
     }
     if constexpr (sizeof(T) == 1) {
         uint8_t val = static_cast<uint8_t>(n);
-        if (val < kRlpSingleByteThreshold) {
+        if ( val < kRlpSingleByteThreshold ) {
             buffer_.push_back(val);
         } else {
             buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + 1));
@@ -85,44 +85,44 @@ inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned
         }
     } else if constexpr (sizeof(T) == 2) {
         uint16_t val = n;
-        if (val < kRlpSingleByteThreshold) {
+        if ( val < kRlpSingleByteThreshold ) {
             buffer_.push_back(static_cast<uint8_t>(val));
         } else {
             uint8_t buf[2];
             size_t len = 0;
-            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            if ( val >> 8 ) buf[len++] = static_cast<uint8_t>(val >> 8);
             buf[len++] = static_cast<uint8_t>(val & 0xFF);
             buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
             buffer_.append(buf, len);
         }
     } else if constexpr (sizeof(T) == 4) {
         uint32_t val = n;
-        if (val < kRlpSingleByteThreshold) {
+        if ( val < kRlpSingleByteThreshold ) {
             buffer_.push_back(static_cast<uint8_t>(val));
         } else {
             uint8_t buf[4];
             size_t len = 0;
-            if (val >> 24) buf[len++] = static_cast<uint8_t>(val >> 24);
-            if (val >> 16) buf[len++] = static_cast<uint8_t>(val >> 16);
-            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            if ( val >> 24 ) buf[len++] = static_cast<uint8_t>(val >> 24);
+            if ( val >> 16 ) buf[len++] = static_cast<uint8_t>(val >> 16);
+            if ( val >> 8 ) buf[len++] = static_cast<uint8_t>(val >> 8);
             buf[len++] = static_cast<uint8_t>(val & 0xFF);
             buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
             buffer_.append(buf, len);
         }
     } else if constexpr (sizeof(T) == 8) {
         uint64_t val = n;
-        if (val < kRlpSingleByteThreshold) {
+        if ( val < kRlpSingleByteThreshold ) {
             buffer_.push_back(static_cast<uint8_t>(val));
         } else {
             uint8_t buf[8];
             size_t len = 0;
-            if (val >> 56) buf[len++] = static_cast<uint8_t>(val >> 56);
-            if (val >> 48) buf[len++] = static_cast<uint8_t>(val >> 48);
-            if (val >> 40) buf[len++] = static_cast<uint8_t>(val >> 40);
-            if (val >> 32) buf[len++] = static_cast<uint8_t>(val >> 32);
-            if (val >> 24) buf[len++] = static_cast<uint8_t>(val >> 24);
-            if (val >> 16) buf[len++] = static_cast<uint8_t>(val >> 16);
-            if (val >> 8) buf[len++] = static_cast<uint8_t>(val >> 8);
+            if ( val >> 56 ) buf[len++] = static_cast<uint8_t>(val >> 56);
+            if ( val >> 48 ) buf[len++] = static_cast<uint8_t>(val >> 48);
+            if ( val >> 40 ) buf[len++] = static_cast<uint8_t>(val >> 40);
+            if ( val >> 32 ) buf[len++] = static_cast<uint8_t>(val >> 32);
+            if ( val >> 24 ) buf[len++] = static_cast<uint8_t>(val >> 24);
+            if ( val >> 16 ) buf[len++] = static_cast<uint8_t>(val >> 16);
+            if ( val >> 8 ) buf[len++] = static_cast<uint8_t>(val >> 8);
             buf[len++] = static_cast<uint8_t>(val & 0xFF);
             buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + len));
             buffer_.append(buf, len);

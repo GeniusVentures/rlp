@@ -31,7 +31,7 @@ using namespace boost;
 struct NodeIDHash {
     std::size_t operator()(const NodeID& id) const {
         std::size_t hash = 0xcbf29ce484222325ULL;
-        for (uint8_t byte : id) {
+        for ( uint8_t byte : id ) {
             hash ^= byte;
             hash *= 0x100000001b3ULL;
         }
@@ -50,7 +50,7 @@ struct Peer {
     // For Kademlia: XOR distance
     size_t xor_distance(const NodeID& other) const {
         size_t dist = 0;
-        for (size_t i = 0; i < std::min(node_id.size(), other.size()); ++i) {
+        for ( size_t i = 0; i < std::min(node_id.size(), other.size()); ++i ) {
             dist ^= (node_id[i] ^ other[i]);
         }
         return dist;
@@ -78,7 +78,7 @@ public:
     }
 
     ~Discv4Discovery() {
-        if (ctx_) secp256k1_context_destroy(ctx_);
+        if ( ctx_ ) secp256k1_context_destroy(ctx_);
     }
 
 private:
@@ -118,9 +118,9 @@ private:
         std::vector<uint8_t> packet(data, data + len);
 
         // Simulate parsing
-        if (len > 3 && packet[0] == 0xc2) { // RLP PONG
+        if ( len > 3 && packet[0] == 0xc2 ) { // RLP PONG
             std::cout << "Received PONG (simulated)\n";
-        } else if (len > 3 && packet[0] == 0xc4) { // RLP NEIGHBOURS
+        } else if ( len > 3 && packet[0] == 0xc4 ) { // RLP NEIGHBOURS
        
         }
         std::cout << "Received NEIGHBOURS (simulated)\n";
@@ -131,13 +131,13 @@ private:
         std::cout << "Starting Discv4 Discovery...\n";
 
         // Bootstrap: send PING to all bootstrap nodes
-        for (const auto& node : bootstrap_nodes_) {
+        for ( const auto& node : bootstrap_nodes_ ) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             SendPing(ParseNodeID(node.node_id_hex), node.ip, node.port);
         }
 
         // Wait for the timer or any incoming packet
-        while (true) {
+        while ( true ) {
             std::vector<uint8_t> buffer(1024);
             asio::ip::udp::endpoint sender_endpoint;
 
@@ -148,11 +148,11 @@ private:
             try {
                 std::future<void> future = std::async(std::launch::async, [&]() {
                     socket_.receive_from(asio::buffer(buffer), sender_endpoint, 0, ec);
-                    if (ec) { std::cerr << "bind error: " << ec.message() << '\n'; }
+                    if ( ec ) { std::cerr << "bind error: " << ec.message() << '\n'; }
                 });
 
                 // Wait for 15 seconds or until packet arrives
-                if (future.wait_for(std::chrono::seconds(15)) == std::future_status::ready) {
+                if ( future.wait_for(std::chrono::seconds(15)) == std::future_status::ready ) {
                     // Packet arrived
                     HandlePacket(buffer.data(), buffer.size());
                 } else {
@@ -173,7 +173,7 @@ private:
     // Parse hex string to NodeID
     static NodeID ParseNodeID(const std::string& hex) {
         std::vector<uint8_t> id;
-        for (size_t i = 0; i < hex.size(); i += 2) {
+        for ( size_t i = 0; i < hex.size(); i += 2 ) {
             std::string byte_str = hex.substr(i, 2);
             char* end;
             uint8_t byte = static_cast<uint8_t>(std::strtol(byte_str.c_str(), &end, 16));
@@ -245,7 +245,7 @@ int test_ping()
 
         // Create context for signing (only sign operations needed)
         secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        if (!ctx) {
+        if ( !ctx ) {
             std::cerr << "failed to create secp context\n";
             return 1;
         }
@@ -259,7 +259,7 @@ int test_ping()
         };
 
         // Validate secret key
-        if (!secp256k1_ec_seckey_verify(ctx, seckey)) {
+        if ( !secp256k1_ec_seckey_verify(ctx, seckey) ) {
             std::cerr << "invalid seckey\n";
             secp256k1_context_destroy(ctx);
             return 1;
@@ -275,7 +275,7 @@ int test_ping()
             nullptr, // optional nonce function
             nullptr  // optional data for nonce function
         );
-        if (!sign_ok) {
+        if ( !sign_ok ) {
             std::cerr << "sign failed\n";
             secp256k1_context_destroy(ctx);
             return 1;
@@ -285,7 +285,7 @@ int test_ping()
         unsigned char sig64[64];
         int recid = -1;
         secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx, sig64, &recid, &sig);
-        if (recid < 0 || recid > 3) {
+        if ( recid < 0 || recid > 3 ) {
             std::cerr << "unexpected recid\n";
             secp256k1_context_destroy(ctx);
             return 1;
@@ -320,7 +320,7 @@ int test_ping()
 
         // TODO Parse PONG and validate it's integrity
         std::size_t n = socket.receive_from(asio::buffer(recv_buf), sender_endpoint, 0, ec);
-        if (ec) {
+        if ( ec ) {
             std::cerr << "receive error: " << ec.message() << '\n';
         } else {
             std::cout << "received " << n << " bytes from "
