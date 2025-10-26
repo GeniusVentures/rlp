@@ -63,7 +63,16 @@ RlpxSession::RlpxSession(
 {
 }
 
-RlpxSession::~RlpxSession() = default;
+RlpxSession::~RlpxSession() {
+    // Ensure we're in a terminal state
+    auto current_state = state_.load(std::memory_order_acquire);
+    if (current_state != SessionState::kClosed && current_state != SessionState::kError) {
+        // Force transition to closed state
+        state_.store(SessionState::kClosed, std::memory_order_release);
+    }
+    
+    // Channels and stream will be cleaned up automatically via unique_ptr
+}
 
 // Move operations - need special handling for atomic
 RlpxSession::RlpxSession(RlpxSession&& other) noexcept
@@ -97,6 +106,8 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     // 3. Exchange Hello messages
     // 4. Create MessageStream with FrameCipher
     // 5. Start send/receive loops
+    
+    // For now, return error indicating not implemented
     co_return SessionError::kConnectionFailed;
 }
 
@@ -109,12 +120,20 @@ RlpxSession::accept(const SessionAcceptParams& params) noexcept {
     // 3. Exchange Hello messages
     // 4. Create MessageStream with FrameCipher
     // 5. Start send/receive loops
+    
+    // For now, return error indicating not implemented
     co_return SessionError::kConnectionFailed;
 }
 
 // Send message
 VoidResult RlpxSession::post_message(framing::Message message) noexcept {
-    if (state() != SessionState::kActive) {
+    auto current_state = state();
+    
+    // Only allow sending in active state
+    if (current_state != SessionState::kActive) {
+        if (current_state == SessionState::kClosed || current_state == SessionState::kError) {
+            return SessionError::kConnectionFailed;
+        }
         return SessionError::kNotConnected;
     }
     
@@ -125,19 +144,61 @@ VoidResult RlpxSession::post_message(framing::Message message) noexcept {
 // Receive message
 Awaitable<Result<framing::Message>>
 RlpxSession::receive_message() noexcept {
-    // TODO: Phase 3.5 - Implement message receiving
-    // For now, return placeholder error
-    co_return SessionError::kNotConnected;
+    auto current_state = state();
+    
+    // Can only receive in active state
+    if (current_state != SessionState::kActive) {
+        if (current_state == SessionState::kClosed || current_state == SessionState::kError) {
+            co_return SessionError::kConnectionFailed;
+        }
+        co_return SessionError::kNotConnected;
+    }
+    
+    // Check if there's a message in the receive channel
+    auto msg = recv_channel_->try_pop();
+    if (!msg) {
+        co_return SessionError::kNotConnected; // Would be timeout in real impl
+    }
+    
+    co_return std::move(*msg);
 }
 
 // Graceful disconnect
 Awaitable<VoidResult>
 RlpxSession::disconnect(DisconnectReason reason) noexcept {
+    auto current_state = state_.load(std::memory_order_acquire);
+    
+    // Check if already disconnecting or closed
+    if (current_state == SessionState::kDisconnecting ||
+        current_state == SessionState::kClosed ||
+        current_state == SessionState::kError) {
+        // Already in terminal or transitioning state
+        co_return outcome::success();
+    }
+    
+    // Transition to disconnecting state
+    SessionState expected = current_state;
+    while (!state_.compare_exchange_weak(
+        expected,
+        SessionState::kDisconnecting,
+        std::memory_order_release,
+        std::memory_order_acquire)) {
+        // If state changed, check again
+        if (expected == SessionState::kDisconnecting ||
+            expected == SessionState::kClosed ||
+            expected == SessionState::kError) {
+            co_return outcome::success();
+        }
+    }
+    
     // TODO: Phase 3.5 - Implement graceful disconnect
-    // 1. Send Disconnect message
-    // 2. Close socket
-    // 3. Update state
-    state_.store(SessionState::kDisconnecting, std::memory_order_release);
+    // 1. Send Disconnect message with reason
+    // 2. Flush pending messages
+    // 3. Close socket
+    
+    // Transition to closed state
+    state_.store(SessionState::kClosed, std::memory_order_release);
+    
     co_return outcome::success();
 }
 
@@ -158,6 +219,25 @@ Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
     // TODO: Phase 3.5 - Implement receive loop
     // While active, receive messages from stream_ and push to recv_channel_
     co_return outcome::success();
+}
+
+// State transition helpers
+bool RlpxSession::try_transition_state(SessionState from, SessionState to) noexcept {
+    SessionState expected = from;
+    return state_.compare_exchange_strong(
+        expected,
+        to,
+        std::memory_order_release,
+        std::memory_order_acquire
+    );
+}
+
+bool RlpxSession::is_terminal_state(SessionState state) const noexcept {
+    return state == SessionState::kClosed || state == SessionState::kError;
+}
+
+void RlpxSession::force_error_state() noexcept {
+    state_.store(SessionState::kError, std::memory_order_release);
 }
 
 } // namespace rlpx

@@ -105,6 +105,11 @@ private:
     [[nodiscard]] Awaitable<VoidResult> run_send_loop() noexcept;
     [[nodiscard]] Awaitable<VoidResult> run_receive_loop() noexcept;
 
+    // State transition helpers
+    [[nodiscard]] bool try_transition_state(SessionState from, SessionState to) noexcept;
+    [[nodiscard]] bool is_terminal_state(SessionState state) const noexcept;
+    void force_error_state() noexcept;
+
     // State management
     std::atomic<SessionState> state_{SessionState::kUninitialized};
     
