@@ -10,6 +10,7 @@
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/asio/read.hpp>
 #include <queue>
@@ -156,10 +157,30 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
         // Transition to active state
         session->state_.store(SessionState::kActive, std::memory_order_release);
         
-        // TODO: Step 6: Exchange Hello messages after handshake
-        // TODO: Step 7: Start send/receive loops
-        // co_spawn(executor, session->run_send_loop(), detached);
-        // co_spawn(executor, session->run_receive_loop(), detached);
+        // Step 6: Start send/receive loops as background coroutines
+        // Note: We pass raw pointers because the session unique_ptr ownership
+        // will be returned to caller, and the loops run until session closes
+        boost::asio::co_spawn(
+            executor,
+            [session_ptr = session.get()]() -> Awaitable<void> {
+                auto result = co_await session_ptr->run_send_loop();
+                // Log error if needed
+                co_return;
+            },
+            boost::asio::detached
+        );
+        
+        boost::asio::co_spawn(
+            executor,
+            [session_ptr = session.get()]() -> Awaitable<void> {
+                auto result = co_await session_ptr->run_receive_loop();
+                // Log error if needed
+                co_return;
+            },
+            boost::asio::detached
+        );
+        
+        // TODO: Step 7: Exchange Hello messages after proper handshake
         
         co_return std::move(session);
         
@@ -266,16 +287,85 @@ const auth::FrameSecrets& RlpxSession::cipher_secrets() const noexcept {
 
 // Internal send loop
 Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
-    // TODO: Phase 3.5 - Implement send loop
-    // While active, pop messages from send_channel_ and send via stream_
-    co_return outcome::success();
+    try {
+        // Continuously send messages while session is active
+        while (state() == SessionState::kActive) {
+            // Check if there are pending messages to send
+            auto msg = send_channel_->try_pop();
+            
+            if (!msg) {
+                // No messages pending - wait a bit and check again
+                // TODO: Use proper condition variable or async wait instead of polling
+                co_await boost::asio::steady_timer(
+                    co_await boost::asio::this_coro::executor,
+                    std::chrono::milliseconds(10)
+                ).async_wait(boost::asio::use_awaitable);
+                continue;
+            }
+            
+            // Send message through stream
+            framing::MessageSendParams send_params{
+                .message_id = msg->id,
+                .payload = msg->payload,
+                .compress = false  // TODO: Enable compression based on capabilities
+            };
+            
+            auto send_result = co_await stream_->send_message(send_params);
+            
+            if (!send_result) {
+                // Network error - transition to error state
+                force_error_state();
+                co_return send_result.error();
+            }
+        }
+        
+        co_return outcome::success();
+        
+    } catch (...) {
+        force_error_state();
+        co_return SessionError::kConnectionFailed;
+    }
 }
 
 // Internal receive loop
 Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
-    // TODO: Phase 3.5 - Implement receive loop
-    // While active, receive messages from stream_ and push to recv_channel_
-    co_return outcome::success();
+    try {
+        // Continuously receive messages while session is active
+        while (state() == SessionState::kActive) {
+            // Receive message from network stream
+            auto msg_result = co_await stream_->receive_message();
+            
+            if (!msg_result) {
+                // Network error or connection closed
+                force_error_state();
+                co_return msg_result.error();
+            }
+            
+            auto& msg = msg_result.value();
+            
+            // Convert framing::Message to protocol::Message for routing
+            protocol::Message proto_msg{
+                .id = msg.id,
+                .payload = std::move(msg.payload)
+            };
+            
+            // Route message to appropriate handler (if registered)
+            route_message(proto_msg);
+            
+            // Also push to receive channel for pull-based consumption
+            framing::Message frame_msg{
+                .id = proto_msg.id,
+                .payload = std::move(proto_msg.payload)
+            };
+            recv_channel_->push(std::move(frame_msg));
+        }
+        
+        co_return outcome::success();
+        
+    } catch (...) {
+        force_error_state();
+        co_return SessionError::kConnectionFailed;
+    }
 }
 
 // Message routing
