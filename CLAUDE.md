@@ -1,7 +1,6 @@
 # SuperGenius Development Guide
 
 ## Important Guidelines
-- NEVER modify files directly - suggest changes but let the user make the actual edits
 - Do not commit changes without explicit user permission
 
 ## Build Commands
