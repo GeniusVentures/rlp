@@ -9,6 +9,7 @@
 #include <type_traits> // For SFINAE / is_integral etc.
 #include <boost/outcome/result.hpp>
 #include <boost/outcome/try.hpp>
+#include "intx.hpp"
 
 namespace rlp {
 
@@ -19,6 +20,32 @@ using ByteView = std::basic_string_view<uint8_t>;
 // --- Concept Simulation (C++17) ---
 template <typename T>
 inline constexpr bool is_unsigned_integral_v = std::is_integral_v<T> && std::is_unsigned_v<T>;
+
+// --- Type Traits for Type Safety (SFINAE) ---
+// Type trait to check if a type is RLP-encodable
+template <typename T>
+struct is_rlp_encodable : std::disjunction<
+    std::conjunction<std::is_integral<T>, std::is_unsigned<T>>,
+    std::is_same<T, bool>,
+    std::is_same<T, intx::uint256>,
+    std::is_same<T, Bytes>,
+    std::is_same<T, ByteView>
+> {};
+
+template <typename T>
+inline constexpr bool is_rlp_encodable_v = is_rlp_encodable<T>::value;
+
+// Type trait to check if a type is RLP-decodable
+template <typename T>
+struct is_rlp_decodable : std::disjunction<
+    std::conjunction<std::is_integral<T>, std::is_unsigned<T>>,
+    std::is_same<T, bool>,
+    std::is_same<T, intx::uint256>,
+    std::is_same<T, Bytes>
+> {};
+
+template <typename T>
+inline constexpr bool is_rlp_decodable_v = is_rlp_decodable<T>::value;
 
 // --- RLP Constants ---
 inline constexpr uint8_t kEmptyStringCode{0x80};
