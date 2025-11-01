@@ -18,14 +18,16 @@ using Bytes = std::basic_string<uint8_t>;
 using ByteView = std::basic_string_view<uint8_t>;
 
 // --- Concept Simulation (C++17) ---
+// Explicitly exclude bool from unsigned integral check to avoid implementation-defined behavior
+// (std::is_unsigned<bool> is implementation-defined in C++)
 template <typename T>
-inline constexpr bool is_unsigned_integral_v = std::is_integral_v<T> && std::is_unsigned_v<T>;
+inline constexpr bool is_unsigned_integral_v = std::is_integral_v<T> && std::is_unsigned_v<T> && !std::is_same_v<T, bool>;
 
 // --- Type Traits for Type Safety (SFINAE) ---
 // Type trait to check if a type is RLP-encodable
 template <typename T>
 struct is_rlp_encodable : std::disjunction<
-    std::conjunction<std::is_integral<T>, std::is_unsigned<T>>,
+    std::conjunction<std::is_integral<T>, std::is_unsigned<T>, std::negation<std::is_same<T, bool>>>,
     std::is_same<T, bool>,
     std::is_same<T, intx::uint256>,
     std::is_same<T, Bytes>,
@@ -38,7 +40,7 @@ inline constexpr bool is_rlp_encodable_v = is_rlp_encodable<T>::value;
 // Type trait to check if a type is RLP-decodable
 template <typename T>
 struct is_rlp_decodable : std::disjunction<
-    std::conjunction<std::is_integral<T>, std::is_unsigned<T>>,
+    std::conjunction<std::is_integral<T>, std::is_unsigned<T>, std::negation<std::is_same<T, bool>>>,
     std::is_same<T, bool>,
     std::is_same<T, intx::uint256>,
     std::is_same<T, Bytes>
