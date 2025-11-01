@@ -233,9 +233,6 @@ TEST(RLPTypeSafetyTests, EncodeDecodeMultipleTypes) {
     EXPECT_EQ(ddata, data);
 }
 
-// Note: Static read methods are not available in RlpDecoder
-// These tests are commented out pending API updates
-/*
 // Test: Use static read method with valid type
 TEST(RLPTypeSafetyTests, StaticReadWithValidType) {
     RlpEncoder encoder;
@@ -244,7 +241,7 @@ TEST(RLPTypeSafetyTests, StaticReadWithValidType) {
     
     ByteView remaining = encoded;
     auto result = RlpDecoder::read<uint32_t>(remaining);
-    EXPECT_TRUE(result);
+    EXPECT_TRUE(result.has_value());
     EXPECT_EQ(result.value(), uint32_t(0x12345678));
 }
 
@@ -257,19 +254,18 @@ TEST(RLPTypeSafetyTests, StaticReadMultipleValues) {
     ByteView encoded = encoder.GetBytes();
     
     ByteView remaining = encoded;
-    auto r1 = RlpDecoder::read<uint16_t>(remaining);
-    EXPECT_TRUE(r1);
+    auto r1 = RlpDecoder::read<uint16_t>(remaining, Leftover::kAllow);
+    EXPECT_TRUE(r1.has_value());
     EXPECT_EQ(r1.value(), uint16_t(100));
     
-    auto r2 = RlpDecoder::read<uint16_t>(remaining);
-    EXPECT_TRUE(r2);
+    auto r2 = RlpDecoder::read<uint16_t>(remaining, Leftover::kAllow);
+    EXPECT_TRUE(r2.has_value());
     EXPECT_EQ(r2.value(), uint16_t(200));
     
     auto r3 = RlpDecoder::read<uint16_t>(remaining);
-    EXPECT_TRUE(r3);
+    EXPECT_TRUE(r3.has_value());
     EXPECT_EQ(r3.value(), uint16_t(300));
 }
-*/
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
