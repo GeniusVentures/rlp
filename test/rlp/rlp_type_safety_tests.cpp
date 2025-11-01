@@ -233,20 +233,20 @@ TEST(RLPTypeSafetyTests, EncodeDecodeMultipleTypes) {
     EXPECT_EQ(ddata, data);
 }
 
-// Test: Use static read method with valid type
-TEST(RLPTypeSafetyTests, StaticReadWithValidType) {
+// Test: Use static decode method with valid type
+TEST(RLPTypeSafetyTests, StaticDecodeWithValidType) {
     RlpEncoder encoder;
     encoder.add(uint32_t(0x12345678));
     ByteView encoded = encoder.GetBytes();
     
     ByteView remaining = encoded;
-    auto result = RlpDecoder::read<uint32_t>(remaining);
+    auto result = RlpDecoder::decode<uint32_t>(remaining);
     EXPECT_TRUE(result.has_value());
     EXPECT_EQ(result.value(), uint32_t(0x12345678));
 }
 
-// Test: Use static read method with multiple values
-TEST(RLPTypeSafetyTests, StaticReadMultipleValues) {
+// Test: Use static decode method with multiple values
+TEST(RLPTypeSafetyTests, StaticDecodeMultipleValues) {
     RlpEncoder encoder;
     encoder.add(uint16_t(100));
     encoder.add(uint16_t(200));
@@ -254,15 +254,15 @@ TEST(RLPTypeSafetyTests, StaticReadMultipleValues) {
     ByteView encoded = encoder.GetBytes();
     
     ByteView remaining = encoded;
-    auto r1 = RlpDecoder::read<uint16_t>(remaining, Leftover::kAllow);
+    auto r1 = RlpDecoder::decode<uint16_t>(remaining, Leftover::kAllow);
     EXPECT_TRUE(r1.has_value());
     EXPECT_EQ(r1.value(), uint16_t(100));
     
-    auto r2 = RlpDecoder::read<uint16_t>(remaining, Leftover::kAllow);
+    auto r2 = RlpDecoder::decode<uint16_t>(remaining, Leftover::kAllow);
     EXPECT_TRUE(r2.has_value());
     EXPECT_EQ(r2.value(), uint16_t(200));
     
-    auto r3 = RlpDecoder::read<uint16_t>(remaining);
+    auto r3 = RlpDecoder::decode<uint16_t>(remaining);
     EXPECT_TRUE(r3.has_value());
     EXPECT_EQ(r3.value(), uint16_t(300));
 }

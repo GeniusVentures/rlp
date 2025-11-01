@@ -49,9 +49,10 @@ class RlpDecoder {
     DecodingResult SkipItem() noexcept;
 
     // --- Static Convenience Methods ---
-    // Static method that reads from ByteView and returns Result<T>
+    // Static method that decodes from ByteView and returns Result<T>
+    // Named 'decode' to distinguish from instance method 'read'
     template <typename T>
-    static auto read(ByteView& data, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<
+    static auto decode(ByteView& data, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<
         is_rlp_decodable_v<T>,
         Result<T>
     >
