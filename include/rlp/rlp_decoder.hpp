@@ -48,6 +48,28 @@ class RlpDecoder {
     // Skips the next complete RLP item (header + payload)
     DecodingResult SkipItem() noexcept;
 
+    // --- Static Convenience Methods ---
+    // Static method that decodes from ByteView and returns Result<T>
+    // Named 'decode' to distinguish from instance method 'read'
+    template <typename T>
+    static auto decode(ByteView& data, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<
+        is_rlp_decodable_v<T>,
+        Result<T>
+    >
+    {
+        T value;
+        RlpDecoder decoder(data);
+        auto result = decoder.read(value);
+        if (!result) {
+            return result.error();
+        }
+        data = decoder.Remaining();
+        if (leftover == Leftover::kProhibit && !decoder.IsFinished()) {
+            return DecodingError::kInputTooLong;
+        }
+        return value;
+    }
+
     // Helper method for reading with a specified ByteView and leftover handling
     template <typename T>
     auto read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
