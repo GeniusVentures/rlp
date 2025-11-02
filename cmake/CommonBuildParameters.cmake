@@ -134,6 +134,10 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_enhanced_api_tests.cpp"
                 )
 
+                add_executable(rlp_streaming_simple_api_demo
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_streaming_simple_api_demo.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -146,6 +150,7 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_random_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_type_safety_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         
         # Add RLPx tests
         add_executable(rlpx_crypto_tests
@@ -191,6 +196,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_random_tests COMMAND $<TARGET_FILE:rlp_random_tests>)
                 add_test(NAME rlp_type_safety_tests COMMAND $<TARGET_FILE:rlp_type_safety_tests>)
                 add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
+                add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
                 add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
                 add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)
