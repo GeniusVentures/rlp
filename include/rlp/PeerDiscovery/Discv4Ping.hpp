@@ -25,17 +25,27 @@ public:
             tcpPort = tcp;
         }
 
-        rlp::Bytes encode()
+        rlp::EncodingResult<rlp::Bytes> encode()
         {
             rlp::RlpEncoder encoder;
-            encoder.BeginList();
-            encoder.add( ipBv );
-            encoder.add( udpPort );
-            encoder.add( tcpPort );
-            encoder.EndList();
+            if (auto res = encoder.BeginList(); !res) {
+                return res.error();
+            }
+            if (auto res = encoder.add( ipBv ); !res) {
+                return res.error();
+            }
+            if (auto res = encoder.add( udpPort ); !res) {
+                return res.error();
+            }
+            if (auto res = encoder.add( tcpPort ); !res) {
+                return res.error();
+            }
+            if (auto res = encoder.EndList(); !res) {
+                return res.error();
+            }
             auto bytes_result = encoder.MoveBytes();
             if (!bytes_result) {
-                return rlp::Bytes(); // Return empty on error
+                return bytes_result.error();
             }
             return std::move(bytes_result.value());
         }
