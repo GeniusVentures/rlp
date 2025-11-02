@@ -10,7 +10,7 @@ namespace { // Anonymous namespace for internal helpers
 // Decodes RLP header FROM THE START of the provided view 'v'
 // Modifies 'v' to remove the consumed header bytes.
 // Returns header info including header length itself.
-Result<Header> decode_header_impl(ByteView& v) noexcept {
+[[nodiscard]] Result<Header> decode_header_impl(ByteView& v) noexcept {
     if ( v.empty() ) {
         return DecodingError::kInputTooShort;
     }

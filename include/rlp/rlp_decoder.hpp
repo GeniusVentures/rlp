@@ -43,7 +43,7 @@ class RlpDecoder {
     // --- List Handling (Consume) ---
     // Reads *only* the list header, returns payload length in bytes, consumes header bytes
     // Name follows C++ span/ranges convention: size_bytes() for byte count
-    Result<size_t> ReadListHeaderBytes() noexcept;
+    [[nodiscard]] Result<size_t> ReadListHeaderBytes() noexcept;
     
     // Skips the next complete RLP item (header + payload)
     DecodingResult SkipItem() noexcept;
