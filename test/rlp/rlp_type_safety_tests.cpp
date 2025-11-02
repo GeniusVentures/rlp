@@ -79,7 +79,9 @@ TEST(RLPTypeSafetyTests, InvalidTypesRejected) {
 TEST(RLPTypeSafetyTests, EncodeDecodeUint8) {
     RlpEncoder encoder;
     encoder.add(uint8_t(42));
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     uint8_t value = 0;
@@ -91,7 +93,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeUint8) {
 TEST(RLPTypeSafetyTests, EncodeDecodeUint64) {
     RlpEncoder encoder;
     encoder.add(uint64_t(0x123456789ABCDEF0));
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     uint64_t value = 0;
@@ -104,7 +108,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeBool) {
     {
         RlpEncoder encoder;
         encoder.add(true);
-        ByteView encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        ByteView encoded(*encoded_result.value());
         
         RlpDecoder decoder(encoded);
         bool value = false;
@@ -115,7 +121,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeBool) {
     {
         RlpEncoder encoder;
         encoder.add(false);
-        ByteView encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        ByteView encoded(*encoded_result.value());
         
         RlpDecoder decoder(encoded);
         bool value = true;
@@ -129,7 +137,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeUint256) {
     RlpEncoder encoder;
     intx::uint256 value256 = intx::uint256(0xDEADBEEFCAFEBABEUL) << 64;
     encoder.add(value256);
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     intx::uint256 decoded = 0;
@@ -142,7 +152,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeBytes) {
     RlpEncoder encoder;
     Bytes data = {0x01, 0x02, 0x03, 0x04, 0x05};
     encoder.add(data);
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     Bytes decoded;
@@ -155,7 +167,9 @@ TEST(RLPTypeSafetyTests, EncodeByteView) {
     RlpEncoder encoder;
     ByteView data{reinterpret_cast<const uint8_t*>("\x01\x02\x03\x04\x05"), 5};
     encoder.add(data);
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     // Verify we can decode the same data back
     RlpDecoder decoder(encoded);
@@ -173,7 +187,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeVectorUint8) {
     for (auto v : original) {
         encoder.add(v);
     }
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     std::vector<uint8_t> decoded;
@@ -191,7 +207,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeVectorUint32) {
     for (auto v : original) {
         encoder.add(v);
     }
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     std::vector<uint32_t> decoded;
@@ -214,7 +232,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeMultipleTypes) {
     encoder.add(u32);
     encoder.add(b);
     encoder.add(data);
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     RlpDecoder decoder(encoded);
     uint8_t du8 = 0;
@@ -237,7 +257,9 @@ TEST(RLPTypeSafetyTests, EncodeDecodeMultipleTypes) {
 TEST(RLPTypeSafetyTests, StaticDecodeWithValidType) {
     RlpEncoder encoder;
     encoder.add(uint32_t(0x12345678));
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     ByteView remaining = encoded;
     auto result = RlpDecoder::decode<uint32_t>(remaining);
@@ -251,7 +273,9 @@ TEST(RLPTypeSafetyTests, StaticDecodeMultipleValues) {
     encoder.add(uint16_t(100));
     encoder.add(uint16_t(200));
     encoder.add(uint16_t(300));
-    ByteView encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    ByteView encoded(*encoded_result.value());
     
     ByteView remaining = encoded;
     auto r1 = RlpDecoder::decode<uint16_t>(remaining, Leftover::kAllow);

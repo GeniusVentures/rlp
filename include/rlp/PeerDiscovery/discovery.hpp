@@ -190,7 +190,9 @@ rlp::Bytes EncodeEndpoint(rlp::ByteView ip, uint16_t udpPort, uint16_t tcpPort) 
     encoder.add(udpPort);
     encoder.add(tcpPort);
     encoder.EndList();
-    rlp::Bytes endpoint_msg = encoder.MoveBytes();
+    auto result = encoder.MoveBytes();
+    if (!result) return rlp::Bytes{};
+    rlp::Bytes endpoint_msg = std::move(result.value());
 
     return endpoint_msg;
 }
@@ -229,7 +231,9 @@ rlp::Bytes EncodePing() {
     encoder.AddRaw(rlp::ByteView(endpoint_to));
     encoder.add(expire_in_1_minute);
     encoder.EndList();
-    rlp::Bytes ping_msg = encoder.MoveBytes();
+    auto result = encoder.MoveBytes();
+    if (!result) return rlp::Bytes{};
+    rlp::Bytes ping_msg = std::move(result.value());
 
     ping_msg.insert(ping_msg.begin(), packet_type);
 

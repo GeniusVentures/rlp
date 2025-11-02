@@ -99,7 +99,9 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint16_t{256}); // Should succeed
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         uint8_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -109,7 +111,9 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint32_t{65536}); // Should succeed
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         uint16_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -119,7 +123,9 @@ TEST_F(RlpErrorConditionsTest, DecoderIntegerOverflow) {
     {
         RlpEncoder encoder;
         encoder.add(uint64_t{4294967296ULL}); // Should succeed
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         uint32_t result;
         EXPECT_FALSE(decoder.read(result)); // Should fail due to overflow
@@ -146,7 +152,9 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
         encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes str;
@@ -157,7 +165,9 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
     {
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{reinterpret_cast<const uint8_t*>("hello"), 5}); // Should succeed
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes list;
@@ -176,30 +186,35 @@ TEST_F(RlpErrorConditionsTest, DecoderTypeErrors) {
 TEST_F(RlpErrorConditionsTest, EncoderEdgeCases) {
     // Test encoder edge cases and error conditions
     
-    // Unclosed list should throw
+    // Unclosed list should return error
     {
         RlpEncoder encoder;
         encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
         // Don't call end_list()
-        EXPECT_THROW({
-            [[maybe_unused]] auto bytes = encoder.GetBytes();
-        }, std::logic_error);
+        auto bytes_result = encoder.GetBytes();
+        EXPECT_FALSE(bytes_result) << "Should fail with unclosed list";
+        EXPECT_EQ(bytes_result.error(), EncodingError::kUnclosedList);
     }
     
-    // Multiple end_list calls should throw
+    // Multiple end_list calls should return error
     {
         RlpEncoder encoder;
         encoder.BeginList();
         encoder.add(uint8_t{42}); // Should succeed
-        encoder.EndList();
-        EXPECT_THROW(encoder.EndList(), std::logic_error);
+        auto end_result1 = encoder.EndList();
+        EXPECT_TRUE(end_result1) << "First EndList should succeed";
+        auto end_result2 = encoder.EndList();
+        EXPECT_FALSE(end_result2) << "Second EndList should fail";
+        EXPECT_EQ(end_result2.error(), EncodingError::kUnmatchedEndList);
     }
     
     // Empty encoder should work
     {
         RlpEncoder encoder;
-        auto bytes = encoder.GetBytes();
+        auto bytes_result = encoder.GetBytes();
+        ASSERT_TRUE(bytes_result);
+        auto bytes = *bytes_result.value();
         EXPECT_TRUE(bytes.empty());
     }
 }
@@ -215,7 +230,9 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint8_t val : {uint8_t(0), uint8_t(1), uint8_t(127), uint8_t(128), uint8_t(254), uint8_t(255)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint8_t result;
@@ -227,7 +244,9 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint16_t val : {uint16_t(0), uint16_t(1), uint16_t(255), uint16_t(256), uint16_t(32767), uint16_t(32768), uint16_t(65534), uint16_t(65535)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint16_t result;
@@ -239,7 +258,9 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
     for (uint32_t val : {uint32_t(0), uint32_t(1), uint32_t(65535), uint32_t(65536), uint32_t(2147483647U), uint32_t(2147483648U), uint32_t(4294967294U), uint32_t(4294967295U)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint32_t result;
@@ -253,7 +274,9 @@ TEST_F(RlpErrorConditionsTest, BoundaryValues) {
                          uint64_t(18446744073709551614ULL), uint64_t(18446744073709551615ULL)}) {
         RlpEncoder encoder;
         encoder.add(val);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint64_t result;
@@ -279,7 +302,11 @@ TEST_F(RlpErrorConditionsTest, DeepNesting) {
         encoder.EndList();
     }
     
-    auto encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    
+    ASSERT_TRUE(encoded_result);
+    
+    auto encoded = *encoded_result.value();
     RlpDecoder decoder(encoded);
     
     // Navigate to the deeply nested value
@@ -299,7 +326,9 @@ TEST_F(RlpErrorConditionsTest, LargeDataStructures) {
     
     RlpEncoder encoder;
     encoder.add(rlp::ByteView{large_data.data(), large_data.size()});
-    auto encoded = encoder.GetBytes();
+    auto encoded_result = encoder.GetBytes();
+    ASSERT_TRUE(encoded_result);
+    auto encoded = *encoded_result.value();
     
     RlpDecoder decoder(encoded);
     rlp::Bytes result;
@@ -315,7 +344,9 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
     {
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{});
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
 
         RlpDecoder decoder(encoded);
         rlp::Bytes result;
@@ -328,7 +359,9 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
         RlpEncoder encoder;
         encoder.BeginList();
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
 
         RlpDecoder decoder(encoded);
         auto list_header = decoder.ReadListHeaderBytes();
@@ -344,7 +377,9 @@ TEST_F(RlpErrorConditionsTest, EmptyStructures) {
             encoder.add(rlp::ByteView{});
         }
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
 
         RlpDecoder decoder(encoded);
         auto list_header = decoder.ReadListHeaderBytes();

@@ -53,7 +53,9 @@ Result<ByteBuffer> HelloMessage::encode() const noexcept {
         
         encoder.EndList();
         
-        return detail::from_rlp_bytes(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (!result) return SessionError::kInvalidMessage;
+        return detail::from_rlp_bytes(*result.value());
     } catch ( ... ) {
         return SessionError::kInvalidMessage;
     }
@@ -165,7 +167,9 @@ Result<ByteBuffer> DisconnectMessage::encode() const noexcept {
         encoder.add(reason_to_byte(reason));
         encoder.EndList();
         
-        return detail::from_rlp_bytes(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (!result) return SessionError::kInvalidMessage;
+        return detail::from_rlp_bytes(*result.value());
     } catch ( ... ) {
         return SessionError::kInvalidMessage;
     }
@@ -208,7 +212,9 @@ Result<ByteBuffer> PingMessage::encode() const noexcept {
         encoder.BeginList();
         encoder.EndList();
         
-        return detail::from_rlp_bytes(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (!result) return SessionError::kInvalidMessage;
+        return detail::from_rlp_bytes(*result.value());
     } catch ( ... ) {
         return SessionError::kInvalidMessage;
     }
@@ -228,7 +234,9 @@ Result<ByteBuffer> PongMessage::encode() const noexcept {
         encoder.BeginList();
         encoder.EndList();
         
-        return detail::from_rlp_bytes(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (!result) return SessionError::kInvalidMessage;
+        return detail::from_rlp_bytes(*result.value());
     } catch ( ... ) {
         return SessionError::kInvalidMessage;
     }

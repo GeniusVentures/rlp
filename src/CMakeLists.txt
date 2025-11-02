@@ -3,6 +3,7 @@
 add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/rlp/rlp_encoder.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/rlp_decoder.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/rlp/rlp_streaming.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/common.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/endian.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/packet_factory.cpp
@@ -36,17 +37,27 @@ target_compile_features(rlp PUBLIC cxx_std_17)
 
 # Explicitly install public headers to the base include directory
 install(FILES
+        # Core headers
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/common.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_decoder.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_encoder.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/types.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/constants.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/errors.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/result.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/traits.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/intx.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/endian.hpp
+        # Encoder/Decoder
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_encoder.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_decoder.hpp
+        # Streaming API
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_streaming.hpp
+        # Peer Discovery
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/discovery.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/packet_factory.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Packet.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Ping.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Ping.cpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Pong.hpp
-        # Add impl/endian.ipp if it exists in include/impl/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp # Install into <prefix>/include/rlp/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp
 )
 
 # Add RLPx subdirectory

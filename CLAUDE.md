@@ -186,6 +186,49 @@
 - Consider pass by value for copyable parameters that are cheap to move and always copied: one less copy, cleaner code
 - Consider emplacement (emplace_back, emplace) instead of insertion: constructs in-place, avoids temporaries, more efficient
 
+## API Design Principles
+- **Always try to make free functions in order to keep class interfaces simple**
+  - Member functions should only be used when they need access to private data or provide core object behavior
+  - Free functions promote loose coupling and make code more testable
+  - Free functions work better with generic programming and function composition
+  - Example: Prefer `encode(encoder, address)` over `encoder.encodeAddress(address)`
+- Separate concerns: Use separate classes for different responsibilities (e.g., streaming state vs. encoder state)
+- Keep class interfaces minimal and focused on core responsibilities
+- **Separate domain-specific types and functions into dedicated files**
+  - Core libraries should not contain domain-specific types (e.g., Ethereum types in RLP library)
+  - Domain-specific functionality should be in separate headers (e.g., rlp_ethereum.hpp for Ethereum types)
+  - This prevents tight coupling and allows users to include only what they need
+  - Example: RLP core (common.hpp, encoder, decoder) is independent; Ethereum support is optional (rlp_ethereum.hpp)
+  - Principle: A library should be usable for its core purpose without forcing users to bring in unrelated domain concepts
+
+## RLP Large Payload Handling
+Large payloads in Ethereum include:
+- Contract creation bytecode / runtime code (many KBs or >100s KB)
+- Transaction calldata for complex transactions (batch operations, deployments, constructor args)
+- Block bodies / receipts when relaying or archiving
+- Arbitrary user data (IPFS pointers, large blobs in calldata)
+
+**Two Approaches for Large Payloads:**
+
+### Approach A: Reserve & Patch Header (Single RLP String)
+- **Use for**: Canonical single RLP string encoding (contract bytecode, calldata, block bodies)
+- **Method**: Reserve header space, stream payload chunks, patch header with final length
+- **Benefits**: Minimal memory overhead, single output stream, produces canonical RLP
+- **Requirements**: Random-access to output buffer, must know final size
+- **API**: `RlpLargeStringEncoder`, `encodeLargeString()`, `decodeLargeString()`
+
+### Approach B: Chunked List Encoding (Multiple RLP Strings)
+- **Use for**: When both sides agree on chunked format (streaming protocols, progressive transfer)
+- **Method**: Emit RLP list where each element is a chunk string
+- **Benefits**: No header patching, append-only, can transmit before knowing total size
+- **Trade-offs**: Not canonical (list-of-strings vs single string), requires reassembly
+- **API**: `RlpChunkedListEncoder`, `encodeChunkedList()`, `decodeChunkedList()`
+
+**When to use which:**
+- Use Approach A for standard Ethereum data structures (canonical encoding required)
+- Use Approach B only when both encoder/decoder agree on chunked protocol
+- Default to Approach A unless you have specific streaming requirements
+
 ## Testing Practice
 - Unit tests should be placed in the test/ directory matching source structure
 - Use cmake test framework for unit tests

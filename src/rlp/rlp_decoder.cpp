@@ -274,6 +274,22 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
     return outcome::success(); // Success
 }
 
+// --- Streaming Support Implementation ---
+
+Result<ByteView> RlpDecoder::PeekPayload() const noexcept {
+    BOOST_OUTCOME_TRY(auto h, PeekHeader());
+    
+    if (h.list) {
+        return DecodingError::kUnexpectedList;
+    }
+    
+    if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
+        return DecodingError::kInputTooShort;
+    }
+    
+    // Return view of payload without consuming
+    return view_.substr(h.header_size_bytes, h.payload_size_bytes);
+}
 
 
 } // namespace rlp

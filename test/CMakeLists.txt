@@ -43,6 +43,10 @@ addtest(rlp_type_safety_tests
         rlp/rlp_type_safety_tests.cpp
 )
 
+addtest(rlp_streaming_decoder_tests
+        rlp/rlp_streaming_decoder_tests.cpp
+)
+
 target_link_libraries(discovery_test PRIVATE rlp)
 target_link_libraries(rlp_endian_tests PRIVATE rlp)
 target_link_libraries(rlp_ethereum_tests PRIVATE rlp)
@@ -54,6 +58,7 @@ target_link_libraries(rlp_property_tests PRIVATE rlp)
 target_link_libraries(rlp_benchmark_tests PRIVATE rlp)
 target_link_libraries(rlp_random_tests PRIVATE rlp)
 target_link_libraries(rlp_type_safety_tests PRIVATE rlp)
+target_link_libraries(rlp_streaming_decoder_tests PRIVATE rlp)
 
 # Add RLPx tests subdirectory
 add_subdirectory(rlpx)

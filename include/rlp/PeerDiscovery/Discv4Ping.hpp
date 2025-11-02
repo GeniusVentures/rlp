@@ -33,9 +33,11 @@ public:
             encoder.add( udpPort );
             encoder.add( tcpPort );
             encoder.EndList();
-            rlp::Bytes endpointMsg = encoder.MoveBytes();
-
-            return endpointMsg;
+            auto bytes_result = encoder.MoveBytes();
+            if (!bytes_result) {
+                return rlp::Bytes(); // Return empty on error
+            }
+            return std::move(bytes_result.value());
         }
     };
 

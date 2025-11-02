@@ -80,7 +80,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint8) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint8_t decoded;
@@ -96,7 +98,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint16) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint16_t decoded;
@@ -112,7 +116,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint32) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint32_t decoded;
@@ -128,7 +134,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint64) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         uint64_t decoded;
@@ -144,7 +152,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint256) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         intx::uint256 decoded;
@@ -160,7 +170,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyBool) {
         
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         bool decoded;
@@ -175,7 +187,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyByteArrays) {
         auto original = random_bytes(0, 500);
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{original.data(), original.size()});
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         rlp::Bytes decoded;
         ASSERT_TRUE(decoder.read(decoded)) << "Iteration " << iteration << ", size: " << original.size();
@@ -229,7 +243,9 @@ TEST_F(PropertyBasedTest, RoundtripPropertyMixedLists) {
             }
         }
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         auto list_header = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(list_header.has_value()) << "Iteration " << iteration;
@@ -347,7 +363,9 @@ TEST_F(PropertyBasedTest, FuzzEncoderDecoder) {
         generate_random_structure(complexity);
         
         // Encode and then decode - should not crash
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         RlpDecoder decoder(encoded);
         
         // Try to decode as much as possible without specific expectations
@@ -412,11 +430,15 @@ TEST_F(PropertyBasedTest, EncodingIsDeterministic) {
         // Encode the same value multiple times
         RlpEncoder encoder1;
         encoder1.add(value);
-        auto encoded1 = encoder1.GetBytes();
+        auto encoded1_result = encoder1.GetBytes();
+        ASSERT_TRUE(encoded1_result);
+        auto& encoded1 = *encoded1_result.value();
         
         RlpEncoder encoder2;
         encoder2.add(value);
-        auto encoded2 = encoder2.GetBytes();
+        auto encoded2_result = encoder2.GetBytes();
+        ASSERT_TRUE(encoded2_result);
+        auto& encoded2 = *encoded2_result.value();
         
         EXPECT_EQ(encoded1, encoded2) << "Iteration " << iteration << ", value: " << value;
     });
@@ -433,7 +455,9 @@ TEST_F(PropertyBasedTest, EncodingIsMinimal) {
         
         RlpEncoder encoder;
         encoder.add(value);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Verify the encoding follows RLP rules for minimal representation
         if (value == 0) {

@@ -17,7 +17,11 @@ std::vector<uint8_t> Discv4Ping::RlpPayload()
     encoder.add( expire_in_1_minute );
     encoder.EndList();
 
-    rlp::Bytes bytes = encoder.MoveBytes();
+    auto bytes_result = encoder.MoveBytes();
+    if (!bytes_result) {
+        return std::vector<uint8_t>(); // Return empty on error
+    }
+    rlp::Bytes bytes = std::move(bytes_result.value());
     bytes.insert( bytes.begin(), PacketType() );
     return std::vector<uint8_t>( bytes.begin(), bytes.end() );
 }

@@ -145,7 +145,12 @@ private:
             endpoint_encoder.add(from_port);
             endpoint_encoder.add(from_port);
             endpoint_encoder.EndList();
-            auto endpoint_bytes = endpoint_encoder.MoveBytes();
+            auto endpoint_result = endpoint_encoder.MoveBytes();
+            if (!endpoint_result) {
+                std::cerr << "Failed to encode endpoint" << std::endl;
+                return;
+            }
+            auto endpoint_bytes = std::move(endpoint_result.value());
             
             // Get current timestamp + 60 seconds
             uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + 60;
@@ -158,7 +163,12 @@ private:
             encoder.add(expiration);
             encoder.EndList();
             
-            auto payload = encoder.MoveBytes();
+            auto result = encoder.MoveBytes();
+            if (!result) {
+                std::cerr << "Failed to encode PONG payload" << std::endl;
+                return;
+            }
+            auto payload = std::move(result.value());
             payload.insert(payload.begin(), packet_type);
             
             // Hash the payload - convert to std::vector for Keccak256
@@ -337,7 +347,9 @@ TEST(PeerDiscovery, PongPacketParsing) {
     endpoint_encoder.add(uint16_t{30303});
     endpoint_encoder.add(uint16_t{30303});
     endpoint_encoder.EndList();
-    auto endpoint_bytes = endpoint_encoder.MoveBytes();
+    auto endpoint_result = endpoint_encoder.MoveBytes();
+    ASSERT_TRUE(endpoint_result) << "Failed to encode endpoint";
+    auto endpoint_bytes = std::move(endpoint_result.value());
     
     // Create ping hash (32 bytes)
     std::array<uint8_t, 32> ping_hash;
@@ -352,7 +364,9 @@ TEST(PeerDiscovery, PongPacketParsing) {
     encoder.add(expiration);
     encoder.EndList();
     
-    auto payload = encoder.MoveBytes();
+    auto payload_result = encoder.MoveBytes();
+    ASSERT_TRUE(payload_result) << "Failed to encode PONG payload";
+    auto payload = std::move(payload_result.value());
     payload.insert(payload.begin(), packet_type);
     
     // Create a minimal valid packet (we'll skip signature for this unit test)

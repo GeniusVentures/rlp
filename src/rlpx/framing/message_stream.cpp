@@ -34,7 +34,9 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         
         encoder.EndList();
         
-        ByteBuffer message_data = detail::from_rlp_bytes(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (!result) co_return SessionError::kInvalidMessage;
+        ByteBuffer message_data = detail::from_rlp_bytes(*result.value());
         
         // TODO: Compress if enabled
         // if ( params.compress && compression_enabled_ ) {
