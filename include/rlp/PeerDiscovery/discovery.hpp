@@ -183,21 +183,31 @@ private:
     }
 };
 
-rlp::Bytes EncodeEndpoint(rlp::ByteView ip, uint16_t udpPort, uint16_t tcpPort) {
+rlp::EncodingResult<rlp::Bytes> EncodeEndpoint(rlp::ByteView ip, uint16_t udpPort, uint16_t tcpPort) {
     rlp::RlpEncoder encoder;
-    encoder.BeginList();
-    encoder.add(ip);
-    encoder.add(udpPort);
-    encoder.add(tcpPort);
-    encoder.EndList();
+    if (auto res = encoder.BeginList(); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.add(ip); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.add(udpPort); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.add(tcpPort); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.EndList(); !res) {
+        return res.error();
+    }
     auto result = encoder.MoveBytes();
-    if (!result) return rlp::Bytes{};
+    if (!result) return result.error();
     rlp::Bytes endpoint_msg = std::move(result.value());
 
     return endpoint_msg;
 }
 
-rlp::Bytes EncodePing() {
+rlp::EncodingResult<rlp::Bytes> EncodePing() {
     uint8_t packet_type = 0x01;
 
     uint8_t from_ip_bytes[4];
@@ -218,21 +228,39 @@ rlp::Bytes EncodePing() {
     );
 
     uint8_t version = {0x04}; // Discv4
-    rlp::Bytes endpoint_from = EncodeEndpoint(sv_from, 30303, 30303);
-    rlp::Bytes endpoint_to = EncodeEndpoint(sv_to, 30303, 30303);
+    auto endpoint_from_result = EncodeEndpoint(sv_from, 30303, 30303);
+    if (!endpoint_from_result) {
+        return endpoint_from_result.error();
+    }
+    auto endpoint_to_result = EncodeEndpoint(sv_to, 30303, 30303);
+    if (!endpoint_to_result) {
+        return endpoint_to_result.error();
+    }
 
     uint32_t now = static_cast<std::uint32_t>(std::time(nullptr));
     uint32_t expire_in_1_minute = now + 60;
 
     rlp::RlpEncoder encoder;
-    encoder.BeginList();
-    encoder.add(version);
-    encoder.AddRaw(rlp::ByteView(endpoint_from));
-    encoder.AddRaw(rlp::ByteView(endpoint_to));
-    encoder.add(expire_in_1_minute);
-    encoder.EndList();
+    if (auto res = encoder.BeginList(); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.add(version); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.AddRaw(rlp::ByteView(endpoint_from_result.value())); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.AddRaw(rlp::ByteView(endpoint_to_result.value())); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.add(expire_in_1_minute); !res) {
+        return res.error();
+    }
+    if (auto res = encoder.EndList(); !res) {
+        return res.error();
+    }
     auto result = encoder.MoveBytes();
-    if (!result) return rlp::Bytes{};
+    if (!result) return result.error();
     rlp::Bytes ping_msg = std::move(result.value());
 
     ping_msg.insert(ping_msg.begin(), packet_type);
