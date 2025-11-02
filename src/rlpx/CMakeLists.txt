@@ -38,7 +38,10 @@ target_compile_features(rlpx PUBLIC cxx_std_17)
 
 # Disable exceptions to ensure we use Result<> instead
 if(MSVC)
-    target_compile_options(rlpx PRIVATE /EHs-c-)
+    # Use generator expression to replace default /EHsc with our exception-disabled flags
+    target_compile_options(rlpx PRIVATE 
+        $<$<COMPILE_LANGUAGE:CXX>:/EHs-c->
+    )
     target_compile_definitions(rlpx PRIVATE _HAS_EXCEPTIONS=0 BOOST_NO_EXCEPTIONS)
 else()
     target_compile_options(rlpx PRIVATE -fno-exceptions)
