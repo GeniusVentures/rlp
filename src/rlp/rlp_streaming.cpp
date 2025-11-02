@@ -34,15 +34,27 @@ Bytes encode_string_header(size_t payload_len) {
 // Approach A: Reserve & Patch Header Implementation
 // ============================================================================
 
+// Factory method implementation
+StreamingResult<RlpLargeStringEncoder> RlpLargeStringEncoder::create(RlpEncoder& encoder) {
+    // Validate that encoder is in a valid state
+    auto buffer_result = encoder.GetBytes();
+    if (!buffer_result) {
+        return StreamingError::kNotFinalized; // Encoder has unclosed lists
+    }
+    
+    // Use private constructor
+    return RlpLargeStringEncoder(encoder);
+}
+
 RlpLargeStringEncoder::RlpLargeStringEncoder(RlpEncoder& encoder)
     : encoder_(encoder)
     , header_start_(encoder.size())
     , payload_start_(header_start_ + 9) // Reserve max header size (1 + 8 bytes)
     , payload_size_(0)
-    , flushed_(false) {
+    , finished_(false) {
     // Reserve maximum possible header space (1 byte prefix + 8 bytes length)
     encoder_.reserve(encoder_.size() + 9);
-    // Temporarily fill with zeros (will be patched in flush())
+    // Temporarily fill with zeros (will be patched in finish())
     auto buffer_result = encoder_.GetBytes();
     if (buffer_result) {
         Bytes* buffer = buffer_result.value();
@@ -52,8 +64,15 @@ RlpLargeStringEncoder::RlpLargeStringEncoder(RlpEncoder& encoder)
     }
 }
 
-StreamingOperationResult RlpLargeStringEncoder::write(ByteView chunk) {
-    if (flushed_) {
+// Destructor - automatically finish if not already done
+RlpLargeStringEncoder::~RlpLargeStringEncoder() {
+    if (!finished_) {
+        (void)finish(); // Ignore result in destructor
+    }
+}
+
+StreamingOperationResult RlpLargeStringEncoder::addChunk(ByteView chunk) {
+    if (finished_) {
         return StreamingError::kAlreadyFinalized;
     }
     
@@ -69,11 +88,11 @@ StreamingOperationResult RlpLargeStringEncoder::write(ByteView chunk) {
     return outcome::success();
 }
 
-StreamingOperationResult RlpLargeStringEncoder::flush() {
-    if (flushed_) {
+StreamingOperationResult RlpLargeStringEncoder::finish() {
+    if (finished_) {
         return StreamingError::kAlreadyFinalized;
     }
-    flushed_ = true;
+    finished_ = true;
     
     // Encode the actual header based on final payload size
     Bytes actual_header = encode_string_header(payload_size_);
@@ -126,7 +145,7 @@ RlpChunkedListEncoder::RlpChunkedListEncoder(RlpEncoder& encoder, size_t chunk_s
     , chunk_size_(chunk_size)
     , chunk_count_(0)
     , total_bytes_(0)
-    , flushed_(false)
+    , finished_(false)
     , list_started_(false) {
     buffer_.reserve(chunk_size);
 }
@@ -138,8 +157,15 @@ StreamingResult<RlpChunkedListEncoder> RlpChunkedListEncoder::create(RlpEncoder&
     return RlpChunkedListEncoder(encoder, chunk_size);
 }
 
-StreamingOperationResult RlpChunkedListEncoder::write(ByteView data) {
-    if (flushed_) {
+// Destructor - automatically finish if not already done
+RlpChunkedListEncoder::~RlpChunkedListEncoder() {
+    if (!finished_) {
+        (void)finish(); // Ignore result in destructor
+    }
+}
+
+StreamingOperationResult RlpChunkedListEncoder::addChunk(ByteView data) {
+    if (finished_) {
         return StreamingError::kAlreadyFinalized;
     }
     
@@ -183,11 +209,11 @@ void RlpChunkedListEncoder::flushBuffer() {
     buffer_.clear();
 }
 
-StreamingOperationResult RlpChunkedListEncoder::flush() {
-    if (flushed_) {
+StreamingOperationResult RlpChunkedListEncoder::finish() {
+    if (finished_) {
         return StreamingError::kAlreadyFinalized;
     }
-    flushed_ = true;
+    finished_ = true;
     
     // Flush any remaining data
     if (!buffer_.empty()) {
