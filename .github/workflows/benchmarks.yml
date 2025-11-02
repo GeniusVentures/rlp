@@ -34,13 +34,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: true
+        submodules: recursive
     
     - name: Install dependencies (Linux)
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build
+        sudo apt-get install -y cmake ninja-build curl
     
     - name: Configure CMake
       run: ${{ matrix.config_cmd }}

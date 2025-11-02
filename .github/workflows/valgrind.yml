@@ -18,12 +18,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
       with:
-        submodules: true
+        submodules: recursive
     
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build valgrind
+        sudo apt-get install -y cmake ninja-build valgrind curl
     
     - name: Verify Valgrind installation
       run: |
