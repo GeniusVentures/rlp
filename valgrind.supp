@@ -1,0 +1,79 @@
+# Valgrind suppression file for RLP library
+# This file suppresses known false positives and third-party library issues
+
+# Suppress potential false positives from Boost
+{
+   boost_system_error_category
+   Memcheck:Leak
+   ...
+   fun:*boost*system*error_category*
+}
+
+{
+   boost_filesystem_leak
+   Memcheck:Leak
+   ...
+   fun:*boost*filesystem*
+}
+
+# Suppress potential OpenSSL leaks (initialization artifacts)
+{
+   openssl_init
+   Memcheck:Leak
+   ...
+   fun:CRYPTO_*
+}
+
+{
+   openssl_rand
+   Memcheck:Leak
+   ...
+   fun:RAND_*
+}
+
+# Suppress secp256k1 context initialization
+{
+   secp256k1_context
+   Memcheck:Leak
+   ...
+   fun:secp256k1_context_*
+}
+
+# Suppress Google Test internal allocations
+{
+   gtest_internal
+   Memcheck:Leak
+   ...
+   obj:*/libgtest*
+}
+
+# Suppress C++ standard library initialization
+{
+   std_locale_init
+   Memcheck:Leak
+   ...
+   fun:*locale*
+}
+
+{
+   std_iostream_init
+   Memcheck:Leak
+   ...
+   fun:*iostream*
+}
+
+# Suppress thread-local storage leaks (common false positive)
+{
+   tls_get_addr
+   Memcheck:Leak
+   ...
+   fun:__tls_get_addr
+}
+
+# Windows-specific suppressions (if running under Wine or WSL)
+{
+   wine_thread_init
+   Memcheck:Leak
+   ...
+   fun:RtlAllocateHeap
+}
