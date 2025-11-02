@@ -216,6 +216,42 @@ if(BUILD_TESTS)
         target_link_libraries(rlpx_state_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_message_routing_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_socket_lifecycle_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+        
+        # Add fuzz testing targets if enabled
+        if(ENABLE_FUZZING)
+                if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                        message(WARNING "Fuzzing is best supported with Clang. Current compiler: ${CMAKE_CXX_COMPILER_ID}")
+                endif()
+                
+                # Fuzzing flags
+                set(FUZZING_FLAGS -fsanitize=fuzzer,address -fno-omit-frame-pointer -g)
+                
+                add_executable(fuzz_rlp_decoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_decoder.cpp")
+                target_link_libraries(fuzz_rlp_decoder PRIVATE ${PROJECT_NAME})
+                target_compile_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
+                target_link_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
+                
+                add_executable(fuzz_rlp_encoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_encoder.cpp")
+                target_link_libraries(fuzz_rlp_encoder PRIVATE ${PROJECT_NAME})
+                target_compile_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
+                target_link_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
+                
+                # Create corpus directories
+                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_decoder)
+                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_encoder)
+                
+                # Add some initial corpus files
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/empty "")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_00 "\x00")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_01 "\x01")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_7f "\x7f")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/short_string "\x85hello")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/empty_list "\xc0")
+                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/list_one "\xc1\x01")
+                
+                message(STATUS "Fuzzing enabled. Fuzz targets: fuzz_rlp_decoder, fuzz_rlp_encoder")
+        endif()
+        
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
