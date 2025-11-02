@@ -335,15 +335,16 @@ TEST(RLPStreamingDecoderTests, RoundTripLargeString) {
     
     // Encode using streaming encoder
     RlpEncoder encoder;
-    RlpLargeStringEncoder stream_encoder(encoder);
+    auto stream_result = RlpLargeStringEncoder::create(encoder);
+    ASSERT_TRUE(stream_result);
+    auto stream_encoder = std::move(stream_result.value());
     
     for (size_t i = 0; i < original_data.size(); i += 4096) {
         size_t chunk_size = std::min<size_t>(4096, original_data.size() - i);
-        auto write_result = stream_encoder.write(ByteView(original_data.data() + i, chunk_size));
+        auto write_result = stream_encoder.addChunk(ByteView(original_data.data() + i, chunk_size));
         ASSERT_TRUE(write_result);
     }
-    auto flush_result = stream_encoder.flush();
-    ASSERT_TRUE(flush_result);
+    // Automatic finish() via RAII
     
     auto encoded_result = encoder.GetBytes();
     
@@ -384,17 +385,18 @@ TEST(RLPStreamingDecoderTests, RoundTripChunkedList) {
     
     // Encode using chunked list encoder
     RlpEncoder encoder;
-    auto chunked_result = RlpChunkedListEncoder::create(encoder, 5000);
-    ASSERT_TRUE(chunked_result);
-    auto& stream_encoder = chunked_result.value();
-    
-    for (size_t i = 0; i < original_data.size(); i += 2000) {
-        size_t chunk_size = std::min<size_t>(2000, original_data.size() - i);
-        auto write_result = stream_encoder.write(ByteView(original_data.data() + i, chunk_size));
-        ASSERT_TRUE(write_result);
+    {
+        auto chunked_result = RlpChunkedListEncoder::create(encoder, 5000);
+        ASSERT_TRUE(chunked_result);
+        auto stream_encoder = std::move(chunked_result.value());
+        
+        for (size_t i = 0; i < original_data.size(); i += 2000) {
+            size_t chunk_size = std::min<size_t>(2000, original_data.size() - i);
+            auto write_result = stream_encoder.addChunk(ByteView(original_data.data() + i, chunk_size));
+            ASSERT_TRUE(write_result);
+        }
+        // Automatic finish() via RAII
     }
-    auto flush_result = stream_encoder.flush();
-    ASSERT_TRUE(flush_result);
     
     auto encoded_result = encoder.GetBytes();
     

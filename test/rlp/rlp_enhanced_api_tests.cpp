@@ -83,18 +83,19 @@ TEST(RLPEnhancedAPITests, StreamingVeryLargePayload) {
     encoder.reserve(large_data.size() + 10); // Pre-allocate
     
     {
-        RlpLargeStringEncoder stream(encoder);
+        // Use factory method to create encoder
+        auto stream_result = RlpLargeStringEncoder::create(encoder);
+        ASSERT_TRUE(stream_result);
+        auto stream = std::move(stream_result.value());
         
         // Add data in chunks
         for (size_t i = 0; i < large_data.size(); i += 8192) {
             size_t chunk_size = std::min<size_t>(8192, large_data.size() - i);
-            auto write_result = stream.write(ByteView(large_data.data() + i, chunk_size));
+            auto write_result = stream.addChunk(ByteView(large_data.data() + i, chunk_size));
             EXPECT_TRUE(write_result);
         }
         
-        // Must explicitly flush
-        auto flush_result = stream.flush();
-        EXPECT_TRUE(flush_result);
+        // Automatic finish() via RAII (destructor)
     }
     
     auto encoded_result = encoder.GetBytes();
@@ -153,15 +154,16 @@ TEST(RLPEnhancedAPITests, ChunkedListDecodeWithCallback) {
     }
 
     RlpEncoder encoder;
-    auto create_result = RlpChunkedListEncoder::create(encoder, 5000);
-    ASSERT_TRUE(create_result);
-    
-    auto& chunked = create_result.value();
-    auto write_result = chunked.write(ByteView(data.data(), data.size()));
-    EXPECT_TRUE(write_result);
-    
-    auto flush_result = chunked.flush();
-    EXPECT_TRUE(flush_result);
+    {
+        auto create_result = RlpChunkedListEncoder::create(encoder, 5000);
+        ASSERT_TRUE(create_result);
+        
+        auto chunked = std::move(create_result.value());
+        auto write_result = chunked.addChunk(ByteView(data.data(), data.size()));
+        EXPECT_TRUE(write_result);
+        
+        // Automatic finish() via RAII
+    }
     
     auto encoded_result = encoder.GetBytes();
     
@@ -293,33 +295,37 @@ TEST(RLPEnhancedAPITests, ChunkedListEmptyData) {
 // Error Handling Tests
 // ============================================================================
 
-TEST(RLPEnhancedAPITests, DoubleFlushLargeString) {
-    // Test that double flush returns error
+TEST(RLPEnhancedAPITests, DoubleFinishLargeString) {
+    // Test that double finish returns error
     RlpEncoder encoder;
-    RlpLargeStringEncoder stream(encoder);
+    auto stream_result = RlpLargeStringEncoder::create(encoder);
+    ASSERT_TRUE(stream_result);
+    auto stream = std::move(stream_result.value());
     
-    auto write_result = stream.write(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
+    auto write_result = stream.addChunk(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
     EXPECT_TRUE(write_result);
     
-    auto flush1 = stream.flush();
-    EXPECT_TRUE(flush1);
+    auto finish1 = stream.finish();
+    EXPECT_TRUE(finish1);
     
-    // Second flush should fail
-    auto flush2 = stream.flush();
-    EXPECT_FALSE(flush2);
-    EXPECT_EQ(flush2.error(), StreamingError::kAlreadyFinalized);
+    // Second finish should fail
+    auto finish2 = stream.finish();
+    EXPECT_FALSE(finish2);
+    EXPECT_EQ(finish2.error(), StreamingError::kAlreadyFinalized);
 }
 
-TEST(RLPEnhancedAPITests, WriteAfterFlushLargeString) {
-    // Test that write after flush returns error
+TEST(RLPEnhancedAPITests, WriteAfterFinishLargeString) {
+    // Test that write after finish returns error
     RlpEncoder encoder;
-    RlpLargeStringEncoder stream(encoder);
+    auto stream_result = RlpLargeStringEncoder::create(encoder);
+    ASSERT_TRUE(stream_result);
+    auto stream = std::move(stream_result.value());
     
-    auto flush_result = stream.flush();
-    EXPECT_TRUE(flush_result);
+    auto finish_result = stream.finish();
+    EXPECT_TRUE(finish_result);
     
-    // Write after flush should fail
-    auto write_result = stream.write(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
+    // Write after finish should fail
+    auto write_result = stream.addChunk(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
     EXPECT_FALSE(write_result);
     EXPECT_EQ(write_result.error(), StreamingError::kAlreadyFinalized);
 }
@@ -332,34 +338,34 @@ TEST(RLPEnhancedAPITests, InvalidChunkSize) {
     EXPECT_EQ(create_result.error(), StreamingError::kInvalidChunkSize);
 }
 
-TEST(RLPEnhancedAPITests, DoubleFlushChunkedList) {
-    // Test that double flush returns error
+TEST(RLPEnhancedAPITests, DoubleFinishChunkedList) {
+    // Test that double finish returns error
     RlpEncoder encoder;
     auto create_result = RlpChunkedListEncoder::create(encoder, 1024);
     ASSERT_TRUE(create_result);
     
-    auto& chunked = create_result.value();
-    auto flush1 = chunked.flush();
-    EXPECT_TRUE(flush1);
+    auto chunked = std::move(create_result.value());
+    auto finish1 = chunked.finish();
+    EXPECT_TRUE(finish1);
     
-    // Second flush should fail
-    auto flush2 = chunked.flush();
-    EXPECT_FALSE(flush2);
-    EXPECT_EQ(flush2.error(), StreamingError::kAlreadyFinalized);
+    // Second finish should fail
+    auto finish2 = chunked.finish();
+    EXPECT_FALSE(finish2);
+    EXPECT_EQ(finish2.error(), StreamingError::kAlreadyFinalized);
 }
 
-TEST(RLPEnhancedAPITests, WriteAfterFlushChunkedList) {
-    // Test that write after flush returns error
+TEST(RLPEnhancedAPITests, WriteAfterFinishChunkedList) {
+    // Test that write after finish returns error
     RlpEncoder encoder;
     auto create_result = RlpChunkedListEncoder::create(encoder, 1024);
     ASSERT_TRUE(create_result);
     
-    auto& chunked = create_result.value();
-    auto flush_result = chunked.flush();
-    EXPECT_TRUE(flush_result);
+    auto chunked = std::move(create_result.value());
+    auto finish_result = chunked.finish();
+    EXPECT_TRUE(finish_result);
     
-    // Write after flush should fail
-    auto write_result = chunked.write(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
+    // Write after finish should fail
+    auto write_result = chunked.addChunk(ByteView(reinterpret_cast<const uint8_t*>("test"), 4));
     EXPECT_FALSE(write_result);
     EXPECT_EQ(write_result.error(), StreamingError::kAlreadyFinalized);
 }
