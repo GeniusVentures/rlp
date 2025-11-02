@@ -240,14 +240,8 @@ if(BUILD_TESTS)
                 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_decoder)
                 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_encoder)
                 
-                # Add some initial corpus files
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/empty "")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_00 "\x00")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_01 "\x01")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/single_7f "\x7f")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/short_string "\x85hello")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/empty_list "\xc0")
-                file(WRITE ${CMAKE_BINARY_DIR}/corpus_decoder/list_one "\xc1\x01")
+                # Note: Initial corpus files will be created at runtime by the fuzz targets
+                # CMake's file(WRITE) doesn't support hex escapes like \x00
                 
                 message(STATUS "Fuzzing enabled. Fuzz targets: fuzz_rlp_decoder, fuzz_rlp_encoder")
         endif()
