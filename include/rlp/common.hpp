@@ -13,8 +13,9 @@
 namespace rlp {
 
 // Utility function - implementation in common.cpp
-std::string hexToString(ByteView bv);
+std::string hexToString(ByteView bv) noexcept;
 
 } // namespace rlp
 
 #endif // RLP_COMMON_HPP
+    

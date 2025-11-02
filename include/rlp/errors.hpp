@@ -42,9 +42,9 @@ enum class StreamingError {
 };
 
 // Error stringification - implementation in common.cpp
-const char* encoding_error_to_string(EncodingError err);
-const char* decoding_error_to_string(DecodingError err);
-const char* streaming_error_to_string(StreamingError err);
+const char* encoding_error_to_string(EncodingError err) noexcept;
+const char* decoding_error_to_string(DecodingError err) noexcept;
+const char* streaming_error_to_string(StreamingError err) noexcept;
 
 } // namespace rlp
 

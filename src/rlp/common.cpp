@@ -4,7 +4,7 @@
 
 namespace rlp {
 
-    const char* encoding_error_to_string(EncodingError err) {
+    const char* encoding_error_to_string(EncodingError err) noexcept {
         switch (err) {
             case EncodingError::kPayloadTooLarge: return "RLP Encoding: Payload exceeds 64-bit limit";
             case EncodingError::kEmptyInput: return "RLP Encoding: Empty input not allowed";
@@ -14,7 +14,7 @@ namespace rlp {
         }
     }
 
-    const char* decoding_error_to_string(DecodingError err) {
+    const char* decoding_error_to_string(DecodingError err) noexcept {
         switch (err) {
             case DecodingError::kOverflow: return "RLP Overflow";
             case DecodingError::kLeadingZero: return "RLP Leading Zero";
@@ -36,7 +36,7 @@ namespace rlp {
         }
     }
 
-    const char* streaming_error_to_string(StreamingError err) {
+    const char* streaming_error_to_string(StreamingError err) noexcept {
         switch (err) {
             case StreamingError::kAlreadyFinalized: return "RLP Streaming: Already finalized";
             case StreamingError::kNotFinalized: return "RLP Streaming: Not finalized";
@@ -46,7 +46,7 @@ namespace rlp {
         }
     }
 
-    std::string hexToString(ByteView bv) {
+    std::string hexToString(ByteView bv) noexcept {
         std::stringstream ss;
         ss << std::setfill('0') << std::hex;
         for (auto &byte : bv) {
