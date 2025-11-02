@@ -10,7 +10,7 @@
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(WARNING "Fuzzing is best supported with Clang. Current compiler: ${CMAKE_CXX_COMPILER_ID}")
 endif()
-
+     dsad
 # Fuzzing flags
 set(FUZZING_FLAGS
     -fsanitize=fuzzer,address
