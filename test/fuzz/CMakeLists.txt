@@ -41,8 +41,8 @@ if(ENABLE_FUZZING)
     endfunction()
     
     # Add fuzz targets
-    add_fuzz_target(fuzz_rlp_decoder ${CMAKE_CURRENT_LIST_DIR}/fuzz_rlp_decoder.cpp)
-    add_fuzz_target(fuzz_rlp_encoder ${CMAKE_CURRENT_LIST_DIR}/fuzz_rlp_encoder.cpp)
+    add_fuzz_target(fuzz_rlp_decoder ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_rlp_decoder.cpp)
+    add_fuzz_target(fuzz_rlp_encoder ${CMAKE_CURRENT_SOURCE_DIR}/fuzz_rlp_encoder.cpp)
     
     # Create a corpus directory
     file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/corpus_decoder)
