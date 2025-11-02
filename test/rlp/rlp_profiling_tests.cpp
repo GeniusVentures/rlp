@@ -289,11 +289,16 @@ TEST(RLPProfiling, MixedWorkload) {
         auto header_result = decoder.ReadListHeaderBytes();
         ASSERT_TRUE(header_result);
         
-        // Skip header fields
+        // Skip header fields: 6 Bytes, 4 uint64_t, 1 Bytes
         Bytes temp_bytes;
-        for (int i = 0; i < 10; ++i) {
-            decoder.read(temp_bytes);
+        for (int i = 0; i < 6; ++i) {
+            (void)decoder.read(temp_bytes);
         }
+        uint64_t temp_uint;
+        for (int i = 0; i < 4; ++i) {
+            (void)decoder.read(temp_uint);
+        }
+        (void)decoder.read(temp_bytes); // extra data
         
         // Read transactions list
         auto tx_list_result = decoder.ReadListHeaderBytes();
@@ -303,10 +308,17 @@ TEST(RLPProfiling, MixedWorkload) {
             auto tx_header = decoder.ReadListHeaderBytes();
             ASSERT_TRUE(tx_header);
             
-            // Skip transaction fields
-            for (int j = 0; j < 9; ++j) {
-                decoder.read(temp_bytes);
-            }
+            // Skip transaction fields: 3 uint64_t, 1 Bytes, 1 uint64_t, 1 Bytes, 1 uint8_t, 2 Bytes
+            (void)decoder.read(temp_uint);  // nonce
+            (void)decoder.read(temp_uint);  // gas price
+            (void)decoder.read(temp_uint);  // gas limit
+            (void)decoder.read(temp_bytes); // to address
+            (void)decoder.read(temp_uint);  // value
+            (void)decoder.read(temp_bytes); // data
+            uint8_t temp_uint8;
+            (void)decoder.read(temp_uint8); // v
+            (void)decoder.read(temp_bytes); // r
+            (void)decoder.read(temp_bytes); // s
         }
     }
 }
