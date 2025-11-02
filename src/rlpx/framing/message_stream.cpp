@@ -112,19 +112,14 @@ Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
         
         Message msg{msg_id, std::move(payload)};
         co_return msg;
-        
-    } catch ( ... ) {
-        co_return SessionError::kInvalidMessage;
-    }
 }
 
 Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) noexcept {
-    try {
-        // Encrypt and send frame
-        FrameEncryptParams params{
-            .frame_data = frame_data,
-            .is_first_frame = true
-        };
+    // Encrypt and send frame
+    FrameEncryptParams params{
+        .frame_data = frame_data,
+        .is_first_frame = true
+    };
         
         auto encrypted_result = cipher_->encrypt_frame(params);
         if ( !encrypted_result ) {
@@ -138,20 +133,16 @@ Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) no
         }
         
         co_return outcome::success();
-    } catch ( ... ) {
-        co_return FramingError::kEncryptionFailed;
-    }
 }
 
 Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
-    try {
-        // Read frame header (32 bytes total = 16 header + 16 MAC)
-        constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
-        auto header_with_mac_result = co_await transport_.read_exact(kFrameHeaderWithMacSize);
-        if ( !header_with_mac_result ) {
-            ByteBuffer empty;
-            co_return empty;
-        }
+    // Read frame header (32 bytes total = 16 header + 16 MAC)
+    constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
+    auto header_with_mac_result = co_await transport_.read_exact(kFrameHeaderWithMacSize);
+    if ( !header_with_mac_result ) {
+        ByteBuffer empty;
+        co_return empty;
+    }
         
         const auto& header_data = header_with_mac_result.value();
         
@@ -206,11 +197,6 @@ Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
         }
         
         co_return decrypted_result.value();
-        
-    } catch ( ... ) {
-        ByteBuffer empty;
-        co_return empty;
-    }
 }
 
 } // namespace rlpx::framing
