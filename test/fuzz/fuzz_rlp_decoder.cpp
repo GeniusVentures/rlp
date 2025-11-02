@@ -12,7 +12,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
     
     // Create a ByteView from the fuzz input
-    rlp::ByteView input(reinterpret_cast<const char*>(data), size);
+    rlp::ByteView input(reinterpret_cast<const unsigned char*>(data), size);
     
     // Test 1: Decode arbitrary data
     rlp::RlpDecoder decoder(input);
