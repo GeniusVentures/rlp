@@ -47,7 +47,7 @@ jobs:
           -G Ninja \
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_ASAN=ON \
           -DENABLE_UBSAN=ON \
           -S build/Linux
@@ -107,7 +107,7 @@ jobs:
           -G Ninja \
           -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }} \
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }} \
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_TSAN=ON \
           -S build/Linux
     
