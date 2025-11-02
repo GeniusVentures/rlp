@@ -36,32 +36,32 @@ Bytes encode_string_header(size_t payload_len) {
 
 // Factory method implementation
 StreamingResult<RlpLargeStringEncoder> RlpLargeStringEncoder::create(RlpEncoder& encoder) {
-    // Validate that encoder is in a valid state
+    // Validate that encoder is in a valid state and reserve header space
     auto buffer_result = encoder.GetBytes();
     if (!buffer_result) {
         return StreamingError::kNotFinalized; // Encoder has unclosed lists
     }
     
-    // Use private constructor
+    // Reserve maximum possible header space (1 byte prefix + 8 bytes length)
+    encoder.reserve(encoder.size() + 9);
+    
+    // Temporarily fill with zeros (will be patched in finish())
+    Bytes* buffer = buffer_result.value();
+    for (size_t i = 0; i < 9; ++i) {
+        buffer->push_back(0);
+    }
+    
+    // Use private constructor - header space is already initialized
     return RlpLargeStringEncoder(encoder);
 }
 
 RlpLargeStringEncoder::RlpLargeStringEncoder(RlpEncoder& encoder)
     : encoder_(encoder)
-    , header_start_(encoder.size())
-    , payload_start_(header_start_ + 9) // Reserve max header size (1 + 8 bytes)
+    , header_start_(encoder.size() - 9) // Header was just added by create()
+    , payload_start_(encoder.size())    // Payload starts after reserved header
     , payload_size_(0)
     , finished_(false) {
-    // Reserve maximum possible header space (1 byte prefix + 8 bytes length)
-    encoder_.reserve(encoder_.size() + 9);
-    // Temporarily fill with zeros (will be patched in finish())
-    auto buffer_result = encoder_.GetBytes();
-    if (buffer_result) {
-        Bytes* buffer = buffer_result.value();
-        for (size_t i = 0; i < 9; ++i) {
-            buffer->push_back(0);
-        }
-    }
+    // Header space already reserved and initialized by create()
 }
 
 // Destructor - automatically finish if not already done
