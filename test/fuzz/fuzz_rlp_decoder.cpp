@@ -39,7 +39,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         
         // If encoding succeeded, try to decode again for roundtrip verification
         if (encoded_result) {
-            rlp::RlpDecoder decoder2(encoded_result.value());
+            rlp::RlpDecoder decoder2(*encoded_result.value());
             rlp::Bytes roundtrip_bytes;
             (void)decoder2.read(roundtrip_bytes);
             
