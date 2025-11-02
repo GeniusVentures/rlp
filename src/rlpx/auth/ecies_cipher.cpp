@@ -58,12 +58,11 @@ std::array<uint8_t, 32> hmac_sha256(ByteView key, ByteView data) noexcept {
 } // anonymous namespace
 
 AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) noexcept {
-    try {
-        // Generate ephemeral keypair
-        secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        if ( !ctx ) {
-            return AuthError::kEciesEncryptFailed;
-        }
+    // Generate ephemeral keypair
+    secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    if ( !ctx ) {
+        return AuthError::kEciesEncryptFailed;
+    }
         
         PrivateKey ephemeral_private_key{};
         RAND_bytes(ephemeral_private_key.data(), static_cast<int>(ephemeral_private_key.size()));
@@ -117,19 +116,14 @@ AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) no
         
         secp256k1_context_destroy(ctx);
         return result;
-        
-    } catch (...) {
-        return AuthError::kEciesEncryptFailed;
-    }
 }
 
 AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) noexcept {
-    try {
-        // Parse message: [public_key(65) || iv(16) || ciphertext || mac(32)]
-        constexpr size_t kMinSize = 65 + 16 + 32;
-        if ( params.ciphertext.size() < kMinSize ) {
-            return AuthError::kEciesDecryptFailed;
-        }
+    // Parse message: [public_key(65) || iv(16) || ciphertext || mac(32)]
+    constexpr size_t kMinSize = 65 + 16 + 32;
+    if ( params.ciphertext.size() < kMinSize ) {
+        return AuthError::kEciesDecryptFailed;
+    }
         
         ByteView ephemeral_public_key_data = params.ciphertext.subspan(0, 65);
         ByteView iv = params.ciphertext.subspan(65, 16);
@@ -186,10 +180,6 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
         
         secp256k1_context_destroy(ctx);
         return plaintext;
-        
-    } catch (...) {
-        return AuthError::kEciesDecryptFailed;
-    }
 }
 
 size_t EciesCipher::estimate_encrypted_size(size_t plaintext_size) noexcept {
@@ -200,18 +190,13 @@ AuthResult<SharedSecret> EciesCipher::compute_shared_secret(
     gsl::span<const uint8_t, kPublicKeySize> public_key,
     gsl::span<const uint8_t, kPrivateKeySize> private_key
 ) noexcept {
-    try {
-        // Use the existing ECDH implementation
-        auto result = rlpx::crypto::Ecdh::compute_shared_secret(public_key, private_key);
-        if (!result) {
-            // Convert CryptoError to AuthError
-            return AuthError::kSharedSecretFailed;
-        }
-        return result.value();
-        
-    } catch (...) {
+    // Use the existing ECDH implementation
+    auto result = rlpx::crypto::Ecdh::compute_shared_secret(public_key, private_key);
+    if (!result) {
+        // Convert CryptoError to AuthError
         return AuthError::kSharedSecretFailed;
     }
+    return result.value();
 }
 
 AesKey EciesCipher::derive_aes_key(ByteView shared_secret) noexcept {

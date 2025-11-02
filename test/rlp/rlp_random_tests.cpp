@@ -85,7 +85,9 @@ TEST_F(RandomRlpTest, RandomByteStrings) {
         // Encode
         RlpEncoder encoder;
         encoder.add(data);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode
         RlpDecoder decoder(encoded);
@@ -108,7 +110,9 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint8_t value = random_integer<uint8_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             uint8_t decoded;
@@ -121,7 +125,9 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint16_t value = random_integer<uint16_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             uint16_t decoded;
@@ -134,7 +140,9 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint32_t value = random_integer<uint32_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             uint32_t decoded;
@@ -147,7 +155,9 @@ TEST_F(RandomRlpTest, RandomIntegers) {
             uint64_t value = random_integer<uint64_t>();
             RlpEncoder encoder;
             encoder.add(value);
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             uint64_t decoded;
@@ -175,7 +185,9 @@ TEST_F(RandomRlpTest, RandomLists) {
         }
         
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
@@ -214,7 +226,9 @@ TEST_F(RandomRlpTest, RandomNestedLists) {
             encoder.EndList();
         }
         
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
@@ -273,7 +287,9 @@ TEST_F(RandomRlpTest, RandomMixedTypeLists) {
         }
         
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode and verify
         RlpDecoder decoder(encoded);
@@ -309,7 +325,9 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
             
             RlpEncoder encoder;
             encoder.add(data);
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             Bytes decoded;
@@ -338,7 +356,9 @@ TEST_F(RandomRlpTest, RandomBoundaryLengths) {
             }
             
             encoder.EndList();
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             auto list_header = decoder.ReadListHeaderBytes();
@@ -365,7 +385,9 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
             // Empty string
             RlpEncoder encoder;
             encoder.add(Bytes{});
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto& encoded = *encoded_result.value();
             EXPECT_EQ(bytes_to_hex(encoded), "80");
             
             RlpDecoder decoder(encoded);
@@ -377,7 +399,9 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
             RlpEncoder encoder;
             encoder.BeginList();
             encoder.EndList();
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto& encoded = *encoded_result.value();
             EXPECT_EQ(bytes_to_hex(encoded), "c0");
             
             RlpDecoder decoder(encoded);
@@ -393,7 +417,9 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
                 encoder.add(Bytes{});
             }
             encoder.EndList();
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             auto list_header = decoder.ReadListHeaderBytes();
@@ -414,7 +440,9 @@ TEST_F(RandomRlpTest, RandomEmptyStructures) {
             for (int i = 0; i < depth; ++i) {
                 encoder.EndList();
             }
-            auto encoded = encoder.GetBytes();
+            auto encoded_result = encoder.GetBytes();
+            ASSERT_TRUE(encoded_result);
+            auto encoded = *encoded_result.value();
             
             RlpDecoder decoder(encoded);
             for (int i = 0; i < depth; ++i) {
@@ -441,7 +469,9 @@ TEST_F(RandomRlpTest, RandomLargeStructures) {
         }
         
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Verify encoding is large
         EXPECT_GT(encoded.size(), 2000); // Should be > 2000 bytes
@@ -494,7 +524,9 @@ TEST_F(RandomRlpTest, RandomComplexNested) {
         encoder.add(f);
         
         encoder.EndList();
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode and verify structure
         RlpDecoder decoder(encoded);
@@ -553,7 +585,9 @@ TEST_F(RandomRlpTest, RandomArrays) {
         RlpEncoder encoder;
         Bytes bytes_data(array_data.begin(), array_data.end());
         encoder.add(bytes_data);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Decode and verify
         RlpDecoder decoder(encoded);

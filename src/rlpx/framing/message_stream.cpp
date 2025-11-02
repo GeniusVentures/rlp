@@ -20,21 +20,30 @@ MessageStream::MessageStream(
 }
 
 Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& params) noexcept {
-    try {
-        // Create message payload: message_id || rlp_payload
-        // For RLPx, the message format is: [msg-id, msg-data]
-        rlp::RlpEncoder encoder;
-        encoder.BeginList();
-        encoder.add(params.message_id);
-        
-        // Add payload as raw bytes if it's already RLP-encoded
-        if ( !params.payload.empty() ) {
-            encoder.AddRaw(detail::to_rlp_view(params.payload));
+    // Create message payload: message_id || rlp_payload
+    // For RLPx, the message format is: [msg-id, msg-data]
+    rlp::RlpEncoder encoder;
+    if (auto res = encoder.BeginList(); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    if (auto res = encoder.add(params.message_id); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    
+    // Add payload as raw bytes if it's already RLP-encoded
+    if ( !params.payload.empty() ) {
+        if (auto res = encoder.AddRaw(detail::to_rlp_view(params.payload)); !res) {
+            co_return SessionError::kInvalidMessage;
         }
-        
-        encoder.EndList();
-        
-        ByteBuffer message_data = detail::from_rlp_bytes(encoder.GetBytes());
+    }
+    
+    if (auto res = encoder.EndList(); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    
+    auto result = encoder.GetBytes();
+    if (!result) co_return SessionError::kInvalidMessage;
+    ByteBuffer message_data = detail::from_rlp_bytes(*result.value());
         
         // TODO: Compress if enabled
         // if ( params.compress && compression_enabled_ ) {
@@ -64,19 +73,14 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         }
         
         co_return outcome::success();
-        
-    } catch ( ... ) {
-        co_return SessionError::kInvalidMessage;
-    }
 }
 
 Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
-    try {
-        // Receive encrypted frame from socket
-        auto frame_result = co_await receive_frame();
-        if ( !frame_result || frame_result.value().empty() ) {
-            co_return SessionError::kInvalidMessage;
-        }
+    // Receive encrypted frame from socket
+    auto frame_result = co_await receive_frame();
+    if ( !frame_result || frame_result.value().empty() ) {
+        co_return SessionError::kInvalidMessage;
+    }
         
         const auto& frame_data = frame_result.value();
         
@@ -108,19 +112,14 @@ Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
         
         Message msg{msg_id, std::move(payload)};
         co_return msg;
-        
-    } catch ( ... ) {
-        co_return SessionError::kInvalidMessage;
-    }
 }
 
 Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) noexcept {
-    try {
-        // Encrypt and send frame
-        FrameEncryptParams params{
-            .frame_data = frame_data,
-            .is_first_frame = true
-        };
+    // Encrypt and send frame
+    FrameEncryptParams params{
+        .frame_data = frame_data,
+        .is_first_frame = true
+    };
         
         auto encrypted_result = cipher_->encrypt_frame(params);
         if ( !encrypted_result ) {
@@ -134,20 +133,16 @@ Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) no
         }
         
         co_return outcome::success();
-    } catch ( ... ) {
-        co_return FramingError::kEncryptionFailed;
-    }
 }
 
 Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
-    try {
-        // Read frame header (32 bytes total = 16 header + 16 MAC)
-        constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
-        auto header_with_mac_result = co_await transport_.read_exact(kFrameHeaderWithMacSize);
-        if ( !header_with_mac_result ) {
-            ByteBuffer empty;
-            co_return empty;
-        }
+    // Read frame header (32 bytes total = 16 header + 16 MAC)
+    constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
+    auto header_with_mac_result = co_await transport_.read_exact(kFrameHeaderWithMacSize);
+    if ( !header_with_mac_result ) {
+        ByteBuffer empty;
+        co_return empty;
+    }
         
         const auto& header_data = header_with_mac_result.value();
         
@@ -202,11 +197,6 @@ Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
         }
         
         co_return decrypted_result.value();
-        
-    } catch ( ... ) {
-        ByteBuffer empty;
-        co_return empty;
-    }
 }
 
 } // namespace rlpx::framing

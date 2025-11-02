@@ -130,6 +130,18 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_type_safety_tests.cpp"
                 )
 
+                add_executable(rlp_enhanced_api_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_enhanced_api_tests.cpp"
+                )
+
+                add_executable(rlp_streaming_simple_api_demo
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_streaming_simple_api_demo.cpp"
+                )
+
+                add_executable(rlp_ethereum_real_world_examples
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_real_world_examples.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -141,6 +153,33 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_ethereum_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_random_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_type_safety_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
+        
+        # Suppress nodiscard warnings in test code for cleaner output
+        # Test code intentionally ignores return values for brevity
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                set(TEST_TARGETS 
+                        ${PROJECT_NAME}_encoder_tests 
+                        ${PROJECT_NAME}_decoder_tests 
+                        ${PROJECT_NAME}_endian_tests
+                        ${PROJECT_NAME}_edge_cases
+                        discovery_test
+                        ${PROJECT_NAME}_benchmark_tests
+                        ${PROJECT_NAME}_property_tests
+                        ${PROJECT_NAME}_comprehensive_tests
+                        rlp_ethereum_tests
+                        rlp_random_tests
+                        rlp_type_safety_tests
+                        rlp_enhanced_api_tests
+                        rlp_streaming_simple_api_demo
+                        rlp_ethereum_real_world_examples
+                )
+                foreach(target ${TEST_TARGETS})
+                        target_compile_options(${target} PRIVATE -Wno-unused-result)
+                endforeach()
+        endif()
         
         # Add RLPx tests
         add_executable(rlpx_crypto_tests
@@ -185,6 +224,9 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_ethereum_tests COMMAND $<TARGET_FILE:rlp_ethereum_tests>)
                 add_test(NAME rlp_random_tests COMMAND $<TARGET_FILE:rlp_random_tests>)
                 add_test(NAME rlp_type_safety_tests COMMAND $<TARGET_FILE:rlp_type_safety_tests>)
+                add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
+                add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
+                add_test(NAME rlp_ethereum_real_world_examples COMMAND $<TARGET_FILE:rlp_ethereum_real_world_examples>)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
                 add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
                 add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)

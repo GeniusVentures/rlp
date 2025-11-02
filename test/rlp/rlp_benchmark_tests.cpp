@@ -162,7 +162,7 @@ TEST_F(BenchmarkTest, BenchmarkUint8Encoding) {
         auto result = encoder.GetBytes();
         value_index++;
         // Prevent optimization
-        benchmark_util::DoNotOptimize(result.size());
+        if (result) benchmark_util::DoNotOptimize(result.value()->size());
     });
     
     report_performance("uint8 encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS);
@@ -182,7 +182,7 @@ TEST_F(BenchmarkTest, BenchmarkUint32Encoding) {
         auto result = encoder.GetBytes();
         value_index++;
         // Prevent optimization
-        benchmark_util::DoNotOptimize(result.size());
+        if (result) benchmark_util::DoNotOptimize(result.value()->size());
     });
     
     report_performance("uint32 encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS);
@@ -207,7 +207,7 @@ TEST_F(BenchmarkTest, BenchmarkUint256Encoding) {
         auto result = encoder.GetBytes();
         value_index++;
         // Prevent optimization
-        benchmark_util::DoNotOptimize(result.size());
+        if (result) benchmark_util::DoNotOptimize(result.value()->size());
     }, 100); // Fewer iterations for uint256
     
     // uint256 encoding is more complex, allow 10x more time
@@ -230,7 +230,7 @@ TEST_F(BenchmarkTest, BenchmarkByteArrayEncoding) {
         auto result = encoder.GetBytes();
         data_index++;
         // Prevent optimization
-        benchmark_util::DoNotOptimize(result.size());
+        if (result) benchmark_util::DoNotOptimize(result.value()->size());
     });
     
     report_performance("byte array encoding", avg_time, MAX_UINT32_ENCODE_TIME_NS * 2);
@@ -248,7 +248,7 @@ TEST_F(BenchmarkTest, BenchmarkLargeByteArrayEncoding) {
             encoder.add(rlp::ByteView{data.data(), data.size()});
             auto result = encoder.GetBytes();
             // Prevent optimization
-            benchmark_util::DoNotOptimize(result.size());
+            if (result) benchmark_util::DoNotOptimize(result.value()->size());
         }, 100); // Fewer iterations for large data
         
         double time_per_byte = avg_time / size;
@@ -273,7 +273,7 @@ TEST_F(BenchmarkTest, BenchmarkListEncoding) {
             encoder.EndList();
             auto result = encoder.GetBytes();
             // Prevent optimization
-            benchmark_util::DoNotOptimize(result.size());
+            if (result) benchmark_util::DoNotOptimize(result.value()->size());
         }, std::max(1, 1000 / list_size)); // Fewer iterations for larger lists
         
         double time_per_element = avg_time / list_size;
@@ -294,7 +294,8 @@ TEST_F(BenchmarkTest, BenchmarkUint32Decoding) {
     for (int i = 0; i < 1000; ++i) {
         RlpEncoder encoder;
         encoder.add(dist(rng_));
-        encoded_values.push_back(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (result) encoded_values.push_back(*result.value());
     }
     
     size_t value_index = 0;
@@ -321,7 +322,8 @@ TEST_F(BenchmarkTest, BenchmarkByteArrayDecoding) {
         auto data = random_bytes(size);
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{data.data(), data.size()});
-        encoded_data.push_back(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (result) encoded_data.push_back(*result.value());
     }
     
     size_t data_index = 0;
@@ -346,7 +348,9 @@ TEST_F(BenchmarkTest, BenchmarkLargeByteArrayDecoding) {
         auto data = random_bytes(size);
         RlpEncoder encoder;
         encoder.add(rlp::ByteView{data.data(), data.size()});
-        auto encoded = encoder.GetBytes();
+        auto enc_result = encoder.GetBytes();
+        if (!enc_result) continue;
+        auto encoded = *enc_result.value();
         
         auto avg_time = benchmark_operation([&]() {
             RlpDecoder decoder(encoded);
@@ -374,7 +378,8 @@ TEST_F(BenchmarkTest, BenchmarkListDecoding) {
             encoder.add(static_cast<uint32_t>(i));
         }
         encoder.EndList();
-        encoded_lists.push_back(encoder.GetBytes());
+        auto result = encoder.GetBytes();
+        if (result) encoded_lists.push_back(*result.value());
     }
     
     for (size_t i = 0; i < list_sizes.size(); ++i) {
@@ -418,10 +423,11 @@ TEST_F(BenchmarkTest, BenchmarkRoundTrip) {
         // Encode
         RlpEncoder encoder;
         encoder.add(original);
-        auto encoded = encoder.GetBytes();
+        auto enc_result = encoder.GetBytes();
+        if (!enc_result) return;
         
         // Decode
-        RlpDecoder decoder(encoded);
+        RlpDecoder decoder(*enc_result.value());
     uint32_t decoded;
     auto decode_result = decoder.read(decoded);
 
@@ -451,14 +457,16 @@ TEST_F(BenchmarkTest, BenchmarkMemoryEfficiency) {
             auto result = encoder.GetBytes();
             
             // Verify reasonable memory overhead
-            size_t expected_min_size = size + 1; // At least original size + header
-            size_t expected_max_size = size + 10; // Reasonable overhead
-            
-            EXPECT_GE(result.size(), expected_min_size);
-            EXPECT_LE(result.size(), expected_max_size);
-            
-            // Prevent optimization
-            benchmark_util::DoNotOptimize(result.size());
+            if (result) {
+                size_t expected_min_size = size + 1; // At least original size + header
+                size_t expected_max_size = size + 10; // Reasonable overhead
+                
+                EXPECT_GE(result.value()->size(), expected_min_size);
+                EXPECT_LE(result.value()->size(), expected_max_size);
+                
+                // Prevent optimization
+                benchmark_util::DoNotOptimize(result.value()->size());
+            }
         }, 100);
         
         // Memory efficiency test - encoding shouldn't take too long

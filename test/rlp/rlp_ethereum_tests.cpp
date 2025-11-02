@@ -30,7 +30,9 @@ protected:
     void test_roundtrip(const T& value, const std::string& expected_hex = "") {
     RlpEncoder encoder;
     encoder.add(value);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         if (!expected_hex.empty()) {
             EXPECT_EQ(bytes_to_hex(encoded), expected_hex) 
@@ -111,7 +113,9 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     // Empty list
     encoder.BeginList();
     encoder.EndList();
-    auto empty_list = encoder.GetBytes();
+    auto empty_list_result = encoder.GetBytes();
+    ASSERT_TRUE(empty_list_result);
+    auto& empty_list = *empty_list_result.value();
     EXPECT_EQ(bytes_to_hex(empty_list), "c0");
     
     // Reset encoder
@@ -121,7 +125,9 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     encoder.BeginList();
     encoder.add(uint8_t{1});
     encoder.EndList();
-    auto single_list = encoder.GetBytes();
+    auto single_list_result = encoder.GetBytes();
+    ASSERT_TRUE(single_list_result);
+    auto& single_list = *single_list_result.value();
     EXPECT_EQ(bytes_to_hex(single_list), "c101");
 
     // Reset encoder
@@ -132,7 +138,9 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     encoder.BeginList();
     encoder.EndList();
     encoder.EndList();
-    auto nested_empty = encoder.GetBytes();
+    auto nested_empty_result = encoder.GetBytes();
+    ASSERT_TRUE(nested_empty_result);
+    auto& nested_empty = *nested_empty_result.value();
     EXPECT_EQ(bytes_to_hex(nested_empty), "c1c0");
 
     // Reset encoder
@@ -148,7 +156,9 @@ TEST_F(EthereumRlpTest, OfficialListTests) {
     encoder.add(uint8_t{3});
     encoder.EndList();
     encoder.EndList();
-    auto complex_nested = encoder.GetBytes();
+    auto complex_nested_result = encoder.GetBytes();
+    ASSERT_TRUE(complex_nested_result);
+    auto& complex_nested = *complex_nested_result.value();
     // Note: Actual output includes null terminator from std::basic_string<uint8_t>
     EXPECT_EQ(bytes_to_hex(complex_nested), "c5c20102c103");
 }
@@ -162,7 +172,9 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
     encoder.add(Bytes{'c', 'a', 't'});
     encoder.add(uint8_t{1});
     encoder.EndList();
-    auto mixed = encoder.GetBytes();
+    auto mixed_result = encoder.GetBytes();
+    ASSERT_TRUE(mixed_result);
+    auto& mixed = *mixed_result.value();
     // Note: Actual output includes null terminator from std::basic_string<uint8_t>
     EXPECT_EQ(bytes_to_hex(mixed), "c58363617401");
 
@@ -178,7 +190,9 @@ TEST_F(EthereumRlpTest, OfficialMixedTypeTests) {
     encoder.EndList();
     encoder.add(Bytes{'c', 'a', 't'});
     encoder.EndList();
-    auto very_mixed = encoder.GetBytes();
+    auto very_mixed_result = encoder.GetBytes();
+    ASSERT_TRUE(very_mixed_result);
+    auto& very_mixed = *very_mixed_result.value();
     // Note: Actual output includes null terminator from std::basic_string<uint8_t>
     EXPECT_EQ(bytes_to_hex(very_mixed), "cb83646f67c2010283636174");
 }
@@ -195,7 +209,9 @@ TEST_F(EthereumRlpTest, OfficialEdgeCaseTests) {
     encoder.add(uint8_t{1});
     }
     encoder.EndList();
-    auto list_55 = encoder.GetBytes();
+    auto list_55_result = encoder.GetBytes();
+    ASSERT_TRUE(list_55_result);
+    auto& list_55 = *list_55_result.value();
     // Should use short form (0xc0 + length)
     EXPECT_EQ(list_55[0], 0xf7); // 0xc0 + 55
 
@@ -209,7 +225,9 @@ TEST_F(EthereumRlpTest, OfficialEdgeCaseTests) {
     encoder.add(uint8_t{1});
     }
     encoder.EndList();
-    auto list_56 = encoder.GetBytes();
+    auto list_56_result = encoder.GetBytes();
+    ASSERT_TRUE(list_56_result);
+    auto& list_56 = *list_56_result.value();
     // Should use long form (0xf8 + length_of_length + length)
     EXPECT_EQ(list_56[0], 0xf8); // Long form indicator
     EXPECT_EQ(list_56[1], 0x38); // 56 in hex
@@ -233,7 +251,9 @@ TEST_F(EthereumRlpTest, EthereumDataStructures) {
     encoder.add(hex_to_bytes("67cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83")); // s (32 bytes, 64 hex digits)
     encoder.EndList();
     
-    auto tx_bytes = encoder.GetBytes();
+    auto tx_bytes_result = encoder.GetBytes();
+    ASSERT_TRUE(tx_bytes_result);
+    auto& tx_bytes = *tx_bytes_result.value();
     
     // Verify we can decode it back
     RlpDecoder decoder(tx_bytes);
@@ -332,7 +352,9 @@ TEST_F(EthereumRlpTest, ComplexNestedStructures) {
     
     encoder.EndList();
     
-    auto block_header = encoder.GetBytes();
+    auto block_header_result = encoder.GetBytes();
+    ASSERT_TRUE(block_header_result);
+    auto& block_header = *block_header_result.value();
     
     // Verify we can decode the complex structure
     RlpDecoder decoder(block_header);
@@ -401,7 +423,9 @@ TEST_F(EthereumRlpTest, DeeplyNestedStructures) {
         encoder.EndList();
     }
     
-    auto nested = encoder.GetBytes();
+    auto nested_result = encoder.GetBytes();
+    ASSERT_TRUE(nested_result);
+    auto& nested = *nested_result.value();
     
     // Verify decoding
     RlpDecoder decoder(nested);
@@ -471,7 +495,9 @@ TEST_F(EthereumRlpTest, ArraysAndVectors) {
         }
         large_encoder.EndList();
         
-        auto large_list = large_encoder.GetBytes();
+        auto large_list_result = large_encoder.GetBytes();
+        ASSERT_TRUE(large_list_result);
+        auto& large_list = *large_list_result.value();
         
         // Decode and verify
         RlpDecoder decoder(large_list);
@@ -730,63 +756,63 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
     {
         RlpEncoder encoder;
         encoder.add(Bytes{});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "80");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "80");
     }
 
     // Test: shortstring "dog" -> 0x83646f67
     {
         RlpEncoder encoder;
         encoder.add(Bytes{'d', 'o', 'g'});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "83646f67");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "83646f67");
     }
 
     // Test: zero -> 0x80
     {
         RlpEncoder encoder;
         encoder.add(uint32_t{0});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "80");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "80");
     }
 
     // Test: smallint 1 -> 0x01
     {
         RlpEncoder encoder;
         encoder.add(uint8_t{1});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "01");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "01");
     }
 
     // Test: smallint 16 -> 0x10
     {
         RlpEncoder encoder;
         encoder.add(uint8_t{16});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "10");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "10");
     }
 
     // Test: smallint 127 -> 0x7f
     {
         RlpEncoder encoder;
         encoder.add(uint8_t{127});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "7f");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "7f");
     }
 
     // Test: mediumint 128 -> 0x8180
     {
         RlpEncoder encoder;
         encoder.add(uint8_t{128});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "8180");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "8180");
     }
 
     // Test: mediumint 1000 -> 0x8203e8
     {
         RlpEncoder encoder;
         encoder.add(uint16_t{1000});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "8203e8");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "8203e8");
     }
 
     // Test: mediumint 100000 -> 0x830186a0
     {
         RlpEncoder encoder;
         encoder.add(uint32_t{100000});
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "830186a0");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "830186a0");
     }
 
     // Test: emptylist -> 0xc0
@@ -794,7 +820,7 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
         RlpEncoder encoder;
         encoder.BeginList();
         encoder.EndList();
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "c0");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "c0");
     }
 
     // Test: stringlist ["dog","god","cat"] -> starts with 0xcc
@@ -805,7 +831,9 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
         encoder.add(Bytes{'g', 'o', 'd'});
         encoder.add(Bytes{'c', 'a', 't'});
         encoder.EndList();
-        auto result = bytes_to_hex(encoder.GetBytes());
+        auto bytes_result = encoder.GetBytes(); 
+        ASSERT_TRUE(bytes_result); 
+        auto result = bytes_to_hex(*bytes_result.value());
         EXPECT_EQ(result.substr(0, 2), "cc") << "List should start with 0xcc";
         EXPECT_EQ(result, "cc83646f6783676f6483636174");
     }
@@ -820,7 +848,7 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
         encoder.EndList();
         encoder.add(uint8_t{1});
         encoder.EndList();
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "c6827a77c10401");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "c6827a77c10401");
     }
 
     // Test: listsoflists [[],[]] -> 0xc4c2c0c0c0
@@ -836,7 +864,7 @@ TEST_F(EthereumRlpTest, ValidRlpExactHexOutputs) {
         encoder.BeginList();
         encoder.EndList();
         encoder.EndList();
-        EXPECT_EQ(bytes_to_hex(encoder.GetBytes()), "c4c2c0c0c0");
+        auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(bytes_to_hex(*result.value()), "c4c2c0c0c0");
     }
 }
 
@@ -853,7 +881,9 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         
         RlpEncoder encoder;
         encoder.add(max_uint256);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Should be encoded as: 0xa0 (32 bytes string) + 32 bytes of 0xff
         EXPECT_EQ(encoded[0], 0xa0) << "Should use 32-byte string encoding";
@@ -883,7 +913,9 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         
         RlpEncoder encoder;
         encoder.add(large_value);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Should encode as string with proper length
         EXPECT_GT(encoded.size(), 1) << "Should have header and data";
@@ -920,7 +952,9 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         
         RlpEncoder encoder;
         encoder.add(eth_supply);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto encoded = *encoded_result.value();
         
         RlpDecoder decoder(encoded);
         intx::uint256 decoded;
@@ -942,7 +976,9 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         
         RlpEncoder encoder;
         encoder.add(pattern_value);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         // Should be 0xa0 (32 byte string) + 32 bytes of data
         EXPECT_EQ(encoded[0], 0xa0);
@@ -966,7 +1002,9 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         
         RlpEncoder encoder;
         encoder.add(zero);
-        auto encoded = encoder.GetBytes();
+        auto encoded_result = encoder.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         
         EXPECT_EQ(bytes_to_hex(encoded), "80") << "uint256 zero should encode as 0x80";
         
@@ -982,19 +1020,25 @@ TEST_F(EthereumRlpTest, BigIntegerTests) {
         intx::uint256 val_1byte{0x7F};
         RlpEncoder enc1;
         enc1.add(val_1byte);
-        EXPECT_EQ(bytes_to_hex(enc1.GetBytes()), "7f");
+        auto enc1_result = enc1.GetBytes();
+        ASSERT_TRUE(enc1_result);
+        EXPECT_EQ(bytes_to_hex(*enc1_result.value()), "7f");
         
         // 1 byte value requiring string encoding (0x80)
         intx::uint256 val_1byte_str{0x80};
         RlpEncoder enc2;
         enc2.add(val_1byte_str);
-        EXPECT_EQ(bytes_to_hex(enc2.GetBytes()), "8180");
+        auto enc2_result = enc2.GetBytes();
+        ASSERT_TRUE(enc2_result);
+        EXPECT_EQ(bytes_to_hex(*enc2_result.value()), "8180");
         
         // 8 byte value
         intx::uint256 val_8byte{0x0102030405060708ULL};
         RlpEncoder enc3;
         enc3.add(val_8byte);
-        auto encoded = enc3.GetBytes();
+        auto encoded_result = enc3.GetBytes();
+        ASSERT_TRUE(encoded_result);
+        auto& encoded = *encoded_result.value();
         EXPECT_EQ(encoded[0], 0x88) << "Should use 8-byte string encoding";
         
         // 16 byte value

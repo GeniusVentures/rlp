@@ -12,7 +12,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint8_t original = 255;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         uint8_t decoded;
@@ -26,7 +26,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint16_t original = 65535;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         uint16_t decoded;
@@ -40,7 +40,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint32_t original = 4294967295U;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         uint32_t decoded;
@@ -54,7 +54,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         uint64_t original = 18446744073709551615ULL;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         uint64_t decoded;
@@ -68,7 +68,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         bool original = true;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         bool decoded;
@@ -82,7 +82,7 @@ TEST(RlpEdgeCases, TemplateIntegralTypes) {
         rlp::RlpEncoder encoder;
         bool original = false;
         encoder.add(original);
-        rlp::Bytes encoded = encoder.GetBytes();
+        auto encoded_result = encoder.MoveBytes(); ASSERT_TRUE(encoded_result); rlp::Bytes encoded = std::move(encoded_result.value());
         
         rlp::RlpDecoder decoder(encoded);
         bool decoded;
@@ -96,7 +96,9 @@ TEST(RlpEdgeCases, TemplateUint256) {
     rlp::RlpEncoder encoder;
     intx::uint256 original = intx::from_string<intx::uint256>("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
     encoder.add(original);
-    rlp::Bytes encoded = encoder.GetBytes();
+    auto encoded_result = encoder.MoveBytes(); 
+    ASSERT_TRUE(encoded_result); 
+    rlp::Bytes encoded = std::move(encoded_result.value());
     
     rlp::RlpDecoder decoder(encoded);
     intx::uint256 decoded;
@@ -114,7 +116,9 @@ TEST(RlpEdgeCases, TemplateSequentialInList) {
     encoder.add(true);
     encoder.add(false);
     encoder.EndList();
-    rlp::Bytes encoded = encoder.GetBytes();
+    auto encoded_result = encoder.MoveBytes(); 
+    ASSERT_TRUE(encoded_result); 
+    rlp::Bytes encoded = std::move(encoded_result.value());
     
     rlp::RlpDecoder decoder(encoded);
     auto list_len = decoder.ReadListHeaderBytes();

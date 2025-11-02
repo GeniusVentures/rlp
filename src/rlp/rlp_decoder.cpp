@@ -10,7 +10,7 @@ namespace { // Anonymous namespace for internal helpers
 // Decodes RLP header FROM THE START of the provided view 'v'
 // Modifies 'v' to remove the consumed header bytes.
 // Returns header info including header length itself.
-Result<Header> decode_header_impl(ByteView& v) noexcept {
+[[nodiscard]] Result<Header> decode_header_impl(ByteView& v) noexcept {
     if ( v.empty() ) {
         return DecodingError::kInputTooShort;
     }
@@ -146,7 +146,7 @@ Result<Header> RlpDecoder::PeekHeader() const noexcept {
 
 // --- Read Basic Types (Consume) ---
 
-DecodingResult RlpDecoder::read(Bytes& out) {
+DecodingResult RlpDecoder::read(Bytes& out) noexcept {
     BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek header first
 
     if ( h.list ) {
@@ -167,7 +167,7 @@ DecodingResult RlpDecoder::read(Bytes& out) {
 }
 
 // Explicit overload for uint256
-DecodingResult RlpDecoder::read(intx::uint256& out) {
+DecodingResult RlpDecoder::read(intx::uint256& out) noexcept {
     return read_uint256(out); // Call private implementation detail
 }
 
@@ -235,7 +235,7 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
 // Let's remove the read_integral and read_uint256 private methods.
 // The only non-template read methods needing impl here are read(Bytes&) and read(bool&).
 
-    DecodingResult RlpDecoder::read_uint256(intx::uint256& out) {
+    DecodingResult RlpDecoder::read_uint256(intx::uint256& out) noexcept {
     // *** Implement directly instead of calling public template ***
     BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
@@ -274,6 +274,22 @@ DecodingResult RlpDecoder::skip_header_internal() noexcept {
     return outcome::success(); // Success
 }
 
+// --- Streaming Support Implementation ---
+
+Result<ByteView> RlpDecoder::PeekPayload() const noexcept {
+    BOOST_OUTCOME_TRY(auto h, PeekHeader());
+    
+    if (h.list) {
+        return DecodingError::kUnexpectedList;
+    }
+    
+    if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
+        return DecodingError::kInputTooShort;
+    }
+    
+    // Return view of payload without consuming
+    return view_.substr(h.header_size_bytes, h.payload_size_bytes);
+}
 
 
 } // namespace rlp

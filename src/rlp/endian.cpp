@@ -10,7 +10,7 @@ namespace rlp::endian {
 // --- Implementation for standard unsigned types ---
 // Signature now matches the header's SFINAE-on-return-type style
 template <typename T>
-auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, Bytes> {
+auto to_big_compact(const T& n) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, Bytes> {
     if ( n == 0 ) {
         return {};
     }
@@ -29,7 +29,7 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 }
 
     template <typename T>
-    auto from_big_compact(ByteView bytes, T& out) -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
+    auto from_big_compact(ByteView bytes, T& out) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
     if ( bytes.empty() ) {
         out = 0;
         return outcome::success();
@@ -67,7 +67,7 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 
 // --- Implementation for intx::uint256 --- (Signatures unchanged)
     // --- Implementation for intx::uint256 --- (Signatures unchanged)
-    Bytes to_big_compact(const intx::uint256& n) {
+    Bytes to_big_compact(const intx::uint256& n) noexcept {
     if ( n == 0 ) {
         return {};
     }
@@ -84,7 +84,7 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
     return bytes;
 }
 
-    DecodingResult from_big_compact(ByteView bytes, intx::uint256& out) {
+    DecodingResult from_big_compact(ByteView bytes, intx::uint256& out) noexcept {
     if ( bytes.empty() ) {
         out = 0;
         return outcome::success();
@@ -118,15 +118,15 @@ auto to_big_compact(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, B
 // --- Explicit Template Instantiations ---
 // The signature MUST exactly match the definition signature, including the SFINAE part
 
-template auto to_big_compact<uint8_t>(const uint8_t&) -> std::enable_if_t<is_unsigned_integral_v<uint8_t>, Bytes>;
-template auto to_big_compact<uint16_t>(const uint16_t&) -> std::enable_if_t<is_unsigned_integral_v<uint16_t>, Bytes>;
-template auto to_big_compact<uint32_t>(const uint32_t&) -> std::enable_if_t<is_unsigned_integral_v<uint32_t>, Bytes>;
-template auto to_big_compact<uint64_t>(const uint64_t&) -> std::enable_if_t<is_unsigned_integral_v<uint64_t>, Bytes>;
+template auto to_big_compact<uint8_t>(const uint8_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint8_t>, Bytes>;
+template auto to_big_compact<uint16_t>(const uint16_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint16_t>, Bytes>;
+template auto to_big_compact<uint32_t>(const uint32_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint32_t>, Bytes>;
+template auto to_big_compact<uint64_t>(const uint64_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint64_t>, Bytes>;
 
-template auto from_big_compact<uint8_t>(ByteView, uint8_t&) -> std::enable_if_t<is_unsigned_integral_v<uint8_t>, DecodingResult>;
-template auto from_big_compact<uint16_t>(ByteView, uint16_t&) -> std::enable_if_t<is_unsigned_integral_v<uint16_t>, DecodingResult>;
-template auto from_big_compact<uint32_t>(ByteView, uint32_t&) -> std::enable_if_t<is_unsigned_integral_v<uint32_t>, DecodingResult>;
-template auto from_big_compact<uint64_t>(ByteView, uint64_t&) -> std::enable_if_t<is_unsigned_integral_v<uint64_t>, DecodingResult>;
+template auto from_big_compact<uint8_t>(ByteView, uint8_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint8_t>, DecodingResult>;
+template auto from_big_compact<uint16_t>(ByteView, uint16_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint16_t>, DecodingResult>;
+template auto from_big_compact<uint32_t>(ByteView, uint32_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint32_t>, DecodingResult>;
+template auto from_big_compact<uint64_t>(ByteView, uint64_t&) noexcept -> std::enable_if_t<is_unsigned_integral_v<uint64_t>, DecodingResult>;
 
 
 } // namespace rlp::endian
