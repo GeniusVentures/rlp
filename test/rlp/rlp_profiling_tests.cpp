@@ -51,10 +51,10 @@ TEST(RLPProfiling, LargeFlatListEncoding) {
     std::cout << "Number of elements: " << NUM_ELEMENTS << std::endl;
     
     // Encoding phase
-    EncodingResult<Bytes*> result;
+    RlpEncoder encoder;
+    
     {
         Timer timer("Encode " + std::to_string(NUM_ELEMENTS) + " uint64_t elements");
-        RlpEncoder encoder;
         
         auto begin_result = encoder.BeginList();
         ASSERT_TRUE(begin_result) << "BeginList failed";
@@ -66,10 +66,10 @@ TEST(RLPProfiling, LargeFlatListEncoding) {
         
         auto end_result = encoder.EndList();
         ASSERT_TRUE(end_result) << "EndList failed";
-        
-        result = encoder.GetBytes();
-        ASSERT_TRUE(result) << "GetBytes failed";
     }
+    
+    auto result = encoder.GetBytes();
+    ASSERT_TRUE(result) << "GetBytes failed";
     
     const Bytes& encoded = *result.value();
     std::cout << "Encoded size: " << encoded.size() << " bytes" << std::endl;
@@ -100,10 +100,10 @@ TEST(RLPProfiling, DeeplyNestedStructures) {
     std::cout << "Nesting depth: " << NESTING_DEPTH << std::endl;
     
     // Encoding phase
-    EncodingResult<Bytes*> result;
+    RlpEncoder encoder;
+    
     {
         Timer timer("Encode " + std::to_string(NESTING_DEPTH) + " nested lists");
-        RlpEncoder encoder;
         
         // Create deeply nested structure: [[[...]]]
         for (size_t i = 0; i < NESTING_DEPTH; ++i) {
@@ -120,10 +120,10 @@ TEST(RLPProfiling, DeeplyNestedStructures) {
             auto end_result = encoder.EndList();
             ASSERT_TRUE(end_result) << "EndList failed at depth " << i;
         }
-        
-        result = encoder.GetBytes();
-        ASSERT_TRUE(result) << "GetBytes failed";
     }
+    
+    auto result = encoder.GetBytes();
+    ASSERT_TRUE(result) << "GetBytes failed";
     
     const Bytes& encoded = *result.value();
     std::cout << "Encoded size: " << encoded.size() << " bytes" << std::endl;
@@ -156,22 +156,22 @@ TEST(RLPProfiling, LargeStringEncoding) {
         std::cout << "\nString size: " << size << " bytes" << std::endl;
         
         // Create test data
-        Bytes test_data(size);
+        Bytes test_data(size, uint8_t(0));
         for (size_t i = 0; i < size; ++i) {
             test_data[i] = static_cast<uint8_t>(i & 0xFF);
         }
         
         // Encoding phase
-        EncodingResult<Bytes*> result;
+        RlpEncoder encoder;
+        
         {
             Timer timer("Encode " + std::to_string(size) + " byte string");
-            RlpEncoder encoder;
             auto add_result = encoder.add(ByteView(test_data));
             ASSERT_TRUE(add_result) << "Add failed";
-            
-            result = encoder.GetBytes();
-            ASSERT_TRUE(result) << "GetBytes failed";
         }
+        
+        auto result = encoder.GetBytes();
+        ASSERT_TRUE(result) << "GetBytes failed";
         
         const Bytes& encoded = *result.value();
         std::cout << "Encoded size: " << encoded.size() << " bytes" << std::endl;
@@ -198,83 +198,83 @@ TEST(RLPProfiling, MixedWorkload) {
     std::cout << "Number of transactions: " << NUM_TRANSACTIONS << std::endl;
     
     // Encoding phase - simulate a block with transactions
-    EncodingResult<Bytes*> result;
+    RlpEncoder encoder;
+    
     {
         Timer timer("Encode block with " + std::to_string(NUM_TRANSACTIONS) + " transactions");
-        RlpEncoder encoder;
         
         // Block header
         auto begin_result = encoder.BeginList();
         ASSERT_TRUE(begin_result);
         
         // Parent hash (32 bytes)
-        Bytes parent_hash(32, 0xAA);
-        encoder.add(ByteView(parent_hash));
+        Bytes parent_hash(32, uint8_t(0xAA));
+        (void)encoder.add(ByteView(parent_hash));
         
         // Uncle hash (32 bytes)
-        Bytes uncle_hash(32, 0xBB);
-        encoder.add(ByteView(uncle_hash));
+        Bytes uncle_hash(32, uint8_t(0xBB));
+        (void)encoder.add(ByteView(uncle_hash));
         
         // Coinbase (20 bytes)
-        Bytes coinbase(20, 0xCC);
-        encoder.add(ByteView(coinbase));
+        Bytes coinbase(20, uint8_t(0xCC));
+        (void)encoder.add(ByteView(coinbase));
         
         // State root, tx root, receipt root (32 bytes each)
-        Bytes root(32, 0xDD);
-        encoder.add(ByteView(root));
-        encoder.add(ByteView(root));
-        encoder.add(ByteView(root));
+        Bytes root(32, uint8_t(0xDD));
+        (void)encoder.add(ByteView(root));
+        (void)encoder.add(ByteView(root));
+        (void)encoder.add(ByteView(root));
         
         // Block number, gas limit, gas used, timestamp
-        encoder.add(uint64_t(1000000));
-        encoder.add(uint64_t(8000000));
-        encoder.add(uint64_t(7500000));
-        encoder.add(uint64_t(1609459200));
+        (void)encoder.add(uint64_t(1000000));
+        (void)encoder.add(uint64_t(8000000));
+        (void)encoder.add(uint64_t(7500000));
+        (void)encoder.add(uint64_t(1609459200));
         
         // Extra data
-        Bytes extra_data(32, 0xEE);
-        encoder.add(ByteView(extra_data));
+        Bytes extra_data(32, uint8_t(0xEE));
+        (void)encoder.add(ByteView(extra_data));
         
         // Transactions list
-        encoder.BeginList();
+        (void)encoder.BeginList();
         for (size_t i = 0; i < NUM_TRANSACTIONS; ++i) {
-            encoder.BeginList();
+            (void)encoder.BeginList();
             
             // Nonce
-            encoder.add(uint64_t(i));
+            (void)encoder.add(uint64_t(i));
             
             // Gas price
-            encoder.add(uint64_t(20000000000));
+            (void)encoder.add(uint64_t(20000000000));
             
             // Gas limit
-            encoder.add(uint64_t(21000));
+            (void)encoder.add(uint64_t(21000));
             
             // To address (20 bytes)
             Bytes to_addr(20, static_cast<uint8_t>(i & 0xFF));
-            encoder.add(ByteView(to_addr));
+            (void)encoder.add(ByteView(to_addr));
             
             // Value
-            encoder.add(uint64_t(1000000000000000000));
+            (void)encoder.add(uint64_t(1000000000000000000));
             
             // Data (varying size)
-            Bytes tx_data(i % 256);
-            encoder.add(ByteView(tx_data));
+            Bytes tx_data(i % 256, uint8_t(0));
+            (void)encoder.add(ByteView(tx_data));
             
             // v, r, s (signature)
-            encoder.add(uint8_t(27));
-            Bytes sig(32, 0xFF);
-            encoder.add(ByteView(sig));
-            encoder.add(ByteView(sig));
+            (void)encoder.add(uint8_t(27));
+            Bytes sig(32, uint8_t(0xFF));
+            (void)encoder.add(ByteView(sig));
+            (void)encoder.add(ByteView(sig));
             
-            encoder.EndList();
+            (void)encoder.EndList();
         }
-        encoder.EndList();
+        (void)encoder.EndList();
         
-        encoder.EndList(); // End block
-        
-        result = encoder.GetBytes();
-        ASSERT_TRUE(result);
+        (void)encoder.EndList(); // End block
     }
+    
+    auto result = encoder.GetBytes();
+    ASSERT_TRUE(result);
     
     const Bytes& encoded = *result.value();
     std::cout << "Total encoded size: " << encoded.size() << " bytes" << std::endl;
@@ -373,14 +373,14 @@ TEST(RLPProfiling, MemoryAllocationPatterns) {
         
         for (size_t i = 0; i < NUM_LISTS; ++i) {
             RlpEncoder encoder;
-            encoder.BeginList();
+            (void)encoder.BeginList();
             
             // Add varying amounts of data to trigger different allocation patterns
             for (size_t j = 0; j < (i % 10) + 1; ++j) {
-                encoder.add(uint64_t(j));
+                (void)encoder.add(uint64_t(j));
             }
             
-            encoder.EndList();
+            (void)encoder.EndList();
             auto result = encoder.GetBytes();
             ASSERT_TRUE(result);
             encoded_data.push_back(*result.value());
