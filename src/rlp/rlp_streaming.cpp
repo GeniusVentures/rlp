@@ -256,20 +256,21 @@ Result<size_t> RlpLargeStringDecoder::peekPayloadSize() const noexcept {
 Result<ByteView> RlpLargeStringDecoder::readChunk(size_t max_chunk_size) {
     // Initialize on first read
     if (!initialized_) {
-        BOOST_OUTCOME_TRY(auto h, decoder_.PeekHeader());
+        RlpDecoder temp_decoder(view_);
+        BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
         
         if (h.list) {
             return DecodingError::kUnexpectedList;
         }
         
-        if (decoder_.Remaining().length() < h.header_size_bytes + h.payload_size_bytes) {
+        if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
             return DecodingError::kInputTooShort;
         }
         
         payload_size_ = h.payload_size_bytes;
         
-        // Skip header
-        decoder_.Advance(h.header_size_bytes);
+        // Skip header in our view
+        view_.remove_prefix(h.header_size_bytes);
         initialized_ = true;
     }
     
@@ -282,11 +283,11 @@ Result<ByteView> RlpLargeStringDecoder::readChunk(size_t max_chunk_size) {
     size_t remaining = payload_size_ - bytes_read_;
     size_t chunk_size = std::min(remaining, max_chunk_size);
     
-    // Get chunk view
-    ByteView chunk = decoder_.Remaining().substr(0, chunk_size);
+    // Get chunk view from our view
+    ByteView chunk = view_.substr(0, chunk_size);
     
-    // Advance decoder position
-    decoder_.Advance(chunk_size);
+    // Advance our position
+    view_.remove_prefix(chunk_size);
     bytes_read_ += chunk_size;
     
     return chunk;
