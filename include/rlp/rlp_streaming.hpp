@@ -193,7 +193,8 @@ inline StreamingOperationResult encodeChunkedList(RlpEncoder& encoder, Func&& ge
 class RlpLargeStringDecoder {
 public:
     // Create from RlpDecoder's remaining view
-    // The decoder is not modified - we take a copy of its view
+    // Creates an independent decoder by copying the remaining ByteView from the provided decoder.
+    // The original decoder is not modified or affected.
     explicit RlpLargeStringDecoder(const RlpDecoder& decoder);
     
     // Create directly from ByteView
