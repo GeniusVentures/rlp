@@ -157,6 +157,30 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
         
+        # Suppress nodiscard warnings in test code for cleaner output
+        # Test code intentionally ignores return values for brevity
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                set(TEST_TARGETS 
+                        ${PROJECT_NAME}_encoder_tests 
+                        ${PROJECT_NAME}_decoder_tests 
+                        ${PROJECT_NAME}_endian_tests
+                        ${PROJECT_NAME}_edge_cases
+                        discovery_test
+                        ${PROJECT_NAME}_benchmark_tests
+                        ${PROJECT_NAME}_property_tests
+                        ${PROJECT_NAME}_comprehensive_tests
+                        rlp_ethereum_tests
+                        rlp_random_tests
+                        rlp_type_safety_tests
+                        rlp_enhanced_api_tests
+                        rlp_streaming_simple_api_demo
+                        rlp_ethereum_real_world_examples
+                )
+                foreach(target ${TEST_TARGETS})
+                        target_compile_options(${target} PRIVATE -Wno-unused-result)
+                endforeach()
+        endif()
+        
         # Add RLPx tests
         add_executable(rlpx_crypto_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/crypto_test.cpp"
