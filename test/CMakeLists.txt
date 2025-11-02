@@ -65,5 +65,10 @@ target_link_libraries(rlp_type_safety_tests PRIVATE rlp)
 target_link_libraries(rlp_streaming_decoder_tests PRIVATE rlp)
 target_link_libraries(rlp_streaming_simple_api_demo PRIVATE rlp)
 
+# Add fuzz testing support (optional)
+if(ENABLE_FUZZING)
+    add_subdirectory(fuzz)
+endif()
+
 # Add RLPx tests subdirectory
 add_subdirectory(rlpx)
