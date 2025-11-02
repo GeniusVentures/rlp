@@ -36,18 +36,6 @@ target_link_libraries(rlpx PUBLIC
 # Ensure C++17 standard
 target_compile_features(rlpx PUBLIC cxx_std_17)
 
-# Disable exceptions to ensure we use Result<> instead
-if(MSVC)
-    # Use generator expression to replace default /EHsc with our exception-disabled flags
-    target_compile_options(rlpx PRIVATE 
-        $<$<COMPILE_LANGUAGE:CXX>:/EHs-c->
-    )
-    target_compile_definitions(rlpx PRIVATE _HAS_EXCEPTIONS=0 BOOST_NO_EXCEPTIONS)
-else()
-    target_compile_options(rlpx PRIVATE -fno-exceptions)
-    target_compile_definitions(rlpx PRIVATE BOOST_NO_EXCEPTIONS)
-endif()
-
 # Install headers
 install(DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/../../include/rlpx/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlpx

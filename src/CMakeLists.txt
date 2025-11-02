@@ -35,21 +35,6 @@ target_link_libraries(rlp PUBLIC
 # Ensure C++17 standard
 target_compile_features(rlp PUBLIC cxx_std_17)
 
-# Disable exceptions to ensure we use Result<> instead
-if(MSVC)
-    # Use generator expression to replace default /EHsc with our exception-disabled flags
-    target_compile_options(rlp PRIVATE 
-        $<$<COMPILE_LANGUAGE:CXX>:/EHs-c->
-    )
-    target_compile_definitions(rlp PRIVATE _HAS_EXCEPTIONS=0 BOOST_NO_EXCEPTIONS)
-else()
-    target_compile_options(rlp PRIVATE -fno-exceptions)
-    target_compile_definitions(rlp PRIVATE BOOST_NO_EXCEPTIONS)
-endif()
-
-# Provide Boost exception handler when BOOST_NO_EXCEPTIONS is defined
-target_sources(rlp PRIVATE ${CMAKE_CURRENT_LIST_DIR}/rlp/boost_exception_stub.cpp)
-
 # Explicitly install public headers to the base include directory
 install(FILES
         # Core headers

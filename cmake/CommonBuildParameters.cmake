@@ -95,7 +95,6 @@ if(BUILD_TESTS)
 
         add_executable(discovery_test
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/discovery_test.cpp"
-                "${CMAKE_CURRENT_LIST_DIR}/../src/rlp/boost_exception_stub.cpp"
         )
 
         add_executable(${PROJECT_NAME}_endian_tests
@@ -203,7 +202,6 @@ if(BUILD_TESTS)
         )
         add_executable(rlpx_socket_lifecycle_tests
                 "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/socket_lifecycle_test.cpp"
-                "${CMAKE_CURRENT_LIST_DIR}/../src/rlp/boost_exception_stub.cpp"
         )
         
         target_link_libraries(rlpx_crypto_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
