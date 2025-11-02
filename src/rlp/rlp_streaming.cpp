@@ -223,21 +223,30 @@ StreamingOperationResult RlpChunkedListEncoder::flush() {
 // Approach A: Large String Decoder Implementation
 // ============================================================================
 
-RlpLargeStringDecoder::RlpLargeStringDecoder(RlpDecoder& decoder)
-    : decoder_(decoder)
+RlpLargeStringDecoder::RlpLargeStringDecoder(const RlpDecoder& decoder)
+    : view_(decoder.Remaining())
+    , payload_size_(0)
+    , bytes_read_(0)
+    , initialized_(false) {
+}
+
+RlpLargeStringDecoder::RlpLargeStringDecoder(ByteView data)
+    : view_(data)
     , payload_size_(0)
     , bytes_read_(0)
     , initialized_(false) {
 }
 
 Result<size_t> RlpLargeStringDecoder::peekPayloadSize() const noexcept {
-    BOOST_OUTCOME_TRY(auto h, decoder_.PeekHeader());
+    // Peek header from our view
+    RlpDecoder temp_decoder(view_);
+    BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
     
     if (h.list) {
         return DecodingError::kUnexpectedList;
     }
     
-    if (decoder_.Remaining().length() < h.header_size_bytes + h.payload_size_bytes) {
+    if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
         return DecodingError::kInputTooShort;
     }
     
@@ -287,8 +296,17 @@ Result<ByteView> RlpLargeStringDecoder::readChunk(size_t max_chunk_size) {
 // Approach B: Chunked List Decoder Implementation
 // ============================================================================
 
-RlpChunkedListDecoder::RlpChunkedListDecoder(RlpDecoder& decoder)
-    : decoder_(decoder)
+RlpChunkedListDecoder::RlpChunkedListDecoder(const RlpDecoder& decoder)
+    : view_(decoder.Remaining())
+    , list_payload_()
+    , total_size_(0)
+    , total_chunks_(0)
+    , chunk_index_(0)
+    , initialized_(false) {
+}
+
+RlpChunkedListDecoder::RlpChunkedListDecoder(ByteView data)
+    : view_(data)
     , list_payload_()
     , total_size_(0)
     , total_chunks_(0)

@@ -171,10 +171,18 @@ inline StreamingOperationResult encodeChunkedList(RlpEncoder& encoder, Func&& ge
 // Phase 2: Read chunks → decode into pre-allocated buffer
 //
 // Use this for memory-efficient decoding of large single RLP strings
+//
+// This decoder is self-contained and manages its own state without
+// modifying the original RlpDecoder.
 
 class RlpLargeStringDecoder {
 public:
-    explicit RlpLargeStringDecoder(RlpDecoder& decoder);
+    // Create from RlpDecoder's remaining view
+    // The decoder is not modified - we take a copy of its view
+    explicit RlpLargeStringDecoder(const RlpDecoder& decoder);
+    
+    // Create directly from ByteView
+    explicit RlpLargeStringDecoder(ByteView data);
     
     // Phase 1: Get total payload size (allows pre-allocation)
     [[nodiscard]] Result<size_t> peekPayloadSize() const noexcept;
@@ -196,9 +204,12 @@ public:
     
     // Check if initialized (header consumed)
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
+    
+    // Get remaining view after decoding (for chaining)
+    [[nodiscard]] ByteView remaining() const noexcept { return view_; }
 
 private:
-    RlpDecoder& decoder_;
+    ByteView view_;            // Our own view of the data
     size_t payload_size_{0};
     size_t bytes_read_{0};
     bool initialized_{false};
@@ -212,10 +223,18 @@ private:
 // Phase 2: Read list items → decode each chunk
 //
 // Use this when data is encoded as list of RLP strings
+//
+// This decoder is self-contained and manages its own state without
+// modifying the original RlpDecoder.
 
 class RlpChunkedListDecoder {
 public:
-    explicit RlpChunkedListDecoder(RlpDecoder& decoder);
+    // Create from RlpDecoder's remaining view
+    // The decoder is not modified - we take a copy of its view
+    explicit RlpChunkedListDecoder(const RlpDecoder& decoder);
+    
+    // Create directly from ByteView
+    explicit RlpChunkedListDecoder(ByteView data);
     
     // Phase 1: Get total reassembled size (sum of all chunk sizes)
     // Must scan through list to calculate total
@@ -244,10 +263,13 @@ public:
     
     // Check if initialized (list header consumed)
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
+    
+    // Get remaining view after decoding (for chaining)
+    [[nodiscard]] ByteView remaining() const noexcept { return view_; }
 
 private:
-    RlpDecoder& decoder_;
-    ByteView list_payload_;
+    ByteView view_;            // Our own view of the data
+    ByteView list_payload_;    // View of the list payload being decoded
     size_t total_size_{0};
     size_t total_chunks_{0};
     size_t chunk_index_{0};
