@@ -25,12 +25,12 @@ class RlpDecoder {
 
     // --- Read Basic Types (Consume) ---
     // Returns error or success. Value is output parameter.
-    DecodingResult read(Bytes& out); // Read next item as bytes (string payload)
-    DecodingResult read(intx::uint256& out); // Explicit overload for uint256
+    DecodingResult read(Bytes& out) noexcept; // Read next item as bytes (string payload)
+    DecodingResult read(intx::uint256& out) noexcept; // Explicit overload for uint256
 
     // Template read for integral types and uint256
     template <typename T>
-    auto read(T& out) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, intx::uint256> || std::is_same_v<T, bool>, DecodingResult> {
+    auto read(T& out) noexcept -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, intx::uint256> || std::is_same_v<T, bool>, DecodingResult> {
         if constexpr (std::is_same_v<T, intx::uint256>) {
             return read(static_cast<intx::uint256&>(out)); // Call explicit uint256 overload
         } else if constexpr (std::is_same_v<T, bool>) {
@@ -52,7 +52,7 @@ class RlpDecoder {
     // Static method that decodes from ByteView and returns Result<T>
     // Named 'decode' to distinguish from instance method 'read'
     template <typename T>
-    static auto decode(ByteView& data, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<
+    static auto decode(ByteView& data, Leftover leftover = Leftover::kProhibit) noexcept -> std::enable_if_t<
         is_rlp_decodable_v<T>,
         Result<T>
     >
@@ -72,7 +72,7 @@ class RlpDecoder {
 
     // Helper method for reading with a specified ByteView and leftover handling
     template <typename T>
-    auto read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
+    auto read(ByteView& data, T& out, Leftover leftover = Leftover::kProhibit) noexcept -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
         RlpDecoder temp_decoder(data);
         BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
@@ -127,7 +127,7 @@ class RlpDecoder {
     }
 
     template <typename T>
-    auto check_payload(Header& h, ByteView& payload_view, ByteView& view) -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
+    auto check_payload(Header& h, ByteView& payload_view, ByteView& view) noexcept -> std::enable_if_t<is_unsigned_integral_v<T> || std::is_same_v<T, bool> || std::is_same_v<T, intx::uint256>, DecodingResult>
     {
         if ( h.list )
         {
@@ -181,7 +181,7 @@ class RlpDecoder {
     // Reads a complete list assuming all items are of type T
     // Note: Implementation needs to be here or in .ipp due to template
     template <typename T>
-    DecodingResult read_vector(std::vector<T>& vec) {
+    DecodingResult read_vector(std::vector<T>& vec) noexcept {
         BOOST_OUTCOME_TRY(size_t payload_len, ReadListHeaderBytes());
 
         vec.clear();
@@ -214,7 +214,7 @@ class RlpDecoder {
      // --- Convenience for Fixed-Size Arrays/Spans (Consume) ---
      // Reads next item into a fixed-size span/array
     template <size_t N>
-    DecodingResult read(std::span<uint8_t, N> out_span) {
+    DecodingResult read(std::span<uint8_t, N> out_span) noexcept {
          BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
          if ( h.list ) {
@@ -244,11 +244,11 @@ class RlpDecoder {
     }
 
     template <size_t N>
-    DecodingResult read(std::array<uint8_t, N>& out_array){
+    DecodingResult read(std::array<uint8_t, N>& out_array) noexcept {
         return read<N>(std::span<uint8_t, N>{out_array});
     }
     template <size_t N>
-    DecodingResult read(uint8_t (&out_c_array)[N]){
+    DecodingResult read(uint8_t (&out_c_array)[N]) noexcept {
         return read<N>(std::span<uint8_t, N>{out_c_array});
     }
 
@@ -262,7 +262,7 @@ class RlpDecoder {
     // --- Internal Template Implementation for Integrals ---
     // Needs to be in header if read<T> is public template method
     template <typename T>
-    auto read_integral(T& out) -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
+    auto read_integral(T& out) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, DecodingResult> {
         BOOST_OUTCOME_TRY(auto h, PeekHeader());
         
         if (h.list) {
@@ -305,7 +305,7 @@ class RlpDecoder {
         return outcome::success();
     }
     
-    DecodingResult read_bool(bool& out) {
+    DecodingResult read_bool(bool& out) noexcept {
         BOOST_OUTCOME_TRY(auto h, PeekHeader());
         
         if (h.list) {
@@ -338,7 +338,7 @@ class RlpDecoder {
         return outcome::success();
     }
     
-    DecodingResult read_uint256(intx::uint256& out);
+    DecodingResult read_uint256(intx::uint256& out) noexcept;
 
     // --- Internal Helpers (Declaration only) ---
     // Implementations will be in rlp_decoder.cpp
