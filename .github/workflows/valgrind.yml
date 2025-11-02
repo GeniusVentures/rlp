@@ -36,7 +36,7 @@ jobs:
           -G Ninja \
           -DCMAKE_CXX_COMPILER=g++ \
           -DCMAKE_C_COMPILER=gcc \
-          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
           -DENABLE_VALGRIND=ON \
           -S build/Linux
     
