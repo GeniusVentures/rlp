@@ -8,7 +8,6 @@
 #include <rlpx/socket/socket_transport.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -161,6 +160,7 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     // Step 6: Start send/receive loops as background coroutines
     // Note: We pass raw pointers because the session unique_ptr ownership
     // will be returned to caller, and the loops run until session closes
+    // Using custom completion handler instead of detached to avoid exception handling
     boost::asio::co_spawn(
         executor,
         [session_ptr = session.get()]() -> Awaitable<void> {
@@ -168,7 +168,9 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
             // Log error if needed
             co_return;
         },
-        boost::asio::detached
+        [](std::exception_ptr) noexcept {
+            // Completion handler that ignores exceptions (none should occur)
+        }
     );
     
     boost::asio::co_spawn(
@@ -178,7 +180,9 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
             // Log error if needed
             co_return;
         },
-        boost::asio::detached
+        [](std::exception_ptr) noexcept {
+            // Completion handler that ignores exceptions (none should occur)
+        }
     );
     
     // TODO: Step 7: Exchange Hello messages after proper handshake
