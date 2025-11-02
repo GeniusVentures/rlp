@@ -25,57 +25,66 @@ namespace rlp {
 
 class RlpLargeStringEncoder {
 public:
-    explicit RlpLargeStringEncoder(RlpEncoder& encoder);
+    // Factory method: Step 1 - Create and reserve space automatically
+    // Returns error if reservation fails
+    [[nodiscard]] static StreamingResult<RlpLargeStringEncoder> create(RlpEncoder& encoder);
     
-    // Add chunk of payload data
-    // Returns error if already flushed
-    [[nodiscard]] StreamingOperationResult write(ByteView chunk);
+    // Step 2 - Add chunk of payload data
+    // Returns error if already finished
+    [[nodiscard]] StreamingOperationResult addChunk(ByteView chunk);
     
-    // Flush - patches the header with actual payload size
-    // Must be called before using the encoder output
-    // Returns error if already flushed
-    [[nodiscard]] StreamingOperationResult flush();
+    // Explicitly finish encoding and patch header
+    // Can be called manually, or automatically called by destructor
+    // Returns error if already finished
+    [[nodiscard]] StreamingOperationResult finish();
     
     // Get current payload size
     [[nodiscard]] size_t payloadSize() const noexcept { return payload_size_; }
     
-    // Check if already flushed
-    [[nodiscard]] bool isFlushed() const noexcept { return flushed_; }
+    // Check if already finished
+    [[nodiscard]] bool isFinished() const noexcept { return finished_; }
     
-    // Destructor does NOT auto-flush - caller must explicitly flush()
-    ~RlpLargeStringEncoder() = default;
+    // Destructor automatically calls finish() if not already called
+    ~RlpLargeStringEncoder();
     
-    // Disable copying, allow moving
+    // Disable copying, enable moving with custom implementation
     RlpLargeStringEncoder(const RlpLargeStringEncoder&) = delete;
     RlpLargeStringEncoder& operator=(const RlpLargeStringEncoder&) = delete;
-    RlpLargeStringEncoder(RlpLargeStringEncoder&&) = default;
-    RlpLargeStringEncoder& operator=(RlpLargeStringEncoder&&) = default;
+    RlpLargeStringEncoder(RlpLargeStringEncoder&& other) noexcept
+        : encoder_(other.encoder_)
+        , header_start_(other.header_start_)
+        , payload_start_(other.payload_start_)
+        , payload_size_(other.payload_size_)
+        , finished_(other.finished_) {
+        // Mark the moved-from object as finished to prevent double-finish
+        other.finished_ = true;
+    }
+    RlpLargeStringEncoder& operator=(RlpLargeStringEncoder&&) = delete; // Not assignable after construction
 
 private:
+    // Private constructor - use create() factory method
+    explicit RlpLargeStringEncoder(RlpEncoder& encoder);
+    
     RlpEncoder& encoder_;
     size_t header_start_;      // Position where header starts
     size_t payload_start_;     // Position where payload starts (after reserved header)
     size_t payload_size_{0};   // Accumulated payload size
-    bool flushed_{false};
+    bool finished_{false};     // Renamed from flushed_ for clarity
 };
 
 // Convenience function: encode large string with callback providing chunks
-// Returns error if any write or flush operation fails
+// Returns error if creation or write operation fails. Automatic finish() via RAII.
 template <typename Func>
 inline StreamingOperationResult encodeLargeString(RlpEncoder& encoder, Func&& generator) {
-    RlpLargeStringEncoder stream(encoder);
+    BOOST_OUTCOME_TRY(auto stream, RlpLargeStringEncoder::create(encoder));
     
     StreamingOperationResult result = outcome::success();
     generator([&stream, &result](ByteView chunk) {
         if (!result) return; // Skip if already failed
-        result = stream.write(chunk);
+        result = stream.addChunk(chunk);
     });
     
-    if (!result) {
-        return result;
-    }
-    
-    return stream.flush();
+    return result; // finish() automatically called by destructor
 }
 
 // ============================================================================
@@ -99,13 +108,16 @@ public:
     // Constructor validates chunk_size > 0
     [[nodiscard]] static StreamingResult<RlpChunkedListEncoder> create(RlpEncoder& encoder, size_t chunk_size = 32768);
     
-    // Add data - automatically chunks into RLP strings within a list
-    // Returns error if already flushed
-    [[nodiscard]] StreamingOperationResult write(ByteView data);
+    // Destructor automatically calls finish() if not already done
+    ~RlpChunkedListEncoder();
     
-    // Flush any remaining buffered data as a final chunk
-    // Returns error if already flushed
-    [[nodiscard]] StreamingOperationResult flush();
+    // Add data - automatically chunks into RLP strings within a list
+    // Returns error if already finished
+    [[nodiscard]] StreamingOperationResult addChunk(ByteView data);
+    
+    // Finalize encoding - flush any remaining buffered data as a final chunk
+    // Returns error if already finished. Automatically called by destructor.
+    [[nodiscard]] StreamingOperationResult finish();
     
     // Get number of chunks encoded
     [[nodiscard]] size_t chunkCount() const noexcept { return chunk_count_; }
@@ -113,17 +125,24 @@ public:
     // Get total bytes encoded
     [[nodiscard]] size_t totalBytes() const noexcept { return total_bytes_; }
     
-    // Check if already flushed
-    [[nodiscard]] bool isFlushed() const noexcept { return flushed_; }
+    // Check if already finished
+    [[nodiscard]] bool isFinished() const noexcept { return finished_; }
     
-    // Destructor does NOT auto-flush - caller must explicitly flush()
-    ~RlpChunkedListEncoder() = default;
-    
-    // Disable copying, allow moving
+    // Disable copying, enable moving with custom implementation
     RlpChunkedListEncoder(const RlpChunkedListEncoder&) = delete;
     RlpChunkedListEncoder& operator=(const RlpChunkedListEncoder&) = delete;
-    RlpChunkedListEncoder(RlpChunkedListEncoder&&) = default;
-    RlpChunkedListEncoder& operator=(RlpChunkedListEncoder&&) = default;
+    RlpChunkedListEncoder(RlpChunkedListEncoder&& other) noexcept
+        : encoder_(other.encoder_)
+        , chunk_size_(other.chunk_size_)
+        , buffer_(std::move(other.buffer_))
+        , chunk_count_(other.chunk_count_)
+        , total_bytes_(other.total_bytes_)
+        , finished_(other.finished_)
+        , list_started_(other.list_started_) {
+        // Mark the moved-from object as finished to prevent double-finish
+        other.finished_ = true;
+    }
+    RlpChunkedListEncoder& operator=(RlpChunkedListEncoder&&) = delete; // Not assignable after construction
 
 private:
     // Private constructor - use create() factory method
@@ -136,12 +155,12 @@ private:
     Bytes buffer_;
     size_t chunk_count_{0};
     size_t total_bytes_{0};
-    bool flushed_{false};
+    bool finished_{false};
     bool list_started_{false};
 };
 
 // Convenience function: encode data as chunked list
-// Returns error if creation, write, or flush fails
+// Returns error if creation or write fails. Automatic finish() via RAII.
 template <typename Func>
 inline StreamingOperationResult encodeChunkedList(RlpEncoder& encoder, Func&& generator, size_t chunk_size = 32768) {
     BOOST_OUTCOME_TRY(auto chunked, RlpChunkedListEncoder::create(encoder, chunk_size));
@@ -149,14 +168,10 @@ inline StreamingOperationResult encodeChunkedList(RlpEncoder& encoder, Func&& ge
     StreamingOperationResult result = outcome::success();
     generator([&chunked, &result](ByteView chunk) {
         if (!result) return; // Skip if already failed
-        result = chunked.write(chunk);
+        result = chunked.addChunk(chunk);
     });
     
-    if (!result) {
-        return result;
-    }
-    
-    return chunked.flush();
+    return result; // finish() automatically called by destructor
 }
 
 // ============================================================================
