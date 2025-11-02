@@ -10,9 +10,11 @@
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/redirect_error.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/asio/read.hpp>
+#include <boost/system/error_code.hpp>
 #include <queue>
 #include <mutex>
 #include <chrono>
