@@ -43,7 +43,7 @@ inline Bytes hex_to_bytes(std::string_view hex) {
  * @param bytes Bytes object to convert
  * @return Lowercase hexadecimal string representation (e.g., "48656c6c6f")
  */
-inline std::string bytes_to_hex(const Bytes& bytes) {
+inline std::string bytes_to_hex(const Bytes& bytes) noexcept {
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
     for (uint8_t byte : bytes) {
@@ -57,7 +57,7 @@ inline std::string bytes_to_hex(const Bytes& bytes) {
  * @param bytes ByteView object to convert
  * @return Lowercase hexadecimal string representation (e.g., "48656c6c6f")
  */
-inline std::string bytes_to_hex(ByteView bytes) {
+inline std::string bytes_to_hex(ByteView bytes) noexcept {
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
     for (uint8_t byte : bytes) {
@@ -67,8 +67,8 @@ inline std::string bytes_to_hex(ByteView bytes) {
 }
 
 // Aliases for convenience
-inline std::string to_hex(ByteView bytes) { return bytes_to_hex(bytes); }
-inline std::string to_hex(const Bytes& bytes) { return bytes_to_hex(bytes); }
+inline std::string to_hex(ByteView bytes) noexcept { return bytes_to_hex(bytes); }
+inline std::string to_hex(const Bytes& bytes) noexcept { return bytes_to_hex(bytes); }
 inline Bytes from_hex(std::string_view hex) { return hex_to_bytes(hex); }
 
 } // namespace test
