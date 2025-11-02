@@ -14,19 +14,19 @@ class RlpEncoder {
     RlpEncoder() = default;
 
     // --- Add basic types ---
-    EncodingOperationResult add(ByteView bytes); // Add raw bytes (encoded as RLP string)
-    EncodingOperationResult AddRaw(ByteView bytes); // Add raw bytes without header
+    EncodingOperationResult add(ByteView bytes) noexcept; // Add raw bytes (encoded as RLP string)
+    EncodingOperationResult AddRaw(ByteView bytes) noexcept; // Add raw bytes without header
     // Add unsigned integrals (using SFINAE for C++17)
     template <typename T>
-        auto add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult>;
-    EncodingOperationResult add(const intx::uint256& n); // Explicit overload for uint256
-    EncodingOperationResult BeginList();
-    EncodingOperationResult EndList(); // Calculates and inserts the list header
+        auto add(const T& n) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult>;
+    EncodingOperationResult add(const intx::uint256& n) noexcept; // Explicit overload for uint256
+    EncodingOperationResult BeginList() noexcept;
+    EncodingOperationResult EndList() noexcept; // Calculates and inserts the list header
 
     // --- Convenience for Vectors ---
     // Note: Implementation needs to be here or in .ipp due to template
     template <typename T>
-    EncodingOperationResult add(const std::vector<T>& vec) {
+    EncodingOperationResult add(const std::vector<T>& vec) noexcept {
         BOOST_OUTCOME_TRY(BeginList());
         for (const auto& item : vec) {
             BOOST_OUTCOME_TRY(add(item)); // Recursively call add for each element
@@ -35,7 +35,7 @@ class RlpEncoder {
     }
      // Convenience for Spans (similar)
     template <typename T>
-    EncodingOperationResult add(std::span<const T> vec_span) {
+    EncodingOperationResult add(std::span<const T> vec_span) noexcept {
         BOOST_OUTCOME_TRY(BeginList());
         for (const auto& item : vec_span) {
             BOOST_OUTCOME_TRY(add(item)); // Recursively call add for each element
@@ -45,21 +45,21 @@ class RlpEncoder {
 
     // --- Fixed-size array support ---
     template <size_t N>
-    EncodingOperationResult add(const std::array<uint8_t, N>& arr) {
+    EncodingOperationResult add(const std::array<uint8_t, N>& arr) noexcept {
         return add(ByteView(arr.data(), arr.size()));
     }
 
     // --- Output ---
-    [[nodiscard]] EncodingResult<const Bytes*> GetBytes() const;
-    [[nodiscard]] EncodingResult<Bytes*> GetBytes(); // Mutable access for streaming
-    [[nodiscard]] EncodingResult<Bytes> MoveBytes();
+    [[nodiscard]] EncodingResult<const Bytes*> GetBytes() const noexcept;
+    [[nodiscard]] EncodingResult<Bytes*> GetBytes() noexcept; // Mutable access for streaming
+    [[nodiscard]] EncodingResult<Bytes> MoveBytes() noexcept;
     void clear() noexcept; // Reset the encoder
     
     // Get current size without copying
     [[nodiscard]] size_t size() const noexcept { return buffer_.size(); }
     
     // Reserve capacity for better performance
-    void reserve(size_t capacity) { buffer_.reserve(capacity); }
+    void reserve(size_t capacity) noexcept { buffer_.reserve(capacity); }
 
    private:
     Bytes buffer_{};
@@ -68,11 +68,11 @@ class RlpEncoder {
     // --- Internal Template Implementation for Integrals ---
     // Needs to be in header if add<T> is public template method
     template <typename T>
-    auto add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult>;
+    auto add_integral(const T& n) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult>;
 };
 
 template <typename T>
-inline auto RlpEncoder::add(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult> {
+inline auto RlpEncoder::add(const T& n) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult> {
     if constexpr (std::is_same_v<T, bool>) {
         // Handle boolean values
         buffer_.push_back(n ? uint8_t{1} : kEmptyStringCode);
@@ -84,7 +84,7 @@ inline auto RlpEncoder::add(const T& n) -> std::enable_if_t<is_unsigned_integral
 }
 
 template <typename T>
-inline auto RlpEncoder::add_integral(const T& n) -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult> {
+inline auto RlpEncoder::add_integral(const T& n) noexcept -> std::enable_if_t<is_unsigned_integral_v<T>, EncodingOperationResult> {
     if ( n == 0 ) {
         buffer_.push_back(kEmptyStringCode);
         return outcome::success();

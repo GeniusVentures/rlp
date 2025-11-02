@@ -7,7 +7,7 @@ namespace rlp {
 namespace { // Anonymous namespace for internal helpers
 
 // Encodes just the header bytes into a temporary buffer
-EncodingResult<Bytes> encode_header_bytes(bool list, size_t payload_size_bytes) {
+EncodingResult<Bytes> encode_header_bytes(bool list, size_t payload_size_bytes) noexcept {
     Bytes header_bytes;
     header_bytes.reserve(1 + sizeof(uint64_t)); // Max possible header size
 
@@ -33,7 +33,7 @@ EncodingResult<Bytes> encode_header_bytes(bool list, size_t payload_size_bytes) 
 
 // --- Public Method Implementations ---
 
-EncodingOperationResult RlpEncoder::add(ByteView bytes) {
+EncodingOperationResult RlpEncoder::add(ByteView bytes) noexcept {
     // Handle single byte literal case
     if ( bytes.length() == 1 && static_cast<uint8_t>(bytes[0]) < kRlpSingleByteThreshold ) {
         buffer_.push_back(bytes[0]);
@@ -60,7 +60,7 @@ EncodingOperationResult RlpEncoder::add(ByteView bytes) {
  * @param bytes Raw bytes to append. Must not be empty.
  * @return Error if bytes is empty.
  */
-EncodingOperationResult RlpEncoder::AddRaw(ByteView bytes) {
+EncodingOperationResult RlpEncoder::AddRaw(ByteView bytes) noexcept {
     if ( bytes.empty() ) {
         return EncodingError::kEmptyInput;
     }
@@ -69,7 +69,7 @@ EncodingOperationResult RlpEncoder::AddRaw(ByteView bytes) {
 }
 
 // Explicit overload for uint256
-EncodingOperationResult RlpEncoder::add(const intx::uint256& n) {
+EncodingOperationResult RlpEncoder::add(const intx::uint256& n) noexcept {
      if ( n == 0 ) {
         buffer_.push_back(kEmptyStringCode);
     } else if ( n < kRlpSingleByteThreshold ) {
@@ -85,12 +85,12 @@ EncodingOperationResult RlpEncoder::add(const intx::uint256& n) {
     return outcome::success();
 }
 
-EncodingOperationResult RlpEncoder::BeginList() {
+EncodingOperationResult RlpEncoder::BeginList() noexcept {
     list_start_positions_.push_back(buffer_.size());
     return outcome::success();
 }
 
-EncodingOperationResult RlpEncoder::EndList() {
+EncodingOperationResult RlpEncoder::EndList() noexcept {
     if ( list_start_positions_.empty() ) {
         return EncodingError::kUnmatchedEndList;
     }
@@ -106,21 +106,21 @@ EncodingOperationResult RlpEncoder::EndList() {
     return outcome::success();
 }
 
-EncodingResult<const Bytes*> RlpEncoder::GetBytes() const {
+EncodingResult<const Bytes*> RlpEncoder::GetBytes() const noexcept {
     if ( !list_start_positions_.empty() ) {
         return EncodingError::kUnclosedList;
     }
     return &buffer_;
 }
 
-EncodingResult<Bytes*> RlpEncoder::GetBytes() {
+EncodingResult<Bytes*> RlpEncoder::GetBytes() noexcept {
     if ( !list_start_positions_.empty() ) {
         return EncodingError::kUnclosedList;
     }
     return &buffer_;
 }
 
-EncodingResult<Bytes> RlpEncoder::MoveBytes() {
+EncodingResult<Bytes> RlpEncoder::MoveBytes() noexcept {
      if ( !list_start_positions_.empty() ) {
         return EncodingError::kUnclosedList;
     }
