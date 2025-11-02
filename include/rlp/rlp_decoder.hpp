@@ -255,13 +255,6 @@ class RlpDecoder {
     // --- Streaming Support for Large Payloads ---
     // Get payload as ByteView without copying (for streaming)
     Result<ByteView> PeekPayload() const noexcept;
-    
-    // Advance the internal position by n bytes (for use by free functions)
-    void Advance(size_t n) noexcept { 
-        if (n <= view_.length()) {
-            view_.remove_prefix(n); 
-        }
-    }
 
    private:
     ByteView view_{}; // The remaining data to be decoded
