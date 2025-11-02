@@ -271,7 +271,12 @@ rlp::EncodingResult<rlp::Bytes> EncodePing() {
 int test_ping()
 {
     try {
-        auto packet = EncodePing();
+        auto packet_result = EncodePing();
+        if (!packet_result) {
+            std::cerr << "failed to encode ping packet\n";
+            return 1;
+        }
+        auto packet = std::move(packet_result.value());
         auto hash_result = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(packet.begin(), packet.end());
         std::array<uint8_t, 32> hash_array = hash_result;
 
