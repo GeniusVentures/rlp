@@ -46,7 +46,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_FUZZING=ON \
           -DENABLE_ASAN=ON \
-          -S .
+          -S build/Linux
     
     - name: Build fuzz targets
       run: cmake --build build/Linux/fuzz --target ${{ matrix.target }}
@@ -113,7 +113,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DENABLE_FUZZING=ON \
           -DENABLE_ASAN=ON \
-          -S .
+          -S build/Linux
     
     - name: Build fuzz targets
       run: cmake --build build/Linux/fuzz --target ${{ matrix.target }}
