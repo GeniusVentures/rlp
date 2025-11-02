@@ -20,23 +20,30 @@ MessageStream::MessageStream(
 }
 
 Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& params) noexcept {
-    try {
-        // Create message payload: message_id || rlp_payload
-        // For RLPx, the message format is: [msg-id, msg-data]
-        rlp::RlpEncoder encoder;
-        encoder.BeginList();
-        encoder.add(params.message_id);
-        
-        // Add payload as raw bytes if it's already RLP-encoded
-        if ( !params.payload.empty() ) {
-            encoder.AddRaw(detail::to_rlp_view(params.payload));
+    // Create message payload: message_id || rlp_payload
+    // For RLPx, the message format is: [msg-id, msg-data]
+    rlp::RlpEncoder encoder;
+    if (auto res = encoder.BeginList(); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    if (auto res = encoder.add(params.message_id); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    
+    // Add payload as raw bytes if it's already RLP-encoded
+    if ( !params.payload.empty() ) {
+        if (auto res = encoder.AddRaw(detail::to_rlp_view(params.payload)); !res) {
+            co_return SessionError::kInvalidMessage;
         }
-        
-        encoder.EndList();
-        
-        auto result = encoder.GetBytes();
-        if (!result) co_return SessionError::kInvalidMessage;
-        ByteBuffer message_data = detail::from_rlp_bytes(*result.value());
+    }
+    
+    if (auto res = encoder.EndList(); !res) {
+        co_return SessionError::kInvalidMessage;
+    }
+    
+    auto result = encoder.GetBytes();
+    if (!result) co_return SessionError::kInvalidMessage;
+    ByteBuffer message_data = detail::from_rlp_bytes(*result.value());
         
         // TODO: Compress if enabled
         // if ( params.compress && compression_enabled_ ) {
@@ -66,19 +73,14 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         }
         
         co_return outcome::success();
-        
-    } catch ( ... ) {
-        co_return SessionError::kInvalidMessage;
-    }
 }
 
 Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
-    try {
-        // Receive encrypted frame from socket
-        auto frame_result = co_await receive_frame();
-        if ( !frame_result || frame_result.value().empty() ) {
-            co_return SessionError::kInvalidMessage;
-        }
+    // Receive encrypted frame from socket
+    auto frame_result = co_await receive_frame();
+    if ( !frame_result || frame_result.value().empty() ) {
+        co_return SessionError::kInvalidMessage;
+    }
         
         const auto& frame_data = frame_result.value();
         
