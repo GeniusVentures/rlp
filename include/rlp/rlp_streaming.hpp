@@ -282,29 +282,24 @@ private:
 
 // Decode large string with streaming callback (Approach A)
 // Use for payloads encoded as single RLP string
+// Note: This is a legacy convenience function. Consider using RlpLargeStringDecoder directly.
 template <typename Func>
 inline DecodingResult decodeLargeString(RlpDecoder& decoder, Func&& callback, size_t read_chunk_size = 32768) {
-    BOOST_OUTCOME_TRY(auto h, decoder.PeekHeader());
+    RlpLargeStringDecoder stream_decoder(decoder);
     
-    if (h.list) {
-        return DecodingError::kUnexpectedList;
-    }
-    
-    if (decoder.Remaining().length() < h.header_size_bytes + h.payload_size_bytes) {
-        return DecodingError::kInputTooShort;
-    }
-    
-    // Skip header
-    decoder.Advance(h.header_size_bytes);
-    
-    // Stream payload in chunks
-    size_t remaining = h.payload_size_bytes;
-    while (remaining > 0) {
-        size_t current_chunk = std::min(remaining, read_chunk_size);
-        ByteView chunk = decoder.Remaining().substr(0, current_chunk);
+    // Initialize and read chunks
+    while (true) {
+        auto chunk_result = stream_decoder.readChunk(read_chunk_size);
+        if (!chunk_result) {
+            return chunk_result.error();
+        }
+        
+        ByteView chunk = chunk_result.value();
+        if (chunk.empty()) {
+            break; // Finished
+        }
+        
         callback(chunk);
-        decoder.Advance(current_chunk);
-        remaining -= current_chunk;
     }
     
     return outcome::success();
@@ -312,34 +307,25 @@ inline DecodingResult decodeLargeString(RlpDecoder& decoder, Func&& callback, si
 
 // Decode chunked list and reassemble (Approach B)
 // Use for payloads encoded as list of RLP strings
+// Note: This is a legacy convenience function. Consider using RlpChunkedListDecoder directly.
 template <typename Func>
 inline DecodingResult decodeChunkedList(RlpDecoder& decoder, Func&& callback) {
-    BOOST_OUTCOME_TRY(size_t list_payload_len, decoder.ReadListHeaderBytes());
+    RlpChunkedListDecoder stream_decoder(decoder);
     
-    ByteView list_payload = decoder.Remaining().substr(0, list_payload_len);
     size_t chunk_index = 0;
-    
-    while (!list_payload.empty()) {
-        RlpDecoder chunk_decoder(list_payload);
-        
-        // Each chunk should be a string (bytes)
-        BOOST_OUTCOME_TRY(auto h, chunk_decoder.PeekHeader());
-        if (h.list) {
-            return DecodingError::kUnexpectedList;
+    while (true) {
+        auto chunk_result = stream_decoder.readChunk();
+        if (!chunk_result) {
+            return chunk_result.error();
         }
         
-        // Read the chunk
-        Bytes chunk_data;
-        BOOST_OUTCOME_TRY(chunk_decoder.read(chunk_data));
+        ByteView chunk = chunk_result.value();
+        if (chunk.empty()) {
+            break; // Finished
+        }
         
-        // Deliver to callback
-        callback(ByteView(chunk_data), chunk_index++);
-        
-        list_payload = chunk_decoder.Remaining();
+        callback(chunk, chunk_index++);
     }
-    
-    // Consume the list payload from main decoder
-    decoder.Advance(list_payload_len);
     
     return outcome::success();
 }
