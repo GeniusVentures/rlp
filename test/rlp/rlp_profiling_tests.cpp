@@ -325,10 +325,10 @@ TEST(RLPProfiling, RepeatedEncodeDecode) {
         Timer timer("Encode " + std::to_string(NUM_ITERATIONS) + " simple lists");
         for (size_t i = 0; i < NUM_ITERATIONS; ++i) {
             RlpEncoder encoder;
-            encoder.BeginList();
-            encoder.add(ByteView(test_data));
-            encoder.add(uint64_t(i));
-            encoder.EndList();
+            (void)encoder.BeginList();
+            (void)encoder.add(ByteView(test_data));
+            (void)encoder.add(uint64_t(i));
+            (void)encoder.EndList();
             auto result = encoder.GetBytes();
             ASSERT_TRUE(result);
         }
@@ -336,10 +336,10 @@ TEST(RLPProfiling, RepeatedEncodeDecode) {
     
     // Pre-encode once for decode benchmark
     RlpEncoder encoder;
-    encoder.BeginList();
-    encoder.add(ByteView(test_data));
-    encoder.add(uint64_t(42));
-    encoder.EndList();
+    (void)encoder.BeginList();
+    (void)encoder.add(ByteView(test_data));
+    (void)encoder.add(uint64_t(42));
+    (void)encoder.EndList();
     auto encoded_result = encoder.GetBytes();
     ASSERT_TRUE(encoded_result);
     const Bytes& encoded = *encoded_result.value();
@@ -352,10 +352,10 @@ TEST(RLPProfiling, RepeatedEncodeDecode) {
             ASSERT_TRUE(header);
             
             Bytes decoded_bytes;
-            decoder.read(decoded_bytes);
+            (void)decoder.read(decoded_bytes);
             
             uint64_t decoded_uint;
-            decoder.read(decoded_uint);
+            (void)decoder.read(decoded_uint);
         }
     }
 }
