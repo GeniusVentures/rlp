@@ -130,44 +130,46 @@ jobs:
           build/Linux/tsan/**/*.log
 
   # Windows ASan (MSVC has limited sanitizer support)
-  windows-asan:
-    name: ASan (Windows, MSVC)
-    runs-on: windows-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-    
-    - name: Configure CMake with ASan
-      run: |
-        cmake -B build/Windows/asan `
-          -G "Visual Studio 17 2022" -A x64 `
-          -DCMAKE_BUILD_TYPE=Debug `
-          -DENABLE_ASAN=ON `
-          -S build/Windows
-    
-    - name: Build
-      run: cmake --build build/Windows/asan --config Debug
-    
-    - name: Run tests with ASan
-      working-directory: build/Windows/asan
-      run: ctest -C Debug --output-on-failure --timeout 300
-    
-    - name: Upload ASan logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: windows-asan-logs
-        path: |
-          build/Windows/asan/Testing/Temporary/LastTest.log
-          build/Windows/asan/**/*.log
+  # Temporarily disabled due to zkLLVM dependency issues on Windows CI
+  # TODO: Re-enable once dependency setup is fixed
+  # windows-asan:
+  #   name: ASan (Windows, MSVC)
+  #   runs-on: windows-latest
+  #   
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #     with:
+  #       submodules: recursive
+  #   
+  #   - name: Configure CMake with ASan
+  #     run: |
+  #       cmake -B build/Windows/asan `
+  #         -G "Visual Studio 17 2022" -A x64 `
+  #         -DCMAKE_BUILD_TYPE=Debug `
+  #         -DENABLE_ASAN=ON `
+  #         -S build/Windows
+  #   
+  #   - name: Build
+  #     run: cmake --build build/Windows/asan --config Debug
+  #   
+  #   - name: Run tests with ASan
+  #     working-directory: build/Windows/asan
+  #     run: ctest -C Debug --output-on-failure --timeout 300
+  #   
+  #   - name: Upload ASan logs on failure
+  #     if: failure()
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: windows-asan-logs
+  #       path: |
+  #         build/Windows/asan/Testing/Temporary/LastTest.log
+  #         build/Windows/asan/**/*.log
 
   # Summary job to check if all sanitizer tests passed
   sanitizers-summary:
     name: Sanitizers Summary
     runs-on: ubuntu-latest
-    needs: [asan-ubsan, tsan, windows-asan]
+    needs: [asan-ubsan, tsan]  # windows-asan temporarily disabled
     if: always()
     
     steps:
@@ -175,11 +177,10 @@ jobs:
       run: |
         echo "ASan + UBSan: ${{ needs.asan-ubsan.result }}"
         echo "ThreadSanitizer: ${{ needs.tsan.result }}"
-        echo "Windows ASan: ${{ needs.windows-asan.result }}"
+        echo "Windows ASan: Temporarily disabled (dependency issues)"
         
         if [ "${{ needs.asan-ubsan.result }}" != "success" ] || \
-           [ "${{ needs.tsan.result }}" != "success" ] || \
-           [ "${{ needs.windows-asan.result }}" != "success" ]; then
+           [ "${{ needs.tsan.result }}" != "success" ]; then
           echo "❌ One or more sanitizer tests failed"
           exit 1
         else
