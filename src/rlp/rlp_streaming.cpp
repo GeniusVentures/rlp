@@ -320,19 +320,20 @@ Result<size_t> RlpChunkedListDecoder::peekTotalSize() {
         return total_size_; // Return cached value
     }
     
-    // Peek list header
-    BOOST_OUTCOME_TRY(auto h, decoder_.PeekHeader());
+    // Peek list header from our view
+    RlpDecoder temp_decoder(view_);
+    BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
     
     if (!h.list) {
         return DecodingError::kUnexpectedString;
     }
     
-    if (decoder_.Remaining().length() < h.header_size_bytes + h.payload_size_bytes) {
+    if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
         return DecodingError::kInputTooShort;
     }
     
     // Scan through list to calculate total size
-    ByteView list_view = decoder_.Remaining().substr(h.header_size_bytes, h.payload_size_bytes);
+    ByteView list_view = view_.substr(h.header_size_bytes, h.payload_size_bytes);
     size_t total = 0;
     size_t chunks = 0;
     
@@ -376,10 +377,25 @@ Result<size_t> RlpChunkedListDecoder::peekChunkCount() {
 Result<ByteView> RlpChunkedListDecoder::readChunk() {
     // Initialize on first read
     if (!initialized_) {
-        // Read list header
-        BOOST_OUTCOME_TRY(size_t list_payload_len, decoder_.ReadListHeaderBytes());
+        // Read list header from our view
+        RlpDecoder temp_decoder(view_);
+        BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
         
-        list_payload_ = decoder_.Remaining().substr(0, list_payload_len);
+        if (!h.list) {
+            return DecodingError::kUnexpectedString;
+        }
+        
+        if (view_.length() < h.header_size_bytes + h.payload_size_bytes) {
+            return DecodingError::kInputTooShort;
+        }
+        
+        size_t list_payload_len = h.payload_size_bytes;
+        
+        // Skip list header in our view
+        view_.remove_prefix(h.header_size_bytes);
+        
+        // Set list_payload_ to point to the payload
+        list_payload_ = view_.substr(0, list_payload_len);
         
         // If we haven't peeked yet, do it now to get total_chunks_
         if (total_chunks_ == 0) {
@@ -388,15 +404,15 @@ Result<ByteView> RlpChunkedListDecoder::readChunk() {
             size_t chunks = 0;
             
             while (!temp_view.empty()) {
-                RlpDecoder temp_decoder(temp_view);
-                BOOST_OUTCOME_TRY(auto h, temp_decoder.PeekHeader());
+                RlpDecoder temp_decoder2(temp_view);
+                BOOST_OUTCOME_TRY(auto h2, temp_decoder2.PeekHeader());
                 
-                if (h.list) {
+                if (h2.list) {
                     return DecodingError::kUnexpectedList;
                 }
                 
                 chunks++;
-                size_t total_size = h.header_size_bytes + h.payload_size_bytes;
+                size_t total_size = h2.header_size_bytes + h2.payload_size_bytes;
                 if (temp_view.length() < total_size) {
                     return DecodingError::kInputTooShort;
                 }
@@ -411,9 +427,9 @@ Result<ByteView> RlpChunkedListDecoder::readChunk() {
     
     // Check if already finished
     if (chunk_index_ >= total_chunks_ || list_payload_.empty()) {
-        // Consume list payload from main decoder if not already done
+        // Consume list payload from our view if not already done
         if (!list_payload_.empty()) {
-            decoder_.Advance(list_payload_.length());
+            view_.remove_prefix(list_payload_.length());
             list_payload_ = ByteView{};
         }
         return ByteView{}; // Empty view signals completion
@@ -440,9 +456,9 @@ Result<ByteView> RlpChunkedListDecoder::readChunk() {
     list_payload_.remove_prefix(chunk_total_size);
     chunk_index_++;
     
-    // If this was the last chunk, consume from main decoder
-    if (list_payload_.empty()) {
-        // Already consumed everything from list
+    // If this was the last chunk, update our view
+    if (list_payload_.empty() && chunk_index_ >= total_chunks_) {
+        view_.remove_prefix(0); // Already consumed
     }
     
     return chunk_payload;
