@@ -38,6 +38,11 @@ set_target_properties(Microsoft.GSL PROPERTIES
 )
 add_library(Microsoft.GSL::GSL ALIAS Microsoft.GSL)
 
+# --------------------------------------------------------
+# Memory Safety and Performance Testing Tools
+include(${CMAKE_CURRENT_LIST_DIR}/Sanitizers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/Valgrind.cmake)
+
 # Boost should be loaded before libp2p v0.1.2
 # --------------------------------------------------------
 # Set config of Boost project
