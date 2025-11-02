@@ -34,14 +34,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // If we successfully read something, try to encode it back
     if (read_result) {
         rlp::RlpEncoder encoder;
-        encoder.add(rlp::ByteView(output_bytes));
+        (void)encoder.add(rlp::ByteView(output_bytes));
         auto encoded_result = encoder.GetBytes();
         
         // If encoding succeeded, try to decode again for roundtrip verification
         if (encoded_result) {
-            rlp::RlpDecoder decoder2(**encoded_result);
+            rlp::RlpDecoder decoder2(encoded_result.value());
             rlp::Bytes roundtrip_bytes;
-            decoder2.read(roundtrip_bytes);
+            (void)decoder2.read(roundtrip_bytes);
             
             // Verify roundtrip consistency
             if (roundtrip_bytes != output_bytes) {
@@ -54,23 +54,23 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // Test 2: Try to decode as integers of various sizes
     rlp::RlpDecoder decoder_int(input);
     uint8_t u8_val;
-    decoder_int.read(u8_val);
+    (void)decoder_int.read(u8_val);
     
     rlp::RlpDecoder decoder_int16(input);
     uint16_t u16_val;
-    decoder_int16.read(u16_val);
+    (void)decoder_int16.read(u16_val);
     
     rlp::RlpDecoder decoder_int32(input);
     uint32_t u32_val;
-    decoder_int32.read(u32_val);
+    (void)decoder_int32.read(u32_val);
     
     rlp::RlpDecoder decoder_int64(input);
     uint64_t u64_val;
-    decoder_int64.read(u64_val);
+    (void)decoder_int64.read(u64_val);
     
     rlp::RlpDecoder decoder_uint256(input);
     intx::uint256 u256_val;
-    decoder_uint256.read(u256_val);
+    (void)decoder_uint256.read(u256_val);
     
     // Test 3: Try to decode as a list
     rlp::RlpDecoder decoder_list(input);
