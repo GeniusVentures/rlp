@@ -147,6 +147,10 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_real_world_examples.cpp"
                 )
 
+                add_executable(rlp_profiling_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_profiling_tests.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -161,6 +165,7 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
+                target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
         
         # Suppress nodiscard warnings in test code for cleaner output
         # Test code intentionally ignores return values for brevity
@@ -180,6 +185,7 @@ if(BUILD_TESTS)
                         rlp_enhanced_api_tests
                         rlp_streaming_simple_api_demo
                         rlp_ethereum_real_world_examples
+                        rlp_profiling_tests
                 )
                 foreach(target ${TEST_TARGETS})
                         target_compile_options(${target} PRIVATE -Wno-unused-result)
@@ -262,6 +268,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
                 add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
                 add_test(NAME rlp_ethereum_real_world_examples COMMAND $<TARGET_FILE:rlp_ethereum_real_world_examples>)
+                add_test(NAME rlp_profiling_tests COMMAND $<TARGET_FILE:rlp_profiling_tests>)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
                 add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
                 add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)
