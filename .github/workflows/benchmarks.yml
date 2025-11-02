@@ -1,0 +1,112 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [ "main", "dev_peer_discovery" ]
+  pull_request:
+    branches: [ "main", "dev_peer_discovery" ]
+  schedule:
+    # Run weekly on Sunday at 5 AM UTC
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            build_dir: build/Linux
+            config_cmd: cmake -B build/Linux/bench -G Ninja -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER=gcc -DCMAKE_BUILD_TYPE=Release -S build/Linux
+            build_cmd: cmake --build build/Linux/bench
+            test_exe: ./rlp_benchmark_tests
+          - os: windows-latest
+            build_dir: build/Windows
+            config_cmd: cmake -B build/Windows/bench -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -S build/Windows
+            build_cmd: cmake --build build/Windows/bench --config Release
+            test_exe: ./Release/rlp_benchmark_tests.exe
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build curl
+    
+    - name: Configure CMake
+      run: ${{ matrix.config_cmd }}
+    
+    - name: Build
+      run: ${{ matrix.build_cmd }}
+    
+    - name: Run benchmarks
+      working-directory: ${{ matrix.build_dir }}/bench
+      run: |
+        ${{ matrix.test_exe }} --gtest_filter=*Benchmark* > benchmark_results.txt
+        cat benchmark_results.txt
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results-${{ matrix.os }}
+        path: ${{ matrix.build_dir }}/bench/benchmark_results.txt
+    
+    - name: Download previous benchmark results
+      if: github.event_name == 'pull_request'
+      uses: actions/cache@v4
+      with:
+        path: previous_benchmark_results.txt
+        key: benchmark-baseline-${{ matrix.os }}-${{ github.base_ref }}
+        restore-keys: |
+          benchmark-baseline-${{ matrix.os }}-
+      continue-on-error: true
+    
+    - name: Compare with baseline (if available)
+      if: github.event_name == 'pull_request'
+      working-directory: ${{ matrix.build_dir }}/bench
+      run: |
+        if [ -f "../../previous_benchmark_results.txt" ]; then
+          echo "Comparing with baseline..."
+          echo "Current results:"
+          cat benchmark_results.txt
+          echo ""
+          echo "Previous results:"
+          cat ../../previous_benchmark_results.txt
+        else
+          echo "No baseline available for comparison"
+        fi
+      shell: bash
+    
+    - name: Save benchmark results as baseline
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ matrix.build_dir }}/bench/benchmark_results.txt
+        key: benchmark-baseline-${{ matrix.os }}-main-${{ github.sha }}
+
+  benchmark-summary:
+    name: Benchmark Summary
+    runs-on: ubuntu-latest
+    needs: [benchmark]
+    if: always()
+    
+    steps:
+    - name: Check benchmark results
+      run: |
+        echo "Benchmarks: ${{ needs.benchmark.result }}"
+        
+        if [ "${{ needs.benchmark.result }}" != "success" ]; then
+          echo "❌ Benchmarks failed to complete"
+          exit 1
+        else
+          echo "✅ Benchmarks completed successfully"
+        fi

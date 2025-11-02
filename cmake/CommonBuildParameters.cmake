@@ -38,6 +38,11 @@ set_target_properties(Microsoft.GSL PROPERTIES
 )
 add_library(Microsoft.GSL::GSL ALIAS Microsoft.GSL)
 
+# --------------------------------------------------------
+# Memory Safety and Performance Testing Tools
+include(${CMAKE_CURRENT_LIST_DIR}/Sanitizers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/Valgrind.cmake)
+
 # Boost should be loaded before libp2p v0.1.2
 # --------------------------------------------------------
 # Set config of Boost project
@@ -142,6 +147,10 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_real_world_examples.cpp"
                 )
 
+                add_executable(rlp_profiling_tests
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_profiling_tests.cpp"
+                )
+
         target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
         target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
@@ -156,6 +165,7 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
+                target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
         
         # Suppress nodiscard warnings in test code for cleaner output
         # Test code intentionally ignores return values for brevity
@@ -175,6 +185,7 @@ if(BUILD_TESTS)
                         rlp_enhanced_api_tests
                         rlp_streaming_simple_api_demo
                         rlp_ethereum_real_world_examples
+                        rlp_profiling_tests
                 )
                 foreach(target ${TEST_TARGETS})
                         target_compile_options(${target} PRIVATE -Wno-unused-result)
@@ -211,6 +222,36 @@ if(BUILD_TESTS)
         target_link_libraries(rlpx_state_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_message_routing_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
         target_link_libraries(rlpx_socket_lifecycle_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+        
+        # Add fuzz testing targets if enabled
+        if(ENABLE_FUZZING)
+                if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+                        message(WARNING "Fuzzing is best supported with Clang. Current compiler: ${CMAKE_CXX_COMPILER_ID}")
+                endif()
+                
+                # Fuzzing flags
+                set(FUZZING_FLAGS -fsanitize=fuzzer,address -fno-omit-frame-pointer -g)
+                
+                add_executable(fuzz_rlp_decoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_decoder.cpp")
+                target_link_libraries(fuzz_rlp_decoder PRIVATE ${PROJECT_NAME})
+                target_compile_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
+                target_link_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
+                
+                add_executable(fuzz_rlp_encoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_encoder.cpp")
+                target_link_libraries(fuzz_rlp_encoder PRIVATE ${PROJECT_NAME})
+                target_compile_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
+                target_link_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
+                
+                # Create corpus directories
+                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_decoder)
+                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_encoder)
+                
+                # Note: Initial corpus files will be created at runtime by the fuzz targets
+                # CMake's file(WRITE) doesn't support hex escapes like \x00
+                
+                message(STATUS "Fuzzing enabled. Fuzz targets: fuzz_rlp_decoder, fuzz_rlp_encoder")
+        endif()
+        
                 # Register all test executables with CTest
                 enable_testing()
                 add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
@@ -227,6 +268,7 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
                 add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
                 add_test(NAME rlp_ethereum_real_world_examples COMMAND $<TARGET_FILE:rlp_ethereum_real_world_examples>)
+                add_test(NAME rlp_profiling_tests COMMAND $<TARGET_FILE:rlp_profiling_tests>)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
                 add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
                 add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)

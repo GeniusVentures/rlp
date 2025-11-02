@@ -18,6 +18,7 @@
 - Parentheses: space after opening and before closing: `if ( condition )`
 - Braces: Each on their own line
 - Error Handling: Use outcome::result<T> pattern for error propagation
+- Exception Handling: **By default, generate code without exception handling. All functions should be declared noexcept unless explicitly required to throw**
 - Namespaces: Use nested namespaces with full indentation
 - Comments: Document interfaces and public methods
 - Const-correctness: All parameter structs passed by const&

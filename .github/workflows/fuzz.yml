@@ -1,0 +1,216 @@
+name: Fuzz Testing
+
+on:
+  push:
+    branches: [ "main", "dev_peer_discovery" ]
+  pull_request:
+    branches: [ "main", "dev_peer_discovery" ]
+  schedule:
+    # Run nightly fuzzing for longer duration at 4 AM UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Fuzzing duration in seconds'
+        required: false
+        default: '300'
+        type: string
+
+jobs:
+  fuzz-short:
+    name: Fuzz Testing (Short - ${{ matrix.target }})
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_rlp_decoder, fuzz_rlp_encoder]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Clang
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake ninja-build curl
+    
+    - name: Configure CMake with Fuzzing
+      run: |
+        cmake -B build/Linux/fuzz \
+          -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_FUZZING=ON \
+          -DENABLE_ASAN=ON \
+          -S build/Linux
+    
+    - name: Build fuzz targets
+      run: cmake --build build/Linux/fuzz --target ${{ matrix.target }}
+    
+    - name: Create corpus directories
+      run: |
+        mkdir -p build/Linux/fuzz/corpus_${{ matrix.target }}
+        mkdir -p build/Linux/fuzz/crashes_${{ matrix.target }}
+    
+    - name: Run fuzzer (short duration)
+      working-directory: build/Linux/fuzz
+      timeout-minutes: 10
+      run: |
+        ./${{ matrix.target }} \
+          -max_total_time=${{ github.event.inputs.duration || '180' }} \
+          -timeout=30 \
+          -rss_limit_mb=2048 \
+          -print_final_stats=1 \
+          -artifact_prefix=crashes_${{ matrix.target }}/ \
+          corpus_${{ matrix.target }}
+    
+    - name: Upload crashes if found
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes-${{ matrix.target }}
+        path: build/Linux/fuzz/crashes_${{ matrix.target }}/
+        if-no-files-found: ignore
+    
+    - name: Upload corpus
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-corpus-${{ matrix.target }}
+        path: build/Linux/fuzz/corpus_${{ matrix.target }}/
+        if-no-files-found: ignore
+
+  fuzz-long:
+    name: Fuzz Testing (Long - ${{ matrix.target }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_rlp_decoder, fuzz_rlp_encoder]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Clang
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake ninja-build curl
+    
+    - name: Configure CMake with Fuzzing
+      run: |
+        cmake -B build/Linux/fuzz \
+          -G Ninja \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DENABLE_FUZZING=ON \
+          -DENABLE_ASAN=ON \
+          -S build/Linux
+    
+    - name: Build fuzz targets
+      run: cmake --build build/Linux/fuzz --target ${{ matrix.target }}
+    
+    - name: Restore corpus from cache
+      uses: actions/cache@v4
+      with:
+        path: build/Linux/fuzz/corpus_${{ matrix.target }}
+        key: fuzz-corpus-${{ matrix.target }}-${{ github.sha }}
+        restore-keys: |
+          fuzz-corpus-${{ matrix.target }}-
+    
+    - name: Create directories
+      run: |
+        mkdir -p build/Linux/fuzz/corpus_${{ matrix.target }}
+        mkdir -p build/Linux/fuzz/crashes_${{ matrix.target }}
+    
+    - name: Run fuzzer (long duration - nightly)
+      working-directory: build/Linux/fuzz
+      timeout-minutes: 120
+      run: |
+        ./${{ matrix.target }} \
+          -max_total_time=7200 \
+          -timeout=30 \
+          -rss_limit_mb=2048 \
+          -workers=4 \
+          -jobs=4 \
+          -print_final_stats=1 \
+          -artifact_prefix=crashes_${{ matrix.target }}/ \
+          corpus_${{ matrix.target }}
+    
+    - name: Save corpus to cache
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: build/Linux/fuzz/corpus_${{ matrix.target }}
+        key: fuzz-corpus-${{ matrix.target }}-${{ github.sha }}
+    
+    - name: Upload crashes if found
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes-long-${{ matrix.target }}
+        path: build/Linux/fuzz/crashes_${{ matrix.target }}/
+        if-no-files-found: ignore
+    
+    - name: Upload corpus
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-corpus-long-${{ matrix.target }}
+        path: build/Linux/fuzz/corpus_${{ matrix.target }}/
+        if-no-files-found: ignore
+    
+    - name: Check for crashes
+      if: always()
+      run: |
+        if [ -n "$(ls -A build/Linux/fuzz/crashes_${{ matrix.target }}/ 2>/dev/null)" ]; then
+          echo "❌ Fuzzing found crashes!"
+          ls -la build/Linux/fuzz/crashes_${{ matrix.target }}/
+          exit 1
+        else
+          echo "✅ No crashes found during fuzzing"
+        fi
+
+  fuzz-summary:
+    name: Fuzz Testing Summary
+    runs-on: ubuntu-latest
+    needs: [fuzz-short]
+    if: github.event_name != 'schedule' && always()
+    
+    steps:
+    - name: Check fuzz results
+      run: |
+        echo "Fuzz testing: ${{ needs.fuzz-short.result }}"
+        
+        if [ "${{ needs.fuzz-short.result }}" != "success" ]; then
+          echo "❌ Fuzz testing found issues"
+          exit 1
+        else
+          echo "✅ Fuzz testing completed successfully"
+        fi
+
+  fuzz-summary-long:
+    name: Fuzz Testing Summary (Long)
+    runs-on: ubuntu-latest
+    needs: [fuzz-long]
+    if: github.event_name == 'schedule' && always()
+    
+    steps:
+    - name: Check fuzz results
+      run: |
+        echo "Nightly fuzz testing: ${{ needs.fuzz-long.result }}"
+        
+        if [ "${{ needs.fuzz-long.result }}" != "success" ]; then
+          echo "❌ Nightly fuzz testing found issues"
+          exit 1
+        else
+          echo "✅ Nightly fuzz testing completed successfully"
+        fi
