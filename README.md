@@ -118,6 +118,45 @@ int main() {
 }
 ```
 
+## Light-Client Monitoring Stack
+
+The repository now contains the core building blocks required by the
+[architecture design](Architecture.md) for running a SuperGenius light client that
+monitors contract activity directly from EVM P2P networks. The
+implementation spans three cooperating layers that map directly to the
+design’s stages:
+
+### 1. Peer Discovery (Discv4)
+- Located under `include/rlp/PeerDiscovery/` and `src/rlp/PeerDiscovery/`, the
+  discovery module RLP-encodes/decodes v4 packets, manages bootstrap node
+  metadata, and orchestrates UDP flows via Boost.Asio, mirroring the design’s
+  discovery responsibilities.
+- Unit coverage in `test/rlp/discovery_test.cpp` exercises PING/PONG
+  construction, parsing, and timeout handling to validate the discovery flow
+  end-to-end.
+
+### 2. RLPx Transport and Session Management
+- The `rlpx` subsystem (`include/rlpx/` and `src/rlpx/`) implements the secure
+  TCP transport, including ECIES handshakes, AES/HMAC frame ciphers, message
+  framing, and coroutine-based session orchestration—directly covering the
+  RLPx and `eth` subprotocol requirements from the design.
+- High-level session APIs expose message handlers for HELLO, STATUS, PING, and
+  generic gossip, enabling the transaction/log filtering pipeline described in
+  the design document.
+
+### 3. Ethereum RLP Processing and Filtering Primitives
+- Core encoding/decoding utilities in `include/rlp/` and `src/rlp/` provide the
+  recursive RLP handling needed to parse block headers, transactions, and
+  receipts once they are received over the wire, satisfying the design’s
+  execution-layer processing goals.
+- `include/rlp/rlp_ethereum.hpp` supplies Ethereum-specific helpers (e.g., for
+  block header fields and bloom filters) that align with the consensus
+  verification and log filtering steps laid out in the design.
+
+These components can be composed inside SuperGenius to establish DevP2P
+connections, validate chain consistency from checkpoints, and stream contract
+events without centralized RPC endpoints.
+
 ## Testing
 
 The project includes comprehensive unit tests in `test/rlp_test.cpp`, covering:
