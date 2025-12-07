@@ -72,3 +72,23 @@ endif()
 
 # Add RLPx tests subdirectory
 add_subdirectory(rlpx)
+
+# Add integration tests (network connectivity tests)
+if(ENABLE_INTEGRATION_TESTS)
+    message(STATUS "Integration tests enabled")
+
+    # Network port connectivity test
+    addtest(network_port_test
+            integration/network_port_test.cpp
+    )
+    target_link_libraries(network_port_test PRIVATE rlp)
+
+    # Network diagnostics utility (executable, not a test)
+    add_executable(network_diagnostics
+        integration/network_diagnostics.cpp
+    )
+    target_link_libraries(network_diagnostics PRIVATE rlp)
+
+    # Copy to binary directory for easy access
+    install(TARGETS network_diagnostics DESTINATION bin OPTIONAL)
+endif()
