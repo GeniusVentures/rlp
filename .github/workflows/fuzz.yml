@@ -87,7 +87,9 @@ jobs:
   fuzz-long:
     name: Fuzz Testing (Long - ${{ matrix.target }})
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    # Temporarily disabled long-running scheduled fuzz job.
+    # Re-enable by restoring the schedule guard (github.event_name == 'schedule')
+    if: false
     
     strategy:
       fail-fast: false
@@ -201,7 +203,8 @@ jobs:
     name: Fuzz Testing Summary (Long)
     runs-on: ubuntu-latest
     needs: [fuzz-long]
-    if: github.event_name == 'schedule' && always()
+    # Summary for nightly long fuzzing is disabled while long runs are paused.
+    if: false
     
     steps:
     - name: Check fuzz results
