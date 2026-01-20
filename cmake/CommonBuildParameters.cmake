@@ -148,6 +148,14 @@ if(BUILD_TESTS)
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_streaming_simple_api_demo.cpp"
                 )
 
+                add_executable(eth_messages_test
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/eth/eth_messages_test.cpp"
+                )
+
+                add_executable(eth_objects_test
+                        "${CMAKE_CURRENT_LIST_DIR}/../test/eth/eth_objects_test.cpp"
+                )
+
                 add_executable(rlp_ethereum_real_world_examples
                         "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_real_world_examples.cpp"
                 )
@@ -169,6 +177,8 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_type_safety_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
+                target_link_libraries(eth_messages_test PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
+                target_link_libraries(eth_objects_test PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
                 target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
                 target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
         
@@ -189,6 +199,8 @@ if(BUILD_TESTS)
                         rlp_type_safety_tests
                         rlp_enhanced_api_tests
                         rlp_streaming_simple_api_demo
+                        eth_messages_test
+                        eth_objects_test
                         rlp_ethereum_real_world_examples
                         rlp_profiling_tests
                 )
@@ -272,6 +284,8 @@ if(BUILD_TESTS)
                 add_test(NAME rlp_type_safety_tests COMMAND $<TARGET_FILE:rlp_type_safety_tests>)
                 add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
                 add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
+                add_test(NAME eth_messages_test COMMAND $<TARGET_FILE:eth_messages_test>)
+                add_test(NAME eth_objects_test COMMAND $<TARGET_FILE:eth_objects_test>)
                 add_test(NAME rlp_ethereum_real_world_examples COMMAND $<TARGET_FILE:rlp_ethereum_real_world_examples>)
                 add_test(NAME rlp_profiling_tests COMMAND $<TARGET_FILE:rlp_profiling_tests>)
                 add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)

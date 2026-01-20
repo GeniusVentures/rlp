@@ -51,6 +51,14 @@ addtest(rlp_streaming_simple_api_demo
         rlp/rlp_streaming_simple_api_demo.cpp
 )
 
+addtest(eth_messages_test
+        eth/eth_messages_test.cpp
+)
+
+addtest(eth_objects_test
+        eth/eth_objects_test.cpp
+)
+
 target_link_libraries(discovery_test PRIVATE rlp)
 target_link_libraries(rlp_endian_tests PRIVATE rlp)
 target_link_libraries(rlp_ethereum_tests PRIVATE rlp)
@@ -64,6 +72,10 @@ target_link_libraries(rlp_random_tests PRIVATE rlp)
 target_link_libraries(rlp_type_safety_tests PRIVATE rlp)
 target_link_libraries(rlp_streaming_decoder_tests PRIVATE rlp)
 target_link_libraries(rlp_streaming_simple_api_demo PRIVATE rlp)
+
+target_link_libraries(eth_messages_test PRIVATE rlp)
+
+target_link_libraries(eth_objects_test PRIVATE rlp)
 
 # Add fuzz testing support (optional)
 if(ENABLE_FUZZING)

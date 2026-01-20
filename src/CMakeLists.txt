@@ -1,4 +1,3 @@
-
 # Define the static library target
 add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/rlp/rlp_encoder.cpp
@@ -10,6 +9,8 @@ add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Packet.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Ping.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Pong.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/eth/messages.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/eth/objects.cpp
 )
 
 # Set config of crypto3
@@ -58,6 +59,12 @@ install(FILES
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Ping.cpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Pong.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp
+)
+
+install(DIRECTORY
+        ${CMAKE_CURRENT_LIST_DIR}/../include/eth/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/eth
+        FILES_MATCHING PATTERN "*.hpp"
 )
 
 # Add RLPx subdirectory
