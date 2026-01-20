@@ -86,6 +86,7 @@ option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_APPS "Enable application targets." FALSE)
 option(BUILD_EXAMPLES "Enable demonstration targets." TRUE)
 option(BUILD_DOCS "Enable documentation targets." FALSE)
+option(ENABLE_INTEGRATION_TESTS "Build integration tests for P2P network connectivity" OFF)
 set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_LIST_DIR}/docs" CACHE STRING "Specify doxygen output directory")
 
 include_directories(

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(chmod:*)",
+      "Bash(cmake --version:*)",
+      "Bash(cmake:*)",
+      "Bash(scripts/build_integration_tests.bat)",
+      "Bash(./network_diagnostics.exe:*)",
+      "Bash(./network_port_test.exe:*)",
+      "Bash(timeout 60 ./network_port_test.exe:*)",
+      "Bash(scriptsbuild_integration_tests.bat)",
+      "Bash(\"scripts\\build_integration_tests.bat\")",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git submodule:*)",
+      "Bash(gh pr create:*)",
+      "Bash(ls:*)",
+      "Bash(git mv:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
