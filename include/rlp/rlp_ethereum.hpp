@@ -22,23 +22,23 @@ using Bloom = std::array<uint8_t, 256>;       // Bloom filter (256 bytes)
 // ============================================================================
 
 // Encode Ethereum address (20 bytes)
-inline void addAddress(RlpEncoder& encoder, const Address& addr) {
-    encoder.add(ByteView(addr.data(), addr.size()));
+inline EncodingOperationResult addAddress(RlpEncoder& encoder, const Address& addr) {
+    return encoder.add(ByteView(addr.data(), addr.size()));
 }
 
 // Encode Ethereum hash (32 bytes)
-inline void addHash(RlpEncoder& encoder, const Hash256& hash) {
-    encoder.add(ByteView(hash.data(), hash.size()));
+inline EncodingOperationResult addHash(RlpEncoder& encoder, const Hash256& hash) {
+    return encoder.add(ByteView(hash.data(), hash.size()));
 }
 
 // Encode Ethereum signature (65 bytes)
-inline void addSignature(RlpEncoder& encoder, const Signature& sig) {
-    encoder.add(ByteView(sig.data(), sig.size()));
+inline EncodingOperationResult addSignature(RlpEncoder& encoder, const Signature& sig) {
+    return encoder.add(ByteView(sig.data(), sig.size()));
 }
 
 // Encode Ethereum bloom filter (256 bytes)
-inline void addBloom(RlpEncoder& encoder, const Bloom& bloom) {
-    encoder.add(ByteView(bloom.data(), bloom.size()));
+inline EncodingOperationResult addBloom(RlpEncoder& encoder, const Bloom& bloom) {
+    return encoder.add(ByteView(bloom.data(), bloom.size()));
 }
 
 // ============================================================================

@@ -1,0 +1,7 @@
+{
+  "host": "<sepolia-peer-host>",
+  "port": 30303,
+  "peer_pubkey_hex": "<128-hex-char-peer-pubkey>",
+  "eth_offset": 16
+}
+

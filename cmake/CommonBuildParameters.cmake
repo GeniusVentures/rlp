@@ -76,7 +76,7 @@ set(Boost_NO_SYSTEM_PATHS ON)
 option(Boost_USE_STATIC_RUNTIME "Use static runtimes" ON)
 
 # header only libraries must not be added here
-find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options)
+find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options json)
 include_directories(${Boost_INCLUDE_DIRS})
 
 # --------------------------------------------------------
@@ -84,7 +84,7 @@ include_directories(${Boost_INCLUDE_DIRS})
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_APPS "Enable application targets." FALSE)
-option(BUILD_EXAMPLES "Enable demonstration targets." FALSE)
+option(BUILD_EXAMPLES "Enable demonstration targets." TRUE)
 option(BUILD_DOCS "Enable documentation targets." FALSE)
 set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_LIST_DIR}/docs" CACHE STRING "Specify doxygen output directory")
 
@@ -177,11 +177,11 @@ if(BUILD_TESTS)
                 target_link_libraries(rlp_type_safety_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
                 target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(eth_messages_test PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
-                target_link_libraries(eth_objects_test PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
-                target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
-                target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest GTest::gtest_main Boost::boost)
-        
+                target_link_libraries(eth_messages_test PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+                target_link_libraries(eth_objects_test PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+                target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+                target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
+
         # Suppress nodiscard warnings in test code for cleaner output
         # Test code intentionally ignores return values for brevity
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -296,6 +296,13 @@ if(BUILD_TESTS)
                 add_test(NAME rlpx_message_routing_tests COMMAND $<TARGET_FILE:rlpx_message_routing_tests>)
                 add_test(NAME rlpx_socket_lifecycle_tests COMMAND $<TARGET_FILE:rlpx_socket_lifecycle_tests>)
         
+endif()
+
+if(BUILD_EXAMPLES)
+        add_executable(eth_watch
+                "${CMAKE_CURRENT_LIST_DIR}/../examples/eth_watch.cpp"
+        )
+        target_link_libraries(eth_watch PUBLIC rlpx Boost::boost Boost::json)
 endif()
 
 # Install Headers
