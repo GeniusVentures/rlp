@@ -8,7 +8,6 @@ add_executable(rlpx_crypto_tests
 
 target_link_libraries(rlpx_crypto_tests PRIVATE
     rlpx
-    GTest::gtest
     GTest::gtest_main
 )
 
@@ -23,7 +22,6 @@ add_executable(rlpx_frame_cipher_tests
 
 target_link_libraries(rlpx_frame_cipher_tests PRIVATE
     rlpx
-    GTest::gtest
     GTest::gtest_main
 )
 
@@ -39,7 +37,6 @@ add_executable(rlpx_protocol_messages_tests
 target_link_libraries(rlpx_protocol_messages_tests PRIVATE
     rlpx
     rlp
-    GTest::gtest
     GTest::gtest_main
 )
 
@@ -47,7 +44,7 @@ target_include_directories(rlpx_protocol_messages_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# RlpxSession integration tests
+# RLPx Session integration tests
 add_executable(rlpx_session_tests
     ${CMAKE_CURRENT_LIST_DIR}/rlpx_session_test.cpp
 )
@@ -55,11 +52,54 @@ add_executable(rlpx_session_tests
 target_link_libraries(rlpx_session_tests PRIVATE
     rlpx
     rlp
-    GTest::gtest
     GTest::gtest_main
 )
 
 target_include_directories(rlpx_session_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# RLPx state tests
+add_executable(rlpx_state_tests
+    ${CMAKE_CURRENT_LIST_DIR}/rlpx_state_test.cpp
+)
+
+target_link_libraries(rlpx_state_tests PRIVATE
+    rlpx
+    GTest::gtest_main
+)
+
+target_include_directories(rlpx_state_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# RLPx message routing tests
+add_executable(rlpx_message_routing_tests
+    ${CMAKE_CURRENT_LIST_DIR}/message_routing_test.cpp
+)
+
+target_link_libraries(rlpx_message_routing_tests PRIVATE
+    rlpx
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(rlpx_message_routing_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# RLPx socket lifecycle tests
+add_executable(rlpx_socket_lifecycle_tests
+    ${CMAKE_CURRENT_LIST_DIR}/socket_lifecycle_test.cpp
+)
+
+target_link_libraries(rlpx_socket_lifecycle_tests PRIVATE
+    rlpx
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(rlpx_socket_lifecycle_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
@@ -69,3 +109,6 @@ gtest_discover_tests(rlpx_crypto_tests)
 gtest_discover_tests(rlpx_frame_cipher_tests)
 gtest_discover_tests(rlpx_protocol_messages_tests)
 gtest_discover_tests(rlpx_session_tests)
+gtest_discover_tests(rlpx_state_tests)
+gtest_discover_tests(rlpx_message_routing_tests)
+gtest_discover_tests(rlpx_socket_lifecycle_tests)

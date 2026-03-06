@@ -1,12 +1,15 @@
 // packet_factory.cpp
-#include <rlp/PeerDiscovery/packet_factory.hpp>
+#include "discv4/packet_factory.hpp"
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 #include <iostream>
 #include <boost/outcome/try.hpp>
 
-#include <rlp/PeerDiscovery/Discv4Ping.hpp>
-#include <rlp/PeerDiscovery/Discv4Pong.hpp>
+#include "discv4/discv4_ping.hpp"
+#include "discv4/discv4_pong.hpp"
+
+#include <nil/crypto3/hash/algorithm/hash.hpp>
+#include <nil/crypto3/hash/keccak.hpp>
 
 namespace discv4 {
 
@@ -18,7 +21,7 @@ PacketResult PacketFactory::SendPingAndWait(
     SendCallback callback )
 {
 
-    auto ping = std::make_unique<Discv4Ping>( fromIp, fUdp, fTcp, toIp, tUdp, tTcp );
+    auto ping = std::make_unique<discv4_ping>( fromIp, fUdp, fTcp, toIp, tUdp, tTcp );
 
     std::vector<uint8_t> msg;
     auto signResult = SignAndBuildPacket( ping.get(), privKeyHex, msg );
@@ -59,7 +62,7 @@ PacketResult PacketFactory::SendPingAndWait(
 }
 
 PacketResult PacketFactory::SignAndBuildPacket(
-    Discv4Packet* packet,
+    discv4_packet* packet,
     const std::vector<uint8_t>& privKeyHex,
     std::vector<uint8_t>& out )
 {
@@ -72,7 +75,7 @@ PacketResult PacketFactory::SignAndBuildPacket(
     auto payload = packet->RlpPayload();
 
     // Hash with keccak-256
-    std::array<uint8_t, 32> hash = Discv4Packet::Keccak256( payload );
+    std::array<uint8_t, 32> hash = discv4_packet::Keccak256( payload );
 
     // Sign with secp256k1
     auto ctx = secp256k1_context_create( SECP256K1_CONTEXT_SIGN );

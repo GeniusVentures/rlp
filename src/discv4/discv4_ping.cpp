@@ -1,10 +1,10 @@
 // discv4_ping.cpp
 
-#include <rlp/PeerDiscovery/Discv4Ping.hpp>
+#include "discv4/discv4_ping.hpp"
 
 namespace discv4 {
 
-std::vector<uint8_t> Discv4Ping::RlpPayload()
+std::vector<uint8_t> discv4_ping::RlpPayload()
 {
     rlp::RlpEncoder encoder;
     if (auto res = encoder.BeginList(); !res) {

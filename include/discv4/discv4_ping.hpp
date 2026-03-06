@@ -1,12 +1,13 @@
 // discv4_ping.h
-#ifndef RLP_PEERDISCOVERY_DISCV4_PING_HPP
-#define RLP_PEERDISCOVERY_DISCV4_PING_HPP
+#ifndef RLP_PEERDISCOVERY_discv4_PING_HPP
+#define RLP_PEERDISCOVERY_discv4_PING_HPP
 
-#include <rlp/PeerDiscovery/Discv4Packet.hpp>
+#include "discv4/discv4_packet.hpp"
+#include "rlp/rlp_encoder.hpp"
 
 namespace discv4 {
 
-class Discv4Ping : public Discv4Packet
+class discv4_ping : public discv4_packet
 {
 public:
     struct Endpoint
@@ -57,9 +58,9 @@ private:
     uint32_t expires;
 
 public:
-    Discv4Ping( const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
+    discv4_ping( const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
                 const std::string& toIp, uint16_t tUdp, uint16_t tTcp )
-        : Discv4Packet( 0x01, 0x04, "Ping" ),
+        : discv4_packet( 0x01, 0x04, "Ping" ),
           fromEp( fromIp, fUdp, fTcp ), toEp( toIp, tUdp, tTcp )
     {
         expires = static_cast<uint32_t>( std::time( nullptr ) ) + 60;
@@ -76,4 +77,4 @@ public:
 
 } // namespace discv4
 
-#endif // RLP_PEERDISCOVERY_DISCV4_PING_HPP
+#endif // RLP_PEERDISCOVERY_discv4_PING_HPP

@@ -75,9 +75,15 @@ set(Boost_USE_STATIC_LIBS ON)
 set(Boost_NO_SYSTEM_PATHS ON)
 option(Boost_USE_STATIC_RUNTIME "Use static runtimes" ON)
 
+cmake_policy(SET CMP0167 OLD)
+
 # header only libraries must not be added here
 find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options json)
 include_directories(${Boost_INCLUDE_DIRS})
+
+# for discv4 we need
+set(libsecp256k1_DIR "${_THIRDPARTY_BUILD_DIR}/libsecp256k1/lib/cmake/libsecp256k1")
+find_package(libsecp256k1 CONFIG REQUIRED)
 
 # --------------------------------------------------------
 # set config for crypto3
@@ -92,217 +98,15 @@ include_directories(
         "${CMAKE_CURRENT_LIST_DIR}/../include"
 )
 
-include("${CMAKE_CURRENT_LIST_DIR}/../src/CMakeLists.txt")
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../src ${CMAKE_BINARY_DIR}/src)
 
 if(BUILD_TESTS)
-        add_executable(${PROJECT_NAME}_encoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_encoder_tests.cpp"
-        )
-
-        add_executable(${PROJECT_NAME}_decoder_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_decoder_tests.cpp"
-        )
-
-        add_executable(discovery_test
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/discovery_test.cpp"
-        )
-
-        add_executable(${PROJECT_NAME}_endian_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_endian_tests.cpp"
-        )
-
-        add_executable(${PROJECT_NAME}_edge_cases
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_edge_cases.cpp"
-        )
-
-        # Use main benchmark and property test files
-                add_executable(${PROJECT_NAME}_benchmark_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_benchmark_tests.cpp"
-                )
-
-                add_executable(${PROJECT_NAME}_property_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_property_tests.cpp"
-                )
-
-                add_executable(${PROJECT_NAME}_comprehensive_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_comprehensive_tests.cpp"
-                )
-
-                add_executable(rlp_ethereum_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_tests.cpp"
-                )
-
-                add_executable(rlp_random_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_random_tests.cpp"
-                )
-
-                add_executable(rlp_type_safety_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_type_safety_tests.cpp"
-                )
-
-                add_executable(rlp_enhanced_api_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_enhanced_api_tests.cpp"
-                )
-
-                add_executable(rlp_streaming_simple_api_demo
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_streaming_simple_api_demo.cpp"
-                )
-
-                add_executable(eth_messages_test
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/eth/eth_messages_test.cpp"
-                )
-
-                add_executable(eth_objects_test
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/eth/eth_objects_test.cpp"
-                )
-
-                add_executable(rlp_ethereum_real_world_examples
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_ethereum_real_world_examples.cpp"
-                )
-
-                add_executable(rlp_profiling_tests
-                        "${CMAKE_CURRENT_LIST_DIR}/../test/rlp/rlp_profiling_tests.cpp"
-                )
-
-        target_link_libraries(${PROJECT_NAME}_encoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_decoder_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_endian_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_edge_cases PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(discovery_test PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_benchmark_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_property_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-        target_link_libraries(${PROJECT_NAME}_comprehensive_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(rlp_ethereum_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(rlp_random_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(rlp_type_safety_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(rlp_enhanced_api_tests PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(rlp_streaming_simple_api_demo PUBLIC ${PROJECT_NAME} GTest::gtest Boost::boost)
-                target_link_libraries(eth_messages_test PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-                target_link_libraries(eth_objects_test PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-                target_link_libraries(rlp_ethereum_real_world_examples PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-                target_link_libraries(rlp_profiling_tests PUBLIC ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-
-        # Suppress nodiscard warnings in test code for cleaner output
-        # Test code intentionally ignores return values for brevity
-        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-                set(TEST_TARGETS 
-                        ${PROJECT_NAME}_encoder_tests 
-                        ${PROJECT_NAME}_decoder_tests 
-                        ${PROJECT_NAME}_endian_tests
-                        ${PROJECT_NAME}_edge_cases
-                        discovery_test
-                        ${PROJECT_NAME}_benchmark_tests
-                        ${PROJECT_NAME}_property_tests
-                        ${PROJECT_NAME}_comprehensive_tests
-                        rlp_ethereum_tests
-                        rlp_random_tests
-                        rlp_type_safety_tests
-                        rlp_enhanced_api_tests
-                        rlp_streaming_simple_api_demo
-                        eth_messages_test
-                        eth_objects_test
-                        rlp_ethereum_real_world_examples
-                        rlp_profiling_tests
-                )
-                foreach(target ${TEST_TARGETS})
-                        target_compile_options(${target} PRIVATE -Wno-unused-result)
-                endforeach()
-        endif()
-        
-        # Add RLPx tests
-        add_executable(rlpx_crypto_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/crypto_test.cpp"
-        )
-        add_executable(rlpx_frame_cipher_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/frame_cipher_test.cpp"
-        )
-        add_executable(rlpx_protocol_messages_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/protocol_messages_test.cpp"
-        )
-        add_executable(rlpx_session_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/rlpx_session_test.cpp"
-        )
-        add_executable(rlpx_state_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/rlpx_state_test.cpp"
-        )
-        add_executable(rlpx_message_routing_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/message_routing_test.cpp"
-        )
-        add_executable(rlpx_socket_lifecycle_tests
-                "${CMAKE_CURRENT_LIST_DIR}/../test/rlpx/socket_lifecycle_test.cpp"
-        )
-        
-        target_link_libraries(rlpx_crypto_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_frame_cipher_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_protocol_messages_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_session_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_state_tests PUBLIC rlpx GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_message_routing_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-        target_link_libraries(rlpx_socket_lifecycle_tests PUBLIC rlpx ${PROJECT_NAME} GTest::gtest_main Boost::boost)
-        
-        # Add fuzz testing targets if enabled
-        if(ENABLE_FUZZING)
-                if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-                        message(WARNING "Fuzzing is best supported with Clang. Current compiler: ${CMAKE_CXX_COMPILER_ID}")
-                endif()
-                
-                # Fuzzing flags
-                set(FUZZING_FLAGS -fsanitize=fuzzer,address -fno-omit-frame-pointer -g)
-                
-                add_executable(fuzz_rlp_decoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_decoder.cpp")
-                target_link_libraries(fuzz_rlp_decoder PRIVATE ${PROJECT_NAME})
-                target_compile_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
-                target_link_options(fuzz_rlp_decoder PRIVATE ${FUZZING_FLAGS})
-                
-                add_executable(fuzz_rlp_encoder "${CMAKE_CURRENT_LIST_DIR}/../test/fuzz/fuzz_rlp_encoder.cpp")
-                target_link_libraries(fuzz_rlp_encoder PRIVATE ${PROJECT_NAME})
-                target_compile_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
-                target_link_options(fuzz_rlp_encoder PRIVATE ${FUZZING_FLAGS})
-                
-                # Create corpus directories
-                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_decoder)
-                file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/corpus_encoder)
-                
-                # Note: Initial corpus files will be created at runtime by the fuzz targets
-                # CMake's file(WRITE) doesn't support hex escapes like \x00
-                
-                message(STATUS "Fuzzing enabled. Fuzz targets: fuzz_rlp_decoder, fuzz_rlp_encoder")
-        endif()
-        
-                # Register all test executables with CTest
-                enable_testing()
-                add_test(NAME rlp_encoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_encoder_tests>)
-                add_test(NAME rlp_decoder_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_decoder_tests>)
-                add_test(NAME discovery_test COMMAND $<TARGET_FILE:discovery_test>)
-                add_test(NAME rlp_endian_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_endian_tests>)
-                add_test(NAME rlp_edge_cases COMMAND $<TARGET_FILE:${PROJECT_NAME}_edge_cases>)
-                add_test(NAME rlp_benchmark_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_benchmark_tests>)
-                add_test(NAME rlp_property_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_property_tests>)
-                add_test(NAME rlp_comprehensive_tests COMMAND $<TARGET_FILE:${PROJECT_NAME}_comprehensive_tests>)
-                add_test(NAME rlp_ethereum_tests COMMAND $<TARGET_FILE:rlp_ethereum_tests>)
-                add_test(NAME rlp_random_tests COMMAND $<TARGET_FILE:rlp_random_tests>)
-                add_test(NAME rlp_type_safety_tests COMMAND $<TARGET_FILE:rlp_type_safety_tests>)
-                add_test(NAME rlp_enhanced_api_tests COMMAND $<TARGET_FILE:rlp_enhanced_api_tests>)
-                add_test(NAME rlp_streaming_simple_api_demo COMMAND $<TARGET_FILE:rlp_streaming_simple_api_demo>)
-                add_test(NAME eth_messages_test COMMAND $<TARGET_FILE:eth_messages_test>)
-                add_test(NAME eth_objects_test COMMAND $<TARGET_FILE:eth_objects_test>)
-                add_test(NAME rlp_ethereum_real_world_examples COMMAND $<TARGET_FILE:rlp_ethereum_real_world_examples>)
-                add_test(NAME rlp_profiling_tests COMMAND $<TARGET_FILE:rlp_profiling_tests>)
-                add_test(NAME rlpx_crypto_tests COMMAND $<TARGET_FILE:rlpx_crypto_tests>)
-                add_test(NAME rlpx_frame_cipher_tests COMMAND $<TARGET_FILE:rlpx_frame_cipher_tests>)
-                add_test(NAME rlpx_protocol_messages_tests COMMAND $<TARGET_FILE:rlpx_protocol_messages_tests>)
-                add_test(NAME rlpx_session_tests COMMAND $<TARGET_FILE:rlpx_session_tests>)
-                add_test(NAME rlpx_state_tests COMMAND $<TARGET_FILE:rlpx_state_tests>)
-                add_test(NAME rlpx_message_routing_tests COMMAND $<TARGET_FILE:rlpx_message_routing_tests>)
-                add_test(NAME rlpx_socket_lifecycle_tests COMMAND $<TARGET_FILE:rlpx_socket_lifecycle_tests>)
-        
+        enable_testing()
+        add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../test ${CMAKE_BINARY_DIR}/test)
 endif()
 
 if(BUILD_EXAMPLES)
-        add_executable(eth_watch
-                "${CMAKE_CURRENT_LIST_DIR}/../examples/eth_watch.cpp"
-        )
-        target_link_libraries(eth_watch PUBLIC rlpx Boost::boost Boost::json)
+        add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/../examples ${CMAKE_BINARY_DIR}/examples)
 endif()
 
 # Install Headers

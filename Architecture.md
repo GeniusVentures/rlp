@@ -8,9 +8,9 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 - **C++ Only**: Implement RLP encoding/decoding, RLPx networking, and `eth` message handling from scratch or with minimal C++ dependencies.
 
 ### Implementation Steps
-#### 1. Peer Discovery (Discv4/Discv5)
+#### 1. Peer Discovery (discv4/Discv5)
 - **Purpose**: Find peers for each chain (Ethereum, Polygon, Base, BSC) using UDP-based discovery.
-- **Protocol**: Implement Discv4 (simpler) or Discv5 (used by some newer chains). Messages include:
+- **Protocol**: Implement discv4 (simpler) or Discv5 (used by some newer chains). Messages include:
   - `PING`/`PONG`: Check peer availability.
   - `FIND_NODE`/`NEIGHBORS`: Query and receive peer lists.
 - **C++ Code**:

@@ -1,5 +1,5 @@
 // discv4_pong.cpp
-#include <rlp/PeerDiscovery/Discv4Pong.hpp>
+#include "discv4/discv4_pong.hpp"
 #include <iostream>
 
 inline constexpr uint8_t kHashSize{32};
@@ -10,7 +10,7 @@ inline constexpr uint8_t kPacketTypePong{2};
 
 namespace discv4 {
 
-rlp::Result<Discv4Pong> Discv4Pong::Parse(rlp::ByteView raw) {
+rlp::Result<discv4_pong> discv4_pong::Parse(rlp::ByteView raw) {
     // Skipping hash (32 bytes), sign (65 bytes), packet type (1 byte)
     if ( raw.size() <= kHeaderSize )
     {
@@ -26,7 +26,7 @@ rlp::Result<Discv4Pong> Discv4Pong::Parse(rlp::ByteView raw) {
     rlp::ByteView pong_payload(raw.data() + kHeaderSize + 1, raw.size() - kHeaderSize - 1);
     rlp::RlpDecoder decoder(pong_payload);
 
-    Discv4Pong pong;
+    discv4_pong pong;
     
     // Check if the packet is a list (PONG should be a list with 3 elements)
     BOOST_OUTCOME_TRY( bool is_list, decoder.IsList() );
@@ -79,7 +79,7 @@ rlp::Result<Discv4Pong> Discv4Pong::Parse(rlp::ByteView raw) {
     return pong;
 }
 
-rlp::DecodingResult Discv4Pong::ParseEndpoint( rlp::RlpDecoder& decoder, Discv4Pong::Endpoint& endpoint )
+rlp::DecodingResult discv4_pong::ParseEndpoint( rlp::RlpDecoder& decoder, discv4_pong::Endpoint& endpoint )
 {
     // Check if next item is a list (endpoint should be [ip, udp_port, tcp_port])
     BOOST_OUTCOME_TRY( bool is_list, decoder.IsList() );

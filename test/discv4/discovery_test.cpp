@@ -8,11 +8,11 @@
  */
 
 #include <gtest/gtest.h>
-#include <rlp/PeerDiscovery/discovery.hpp>
-#include <rlp/PeerDiscovery/packet_factory.hpp>
-#include <rlp/PeerDiscovery/Discv4Ping.hpp>
-#include <rlp/PeerDiscovery/Discv4Pong.hpp>
-#include <rlp/PeerDiscovery/Discv4Packet.hpp>
+#include "discv4/discovery.hpp"
+#include "discv4/packet_factory.hpp"
+#include "discv4/discv4_ping.hpp"
+#include "discv4/discv4_pong.hpp"
+#include "discv4/discv4_packet.hpp"
 #include <vector>
 #include <array>
 #include <thread>
@@ -31,9 +31,9 @@ using namespace discv4;
  * This class simulates an Ethereum node that responds to PING packets with PONG.
  * It runs in a separate thread and automatically responds to incoming packets.
  */
-class MockDiscv4Server {
+class Mockdiscv4Server {
 public:
-    MockDiscv4Server(uint16_t port) 
+    Mockdiscv4Server(uint16_t port)
         : port_(port)
         , io_context_()
         , socket_(io_context_, udp::endpoint(udp::v4(), port))
@@ -48,7 +48,7 @@ public:
         };
     }
     
-    ~MockDiscv4Server() {
+    ~Mockdiscv4Server() {
         stop();
     }
     
@@ -138,13 +138,18 @@ private:
             
             // Encode the "to" endpoint (sender's endpoint from PING)
             RlpEncoder endpoint_encoder;
-            endpoint_encoder.BeginList();
-            
+            auto begin_result = endpoint_encoder.BeginList();
+            ASSERT_TRUE(begin_result) << "Failed to begin endpoint list";
+
             // Use the actual sender's IP and port
-            endpoint_encoder.add(ByteView(from_ip.data(), from_ip.size()));
-            endpoint_encoder.add(from_port);
-            endpoint_encoder.add(from_port);
-            endpoint_encoder.EndList();
+            auto add_ip_result = endpoint_encoder.add(ByteView(from_ip.data(), from_ip.size()));
+            ASSERT_TRUE(add_ip_result) << "Failed to add IP";
+            auto add_port1_result = endpoint_encoder.add(from_port);
+            ASSERT_TRUE(add_port1_result) << "Failed to add UDP port";
+            auto add_port2_result = endpoint_encoder.add(from_port);
+            ASSERT_TRUE(add_port2_result) << "Failed to add TCP port";
+            auto end_result = endpoint_encoder.EndList();
+            ASSERT_TRUE(end_result) << "Failed to end endpoint list";
             auto endpoint_result = endpoint_encoder.MoveBytes();
             if (!endpoint_result) {
                 std::cerr << "Failed to encode endpoint" << std::endl;
@@ -157,12 +162,17 @@ private:
             
             // Encode PONG payload
             RlpEncoder encoder;
-            encoder.BeginList();
-            encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
-            encoder.add(ByteView(ping_hash.data(), ping_hash.size())); // Echo ping hash
-            encoder.add(expiration);
-            encoder.EndList();
-            
+            auto begin_list_result = encoder.BeginList();
+            ASSERT_TRUE(begin_list_result) << "Failed to begin PONG list";
+            auto add_raw_result = encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
+            ASSERT_TRUE(add_raw_result) << "Failed to add endpoint";
+            auto add_hash_result = encoder.add(ByteView(ping_hash.data(), ping_hash.size())); // Echo ping hash
+            ASSERT_TRUE(add_hash_result) << "Failed to add ping hash";
+            auto add_exp_result = encoder.add(expiration);
+            ASSERT_TRUE(add_exp_result) << "Failed to add expiration";
+            auto end_list_result = encoder.EndList();
+            ASSERT_TRUE(end_list_result) << "Failed to end PONG list";
+
             auto result = encoder.MoveBytes();
             if (!result) {
                 std::cerr << "Failed to encode PONG payload" << std::endl;
@@ -173,7 +183,7 @@ private:
             
             // Hash the payload - convert to std::vector for Keccak256
             std::vector<uint8_t> payload_vec(payload.begin(), payload.end());
-            auto hash = Discv4Packet::Keccak256(payload_vec);
+            auto hash = discv4_packet::Keccak256(payload_vec);
             
             // Sign with secp256k1
             auto ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -205,7 +215,7 @@ private:
             
             // Calculate and insert the packet hash
             std::vector<uint8_t> packet_hash_input(pong_packet.begin() + 32, pong_packet.end());
-            auto packet_hash = Discv4Packet::Keccak256(packet_hash_input);
+            auto packet_hash = discv4_packet::Keccak256(packet_hash_input);
             std::copy(packet_hash.begin(), packet_hash.end(), pong_packet.begin());
             
             // Send PONG
@@ -240,7 +250,7 @@ private:
 TEST(PeerDiscovery, PingPongLocalExchange) {
     // Create and start mock server on localhost
     const uint16_t mock_port = 30399; // Use non-standard port for testing
-    MockDiscv4Server mock_server(mock_port);
+    Mockdiscv4Server mock_server(mock_port);
     mock_server.start();
     
     // Prepare test data
@@ -252,7 +262,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
         pong_received = true;
         
         ByteView raw_packet_data(data.data(), data.size());
-        auto parse_result = Discv4Pong::Parse(raw_packet_data);
+        auto parse_result = discv4_pong::Parse(raw_packet_data);
         
         EXPECT_TRUE(parse_result.has_value()) << "PONG parsing should succeed";
         
@@ -314,7 +324,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
  */
 TEST(PeerDiscovery, PingPacketStructure) {
     // Create a PING packet
-    Discv4Ping ping("127.0.0.1", 30303, 30303, "127.0.0.1", 30399, 30399);
+    discv4_ping ping("127.0.0.1", 30303, 30303, "127.0.0.1", 30399, 30399);
     
     auto payload = ping.RlpPayload();
     
@@ -341,12 +351,17 @@ TEST(PeerDiscovery, PongPacketParsing) {
     
     // Encode endpoint
     RlpEncoder endpoint_encoder;
-    endpoint_encoder.BeginList();
+    auto begin_ep_result = endpoint_encoder.BeginList();
+    ASSERT_TRUE(begin_ep_result) << "Failed to begin endpoint list";
     uint8_t ip_bytes[4] = {127, 0, 0, 1};
-    endpoint_encoder.add(ByteView(ip_bytes, 4));
-    endpoint_encoder.add(uint16_t{30303});
-    endpoint_encoder.add(uint16_t{30303});
-    endpoint_encoder.EndList();
+    auto add_ip_result = endpoint_encoder.add(ByteView(ip_bytes, 4));
+    ASSERT_TRUE(add_ip_result) << "Failed to add IP";
+    auto add_port1_result = endpoint_encoder.add(uint16_t{30303});
+    ASSERT_TRUE(add_port1_result) << "Failed to add UDP port";
+    auto add_port2_result = endpoint_encoder.add(uint16_t{30303});
+    ASSERT_TRUE(add_port2_result) << "Failed to add TCP port";
+    auto end_ep_result = endpoint_encoder.EndList();
+    ASSERT_TRUE(end_ep_result) << "Failed to end endpoint list";
     auto endpoint_result = endpoint_encoder.MoveBytes();
     ASSERT_TRUE(endpoint_result) << "Failed to encode endpoint";
     auto endpoint_bytes = std::move(endpoint_result.value());
@@ -358,12 +373,17 @@ TEST(PeerDiscovery, PongPacketParsing) {
     uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + 60;
     
     // Encode PONG
-    encoder.BeginList();
-    encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
-    encoder.add(ByteView(ping_hash.data(), ping_hash.size()));
-    encoder.add(expiration);
-    encoder.EndList();
-    
+    auto begin_pong_result = encoder.BeginList();
+    ASSERT_TRUE(begin_pong_result) << "Failed to begin PONG list";
+    auto add_raw_result = encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
+    ASSERT_TRUE(add_raw_result) << "Failed to add endpoint";
+    auto add_hash_result = encoder.add(ByteView(ping_hash.data(), ping_hash.size()));
+    ASSERT_TRUE(add_hash_result) << "Failed to add ping hash";
+    auto add_exp_result = encoder.add(expiration);
+    ASSERT_TRUE(add_exp_result) << "Failed to add expiration";
+    auto end_pong_result = encoder.EndList();
+    ASSERT_TRUE(end_pong_result) << "Failed to end PONG list";
+
     auto payload_result = encoder.MoveBytes();
     ASSERT_TRUE(payload_result) << "Failed to encode PONG payload";
     auto payload = std::move(payload_result.value());

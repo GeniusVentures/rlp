@@ -15,18 +15,16 @@ namespace asio = boost::asio;
 using udp = asio::ip::udp;
 
 // RLP
-#include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
 
 // nil::crypto3
-#include <nil/crypto3/hash/algorithm/hash.hpp>
 #include <nil/crypto3/hash/sha2.hpp>
 #include <nil/crypto3/hash/keccak.hpp>
 
 namespace discv4 {
 
 // Forward declarations
-class Discv4Packet;
+class discv4_packet;
 
 namespace outcome = BOOST_OUTCOME_V2_NAMESPACE;
 
@@ -52,7 +50,7 @@ public:
 
 private:
     static PacketResult SignAndBuildPacket(
-        Discv4Packet* packet,
+        discv4_packet* packet,
         const std::vector<uint8_t>& privKeyHex,
         std::vector<uint8_t>& out );
 

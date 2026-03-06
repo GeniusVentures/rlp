@@ -19,8 +19,8 @@
 #include <string_view>
 
 #include <eth/messages.hpp>
-#include "bootnodes.hpp"
-#include "bootnodes_test.hpp"
+#include <discv4/bootnodes.hpp>
+#include <discv4/bootnodes_test.hpp>
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/rlpx_error.hpp>
 #include <rlpx/rlpx_session.hpp>
@@ -423,3 +423,4 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
+

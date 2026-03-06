@@ -30,7 +30,7 @@ TEST(RLPStreamingDecoderTests, LargeStringTwoPhaseBasic) {
     auto size_result = stream_decoder.peekPayloadSize();
     ASSERT_TRUE(size_result);
     EXPECT_EQ(original_data.size(), size_result.value());
-    
+
     // Pre-allocate buffer based on peeked size
     std::vector<uint8_t> decoded_data;
     decoded_data.reserve(size_result.value());
@@ -227,8 +227,8 @@ TEST(RLPStreamingDecoderTests, ChunkedListTwoPhaseSmall) {
         callback(ByteView(original_data.data(), 3));
         callback(ByteView(original_data.data() + 3, 3));
         callback(ByteView(original_data.data() + 6, 4));
-    }, 100);
-    
+    }, 3); // chunk_size=3 to create 3 separate RLP items
+
     ASSERT_TRUE(encode_result);
     auto encoded_result = encoder.GetBytes();
     ASSERT_TRUE(encoded_result);
@@ -243,8 +243,8 @@ TEST(RLPStreamingDecoderTests, ChunkedListTwoPhaseSmall) {
     
     auto chunk_count_result = stream_decoder.peekChunkCount();
     ASSERT_TRUE(chunk_count_result);
-    EXPECT_EQ(3u, chunk_count_result.value());
-    
+    EXPECT_EQ(4u, chunk_count_result.value()); // With chunk_size=3: [3][3][3][1] = 4 chunks
+
     std::vector<uint8_t> decoded_data;
     while (!stream_decoder.isFinished()) {
         auto chunk_result = stream_decoder.readChunk();
@@ -288,7 +288,8 @@ TEST(RLPStreamingDecoderTests, ChunkedListTwoPhaseEmpty) {
 TEST(RLPStreamingDecoderTests, ChunkedListTwoPhaseErrorOnString) {
     // Test error handling when encountering string instead of list
     RlpEncoder encoder;
-    encoder.add(ByteView("test", 4));
+    const uint8_t test_data[] = {'t', 'e', 's', 't'};
+    encoder.add(ByteView(test_data, 4));
     auto encoded_result = encoder.GetBytes();
     ASSERT_TRUE(encoded_result);
     ByteView encoded(*encoded_result.value());
@@ -344,8 +345,11 @@ TEST(RLPStreamingDecoderTests, RoundTripLargeString) {
         auto write_result = stream_encoder.addChunk(ByteView(original_data.data() + i, chunk_size));
         ASSERT_TRUE(write_result);
     }
-    // Automatic finish() via RAII
-    
+
+    // Explicitly finish the encoder
+    auto finish_result = stream_encoder.finish();
+    ASSERT_TRUE(finish_result);
+
     auto encoded_result = encoder.GetBytes();
     
     ASSERT_TRUE(encoded_result);

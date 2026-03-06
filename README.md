@@ -126,12 +126,12 @@ monitors contract activity directly from EVM P2P networks. The
 implementation spans three cooperating layers that map directly to the
 design’s stages:
 
-### 1. Peer Discovery (Discv4)
+### 1. Peer Discovery (discv4)
 - Located under `include/rlp/PeerDiscovery/` and `src/rlp/PeerDiscovery/`, the
   discovery module RLP-encodes/decodes v4 packets, manages bootstrap node
   metadata, and orchestrates UDP flows via Boost.Asio, mirroring the design’s
   discovery responsibilities.
-- Unit coverage in `test/rlp/discovery_test.cpp` exercises PING/PONG
+- Unit coverage in `test/discv4/discovery_test.cpp` exercises PING/PONG
   construction, parsing, and timeout handling to validate the discovery flow
   end-to-end.
 

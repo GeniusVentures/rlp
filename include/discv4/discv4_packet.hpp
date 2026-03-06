@@ -1,6 +1,6 @@
 // discv4_packet.h
-#ifndef RLP_PEERDISCOVERY_DISCV4_PACKET_HPP
-#define RLP_PEERDISCOVERY_DISCV4_PACKET_HPP
+#ifndef RLP_PEERDISCOVERY_discv4_PACKET_HPP
+#define RLP_PEERDISCOVERY_discv4_PACKET_HPP
 
 #include <memory>
 #include <string>
@@ -9,13 +9,7 @@
 #include <boost/asio.hpp>
 
 // SuperGenius RLP
-#include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
-
-// nil::crypto3 keccak
-#include <nil/crypto3/hash/algorithm/hash.hpp>
-#include <nil/crypto3/hash/sha2.hpp>
-#include <nil/crypto3/hash/keccak.hpp>
 
 // Boost.Asio
 namespace asio = boost::asio;
@@ -24,15 +18,15 @@ using udp = asio::ip::udp;
 namespace discv4 {
 
 // Forward declaration
-class Discv4Packet;
+class discv4_packet;
 
 /**
  * @brief Base class for all Discovery V4 packets
  */
-class Discv4Packet
+class discv4_packet
 {
 public:
-    virtual ~Discv4Packet() = default;
+    virtual ~discv4_packet() = default;
 
     // Return the RLP-encoded payload (bytes)
     virtual std::vector<uint8_t> RlpPayload() = 0;
@@ -53,7 +47,7 @@ public:
     static std::array<uint8_t, 32> Keccak256( const std::vector<uint8_t>& payload );
 
 protected:
-    Discv4Packet( uint8_t packetType, uint8_t version, std::string name );
+    discv4_packet( uint8_t packetType, uint8_t version, std::string name );
 
 private:
     uint8_t packetType_;
@@ -63,4 +57,4 @@ private:
 
 } // namespace discv4
 
-#endif // RLP_PEERDISCOVERY_DISCV4_PACKET_HPP
+#endif // RLP_PEERDISCOVERY_discv4_PACKET_HPP

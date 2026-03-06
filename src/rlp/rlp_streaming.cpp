@@ -309,9 +309,9 @@ Result<ByteView> RlpLargeStringDecoder::readChunk(size_t max_chunk_size) {
     size_t remaining = payload_size_ - bytes_read_;
     size_t chunk_size = std::min(remaining, max_chunk_size);
     
-    // Get chunk view from our view
-    ByteView chunk = view_.substr(0, chunk_size);
-    
+    // Get chunk view from our view by creating a new string_view with limited size
+    ByteView chunk(view_.data(), chunk_size);
+
     // Advance our position
     view_.remove_prefix(chunk_size);
     bytes_read_ += chunk_size;
@@ -359,7 +359,7 @@ Result<size_t> RlpChunkedListDecoder::peekTotalSize() {
     }
     
     // Scan through list to calculate total size
-    ByteView list_view = view_.substr(h.header_size_bytes, h.payload_size_bytes);
+    ByteView list_view(view_.data() + h.header_size_bytes, h.payload_size_bytes);
     size_t total = 0;
     size_t chunks = 0;
     
@@ -421,8 +421,8 @@ Result<ByteView> RlpChunkedListDecoder::readChunk() {
         view_.remove_prefix(h.header_size_bytes);
         
         // Set list_payload_ to point to the payload
-        list_payload_ = view_.substr(0, list_payload_len);
-        
+        list_payload_ = ByteView(view_.data(), list_payload_len);
+
         // If we haven't peeked yet, do it now to get total_chunks_
         if (total_chunks_ == 0) {
             // Count chunks by scanning
@@ -475,8 +475,8 @@ Result<ByteView> RlpChunkedListDecoder::readChunk() {
         return DecodingError::kInputTooShort;
     }
     
-    ByteView chunk_payload = list_payload_.substr(h.header_size_bytes, h.payload_size_bytes);
-    
+    ByteView chunk_payload(list_payload_.data() + h.header_size_bytes, h.payload_size_bytes);
+
     // Advance list_payload_ past this chunk
     size_t chunk_total_size = h.header_size_bytes + h.payload_size_bytes;
     list_payload_.remove_prefix(chunk_total_size);

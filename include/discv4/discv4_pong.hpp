@@ -1,18 +1,16 @@
 // discv4_pong.h
-#ifndef RLP_PEERDISCOVERY_DISCV4_PONG_HPP
-#define RLP_PEERDISCOVERY_DISCV4_PONG_HPP
+#ifndef RLP_PEERDISCOVERY_discv4_PONG_HPP
+#define RLP_PEERDISCOVERY_discv4_PONG_HPP
 
-#include <vector>
 #include <array>
 #include <stdint.h>
 
 #include <rlp/common.hpp>
-#include <boost/outcome/try.hpp>
 #include <rlp/rlp_decoder.hpp>
 
 namespace discv4 {
 
-struct Discv4Pong
+struct discv4_pong
 {
     // to_endpoint: [ip, udp_port, tcp_port]
     struct Endpoint 
@@ -26,11 +24,11 @@ struct Discv4Pong
     uint32_t expiration = 0;            // Unix timestamp
     uint64_t ersErq = 0;               // Optional ENR sequence number of the sender
 
-    static rlp::Result<Discv4Pong> Parse( rlp::ByteView raw );
+    static rlp::Result<discv4_pong> Parse( rlp::ByteView raw );
 
-    static rlp::DecodingResult ParseEndpoint( rlp::RlpDecoder& decoder, Discv4Pong::Endpoint& endpoint );
+    static rlp::DecodingResult ParseEndpoint( rlp::RlpDecoder& decoder, discv4_pong::Endpoint& endpoint );
 };
 
 } // namespace discv4
 
-#endif // RLP_PEERDISCOVERY_DISCV4_PONG_HPP
+#endif // RLP_PEERDISCOVERY_discv4_PONG_HPP

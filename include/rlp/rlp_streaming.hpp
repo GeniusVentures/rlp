@@ -216,8 +216,10 @@ public:
     [[nodiscard]] size_t totalSize() const noexcept { return payload_size_; }
     
     // Check if all data has been read
-    [[nodiscard]] bool isFinished() const noexcept { return bytes_read_ >= payload_size_; }
-    
+    [[nodiscard]] bool isFinished() const noexcept {
+        return initialized_ && bytes_read_ >= payload_size_;
+    }
+
     // Check if initialized (header consumed)
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
     
@@ -275,8 +277,10 @@ public:
     [[nodiscard]] size_t totalSize() const noexcept { return total_size_; }
     
     // Check if all chunks have been read
-    [[nodiscard]] bool isFinished() const noexcept { return chunk_index_ >= total_chunks_; }
-    
+    [[nodiscard]] bool isFinished() const noexcept {
+        return initialized_ && chunk_index_ >= total_chunks_;
+    }
+
     // Check if initialized (list header consumed)
     [[nodiscard]] bool isInitialized() const noexcept { return initialized_; }
     

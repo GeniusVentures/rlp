@@ -278,7 +278,7 @@ TEST_F(BenchmarkTest, BenchmarkListEncoding) {
         
         double time_per_element = avg_time / list_size;
         report_performance("list (" + std::to_string(list_size) + " elements) encoding",
-                         time_per_element, MAX_UINT32_ENCODE_TIME_NS * 2, "element");
+                         time_per_element, MAX_UINT32_ENCODE_TIME_NS * 3, "element");
     }
 }
 

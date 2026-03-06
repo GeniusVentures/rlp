@@ -23,7 +23,7 @@ using udp = asio::ip::udp;
 // Types
 using NodeID = std::vector<uint8_t>; // 512-bit (64 bytes) SHA3-256 of public key
 using IPAddress = std::string;
-constexpr uint16_t DEFAULT_DISCV4_PORT = 30303;
+constexpr uint16_t DEFAULT_discv4_PORT = 30303;
 using namespace boost;
 
 
@@ -42,7 +42,7 @@ struct NodeIDHash {
 // WIP Untested code
 struct Peer {
     std::string ip;
-    uint16_t udp_port = DEFAULT_DISCV4_PORT;
+    uint16_t udp_port = DEFAULT_discv4_PORT;
     uint16_t tcp_port = 30303; // Default, may be updated via PONG
     NodeID node_id;
     std::chrono::steady_clock::time_point last_seen;
@@ -61,9 +61,9 @@ struct Peer {
 rlp::Bytes EncodePing(const NodeID& target_id);
 
 // WIP Untested code
-class Discv4Discovery {
+class discv4Discovery {
 public:
-    explicit Discv4Discovery() : io_context_(1), socket_(io_context_, asio::ip::udp::v4()) {
+    explicit discv4Discovery() : io_context_(1), socket_(io_context_, asio::ip::udp::v4()) {
         socket_.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), 53093), ec);
 
         // Initialize secp256k1 context
@@ -77,7 +77,7 @@ public:
         };
     }
 
-    ~Discv4Discovery() {
+    ~discv4Discovery() {
         if ( ctx_ ) secp256k1_context_destroy(ctx_);
     }
 
@@ -99,7 +99,7 @@ private:
 
     // Send PING to a target
     void SendPing(const NodeID& target_id, const std::string& ip, uint16_t port) {
-        // Prepare and send valid Discv4 packet
+        // Prepare and send valid discv4 packet
         // Test version is in EncodePing function
     }
 
@@ -128,7 +128,7 @@ private:
 
     // Run discovery loop
     void Run() {
-        std::cout << "Starting Discv4 Discovery...\n";
+        std::cout << "Starting discv4 Discovery...\n";
 
         // Bootstrap: send PING to all bootstrap nodes
         for ( const auto& node : bootstrap_nodes_ ) {
@@ -227,7 +227,7 @@ rlp::EncodingResult<rlp::Bytes> EncodePing() {
         sizeof(to_ip_bytes)
     );
 
-    uint8_t version = {0x04}; // Discv4
+    uint8_t version = {0x04}; // discv4
     auto endpoint_from_result = EncodeEndpoint(sv_from, 30303, 30303);
     if (!endpoint_from_result) {
         return endpoint_from_result.error();

@@ -5,10 +5,6 @@ add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/rlp/rlp_streaming.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/common.cpp
         ${CMAKE_CURRENT_LIST_DIR}/rlp/endian.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/packet_factory.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Packet.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Ping.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/rlp/PeerDiscovery/Discv4Pong.cpp
         ${CMAKE_CURRENT_LIST_DIR}/eth/messages.cpp
         ${CMAKE_CURRENT_LIST_DIR}/eth/objects.cpp
 )
@@ -53,11 +49,11 @@ install(FILES
         # Streaming API
         ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/rlp_streaming.hpp
         # Peer Discovery
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/discovery.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/packet_factory.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Packet.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Ping.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/rlp/PeerDiscovery/Discv4Pong.hpp
+        ../include/discv4/discovery.hpp
+        ../include/discv4/packet_factory.hpp
+        ../include/discv4/discv4_packet.hpp
+        ../include/discv4/discv4Ping.cpp
+        ../include/discv4/discv4_pong.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp
 )
 
@@ -69,3 +65,6 @@ install(DIRECTORY
 
 # Add RLPx subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx)
+
+# Add discv4 subdirectory
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/discv4 ${CMAKE_CURRENT_BINARY_DIR}/discv4)
