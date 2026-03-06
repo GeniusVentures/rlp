@@ -19,9 +19,30 @@ add_executable(eth_watch_integration_test
 )
 target_link_libraries(eth_watch_integration_test PRIVATE rlp GTest::gtest_main)
 
+# ETH transaction (type 0/1/2) encode/decode tests
+add_executable(eth_transactions_test
+    eth_transactions_test.cpp
+)
+target_link_libraries(eth_transactions_test PRIVATE rlp GTest::gtest_main)
+
+# EventFilter / EventWatcher tests
+add_executable(event_filter_test
+    event_filter_test.cpp
+)
+target_link_libraries(event_filter_test PRIVATE rlp GTest::gtest_main)
+
+# ABI decoder tests
+add_executable(abi_decoder_test
+    abi_decoder_test.cpp
+)
+target_link_libraries(abi_decoder_test PRIVATE rlp GTest::gtest_main)
+
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(eth_messages_test)
 gtest_discover_tests(eth_objects_test)
 gtest_discover_tests(eth_watch_integration_test)
+gtest_discover_tests(eth_transactions_test)
+gtest_discover_tests(event_filter_test)
+gtest_discover_tests(abi_decoder_test)
 
