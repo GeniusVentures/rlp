@@ -1,326 +1,348 @@
-To monitor transactions and event logs for specific smart contracts on EVM-compatible chains (Ethereum, Polygon, Base, BSC) as a light client using only C++ without centralized RPC/WebSockets, you’ll implement a P2P client using the DevP2P stack with RLPx as the transport protocol. The goal is to listen for RLP-encoded transaction and block gossip via the `eth` subprotocol, filter for your smart contracts’ activity, and verify block consensus (ensuring blocks are canonical) without participating in consensus. Below is a C++-focused approach tailored to your requirements, avoiding external libraries in other languages and focusing on the execution layer for transactions/logs.
+# Architecture — GNUS.AI ETH P2P Event Watching
 
-### Approach Overview
-- **Light Client**: Connect to each chain’s P2P network, sync block headers for consensus verification, and monitor gossiped transactions/logs for your contract addresses.
-- **P2P via RLPx**: Use RLPx over TCP for secure peer communication, handling RLP-encoded `eth` subprotocol messages.
-- **Filtering**: Decode transactions and receipts to match your contract addresses and event signatures.
-- **Consensus Check**: Verify block headers to ensure monitored data is in canonical blocks.
-- **C++ Only**: Implement RLP encoding/decoding, RLPx networking, and `eth` message handling from scratch or with minimal C++ dependencies.
+**Date**: March 6, 2026
+**Status**: MVP Complete
 
-### Implementation Steps
-#### 1. Peer Discovery (discv4/Discv5)
-- **Purpose**: Find peers for each chain (Ethereum, Polygon, Base, BSC) using UDP-based discovery.
-- **Protocol**: Implement discv4 (simpler) or Discv5 (used by some newer chains). Messages include:
-  - `PING`/`PONG`: Check peer availability.
-  - `FIND_NODE`/`NEIGHBORS`: Query and receive peer lists.
-- **C++ Code**:
-  ```cpp
-  #include <enet/enet.h> // ENet for UDP networking
-  #include <vector>
-  #include <string>
-  #include <openssl/sha.h> // For keccak256
+---
 
-  struct Node {
-      std::string ip;
-      uint16_t port;
-      std::vector<uint8_t> node_id; // 512-bit public key
-  };
+## Overview
 
-  class Discovery {
-  public:
-      Discovery() {
-          enet_initialize();
-          host_ = enet_host_create(nullptr, 1, 2, 0, 0); // UDP host
-      }
-      ~Discovery() { enet_host_destroy(host_); enet_deinitialize(); }
+This library implements a C++20 light client for monitoring EVM smart contract events
+on Ethereum-compatible chains (Ethereum, Polygon, BSC, Base) using the native P2P
+DevP2P stack — no JSON-RPC, no WebSockets, no centralized intermediary.
 
-      void SendPing(const Node& target) {
-          std::vector<uint8_t> packet = EncodePing();
-          ENetAddress addr{inet_addr(target.ip.c_str()), target.port};
-          ENetPeer* peer = enet_host_connect(host_, &addr, 2, 0);
-          ENetPacket* enet_packet = enet_packet_create(packet.data(), packet.size(), ENET_PACKET_FLAG_RELIABLE);
-          enet_peer_send(peer, 0, enet_packet);
-      }
+The core flow:
 
-      void HandlePacket(ENetEvent& event) {
-          // Decode packet (PING, PONG, FIND_NODE, NEIGHBORS)
-          // Update peer list if NEIGHBORS received
-      }
+```
+discv4 (UDP)          → find peers
+RLPx (TCP/ECIES)      → encrypted session
+eth/66+ subprotocol   → NewBlockHashes → GetReceipts → Receipts
+EthWatchService       → EventFilter → ABI decode → typed callback
+```
 
-  private:
-      ENetHost* host_;
-      std::vector<uint8_t> EncodePing() {
-          // RLP-encode PING: [version, from, to, expiration, enr_seq]
-          // Return serialized bytes
-          return std::vector<uint8_t>{/* RLP-encoded data */};
-      }
-  };
-  ```
-- **Notes**:
-  - Use ENet for lightweight UDP networking (C-based, minimal).
-  - RLP-encode messages per DevP2P specs (see below for RLP).
-  - Start with chain-specific bootnodes (hardcode from chain docs, e.g., Ethereum’s enodes).
-  - Maintain 10-15 peers per chain.
+---
 
-#### 2. RLPx Connection (TCP)
-- **Purpose**: Establish secure TCP connections for `eth` subprotocol gossip.
-- **Protocol**: RLPx uses ECIES for handshakes (encryption/auth) and multiplexes subprotocols.
-- **C++ Code**:
-  ```cpp
-  #include <openssl/ec.h> // For ECIES
-  #include <openssl/evp.h>
-  #include <sys/socket.h>
-  #include <netinet/in.h>
-  #include <vector>
+## Layer Diagram
 
-  class RLPxSession {
-  public:
-      RLPxSession(const Node& peer) : peer_(peer) {
-          sock_ = socket(AF_INET, SOCK_STREAM, 0);
-          sockaddr_in addr;
-          addr.sin_addr.s_addr = inet_addr(peer.ip.c_str());
-          addr.sin_port = htons(peer.port);
-          connect(sock_, (sockaddr*)&addr, sizeof(addr));
-          PerformHandshake();
-      }
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Application Layer                         │
+│   eth_watch CLI  ·  EthWatchService  ·  DecodedEventCallback│
+├─────────────────────────────────────────────────────────────┤
+│                  ETH Protocol Layer (eth/66+)                │
+│   messages.hpp  ·  objects.hpp  ·  abi_decoder.hpp          │
+│   event_filter.hpp  ·  chain_tracker.hpp                    │
+├─────────────────────────────────────────────────────────────┤
+│                  RLPx Transport Layer                        │
+│   rlpx_session  ·  frame_cipher  ·  auth_handshake          │
+│   ECIES  ·  ECDH  ·  AES-256-CTR  ·  Boost.Asio             │
+├─────────────────────────────────────────────────────────────┤
+│                  Discovery Layer                             │
+│   discv4_client  ·  PING/PONG  ·  bootnodes                 │
+├─────────────────────────────────────────────────────────────┤
+│                  RLP Codec Layer                             │
+│   rlp_encoder  ·  rlp_decoder  ·  rlp_streaming             │
+│   endian  ·  intx::uint256                                   │
+└─────────────────────────────────────────────────────────────┘
+```
 
-      void PerformHandshake() {
-          // ECIES handshake: exchange auth/ack, derive session keys
-          EC_KEY* ecdh = EC_KEY_new_by_curve_name(NID_secp256k1);
-          // Send auth message, receive ack, compute shared secret
-          // Set up encryption (AES-256-GCM) and MAC
-      }
+---
 
-      void SendHello() {
-          std::vector<uint8_t> hello = EncodeHello();
-          send(sock_, hello.data(), hello.size(), 0);
-      }
+## Component Reference
 
-      void ReceiveMessage() {
-          std::vector<uint8_t> buffer(1024);
-          int len = recv(sock_, buffer.data(), buffer.size(), 0);
-          // Decrypt and decode RLP message (e.g., HELLO, STATUS)
-      }
+### RLP Codec (`include/rlp/`, `src/rlp/`)
 
-  private:
-      int sock_;
-      Node peer_;
-      std::vector<uint8_t> EncodeHello() {
-          // RLP-encode HELLO: [protocolVersion, clientId, capabilities, port, id]
-          return std::vector<uint8_t>{/* RLP-encoded data */};
-      }
-  };
-  ```
-- **Notes**:
-  - Use OpenSSL for ECIES (secp256k1 curve) and AES-256-GCM encryption.
-  - Negotiate `eth` subprotocol (e.g., `eth/66`) in HELLO message.
-  - Handle STATUS message to agree on chain head and genesis hash.
+Encodes and decodes all Ethereum wire format data.
 
-#### 3. RLP Encoding/Decoding
-- **Purpose**: Serialize/deserialize transactions, blocks, and receipts.
-- **C++ Code**:
-  ```cpp
-  #include <vector>
-  #include <stdexcept>
+```cpp
+// Encoding
+rlp::RlpEncoder enc;
+enc.append(uint64_t{100});
+enc.append(some_address);
+auto bytes = enc.finish();
 
-  class RLP {
-  public:
-      static std::vector<uint8_t> Encode(const std::vector<uint8_t>& data) {
-          if (data.size() == 1 && data[0] < 0x80) {
-              return data;
-          }
-          std::vector<uint8_t> result;
-          if (data.size() < 56) {
-              result.push_back(0x80 + data.size());
-          } else {
-              // Encode length as bytes
-              std::vector<uint8_t> len_bytes = EncodeLength(data.size());
-              result.push_back(0xB7 + len_bytes.size());
-              result.insert(result.end(), len_bytes.begin(), len_bytes.end());
-          }
-          result.insert(result.end(), data.begin(), data.end());
-          return result;
-      }
+// Decoding
+auto result = rlp::decode_uint64(view);   // Result<uint64_t>
+auto header = eth::codec::decode_block_header(view);
+```
 
-      static std::vector<uint8_t> Decode(const std::vector<uint8_t>& data, size_t& offset) {
-          if (offset >= data.size()) throw std::runtime_error("Invalid RLP");
-          uint8_t first = data[offset];
-          if (first < 0x80) {
-              offset++;
-              return {first};
-          } else if (first <= 0xB7) {
-              size_t len = first - 0x80;
-              offset++;
-              std::vector<uint8_t> result(data.begin() + offset, data.begin() + offset + len);
-              offset += len;
-              return result;
-          } else {
-              // Handle longer lengths
-              throw std::runtime_error("Complex RLP not implemented");
-          }
-      }
+Key types:
+- `rlp::ByteView` — non-owning view into a byte buffer
+- `rlp::Result<T>` — `boost::outcome` result type
+- `rlp::Hash256`, `rlp::Address`, `rlp::Bloom` — fixed-size byte arrays
+- `intx::uint256` — 256-bit unsigned integer (project-local, `include/rlp/intx.hpp`)
 
-  private:
-      static std::vector<uint8_t> EncodeLength(size_t len) {
-          std::vector<uint8_t> bytes;
-          while (len > 0) {
-              bytes.insert(bytes.begin(), len & 0xFF);
-              len >>= 8;
-          }
-          return bytes;
-      }
-  };
-  ```
-- **Notes**:
-  - Implement RLP per Ethereum specs (simple for single-byte data, recursive for lists).
-  - Use for decoding `Transactions`, `BlockHeaders`, `BlockBodies`, and `Receipts`.
+---
 
-#### 4. Light Sync for Consensus
-- **Purpose**: Sync block headers to verify canonical chain without full blocks.
-- **C++ Code**:
-  ```cpp
-  class LightClient {
-  public:
-      void SyncHeaders(const Node& peer, const std::vector<uint8_t>& checkpoint_hash) {
-          std::vector<uint8_t> get_headers = EncodeGetBlockHeaders(checkpoint_hash);
-          RLPxSession session(peer);
-          session.Send(get_headers);
-          auto response = session.ReceiveMessage();
-          auto headers = DecodeBlockHeaders(response);
-          VerifyHeaders(headers); // Check parent hash, consensus rules
-      }
+### RLPx Session (`include/rlpx/`, `src/rlpx/`)
 
-  private:
-      std::vector<uint8_t> EncodeGetBlockHeaders(const std::vector<uint8_t>& start_hash) {
-          // RLP-encode: [msg_id=0x03, [start_hash, max_headers=256, skip=0, reverse=0]]
-          return RLP::Encode({/* encoded data */});
-      }
+Encrypted P2P session over TCP. Handles the ECIES handshake, frame cipher, and
+protocol message dispatch. Uses Boost.Asio coroutines.
 
-      std::vector<std::vector<uint8_t>> DecodeBlockHeaders(const std::vector<uint8_t>& data) {
-          size_t offset = 0;
-          // Decode BlockHeaders message (msg_id=0x04)
-          return {}; // List of headers
-      }
+```cpp
+// Connecting
+rlpx::SessionConnectParams params{
+    .remote_host   = "1.2.3.4",
+    .remote_port   = 30303,
+    .peer_public_key = peer_pubkey,
+};
+auto session = co_await rlpx::RlpxSession::connect(params);
 
-      void VerifyHeaders(const std::vector<std::vector<uint8_t>>& headers) {
-          // Check parent_hash chain
-          // Verify chain-specific consensus (e.g., PoW for BSC, PoS for Polygon)
-      }
-  };
-  ```
-- **Notes**:
-  - Request headers from a trusted checkpoint (e.g., recent block hash).
-  - Verify chain-specific consensus (e.g., Ethereum’s validator signatures, BSC’s PoW).
+// Registering handlers
+session->set_hello_handler([](const rlpx::protocol::HelloMessage& msg) { ... });
+session->set_generic_handler([](const rlpx::framing::Message& msg) { ... });
 
-#### 5. Monitor Transactions/Logs
-- **Purpose**: Filter gossiped transactions and logs for your contracts.
-- **C++ Code**:
-  ```cpp
-  #include <vector>
-  #include <string>
+// Sending a message
+session->post_message(rlpx::framing::Message{.id = offset + eth_id, .payload = bytes});
+```
 
-  class ContractMonitor {
-  public:
-      ContractMonitor(const std::vector<std::string>& contract_addresses,
-                     const std::vector<std::string>& event_signatures)
-          : contract_addresses_(contract_addresses), event_signatures_(event_signatures) {}
+---
 
-      void HandleNewPooledTxHashes(const std::vector<uint8_t>& data, RLPxSession& session) {
-          size_t offset = 0;
-          auto hashes = RLP::Decode(data, offset); // List of tx hashes
-          // Request full txns if needed: GetPooledTransactions
-          std::vector<uint8_t> get_txns = EncodeGetPooledTransactions(hashes);
-          session.Send(get_txns);
-      }
+### Discovery v4 (`include/discv4/`, `src/discv4/`)
 
-      void HandleTransactions(const std::vector<uint8_t>& data) {
-          size_t offset = 0;
-          auto txns = RLP::Decode(data, offset); // List of RLP-encoded txns
-          for (const auto& txn : txns) {
-              auto decoded = DecodeTransaction(txn);
-              if (decoded.to == contract_addresses_[0]) { // Match contract
-                  LogTransaction(decoded);
-              }
-          }
-      }
+UDP-based peer discovery using the discv4 protocol. Finds peers on the target chain
+and supplies their enode addresses for RLPx connection.
 
-      void HandleNewBlock(const std::vector<uint8_t>& data, RLPxSession& session) {
-          size_t offset = 0;
-          auto block = RLP::Decode(data, offset); // [header, txns, uncles]
-          auto header = DecodeHeader(block[0]);
-          VerifyHeaderConsensus(header); // Ensure canonical
-          // Check Bloom filter for contract addresses
-          if (BloomFilterMatch(block[0])) {
-              std::vector<uint8_t> get_receipts = EncodeGetReceipts(header.hash);
-              session.Send(get_receipts);
-          }
-      }
+```cpp
+discv4::Discv4Client client(io_context, private_key);
+client.set_peer_discovered_callback([](const discv4::NodeRecord& node) {
+    // Connect via RLPx to node.endpoint
+});
+client.start(discv4::get_sepolia_bootnodes());
+```
 
-      void HandleReceipts(const std::vector<uint8_t>& data) {
-          size_t offset = 0;
-          auto receipts = RLP::Decode(data, offset);
-          for (const auto& receipt : receipts) {
-              auto logs = DecodeLogs(receipt);
-              for (const auto& log : logs) {
-                  if (log.address == contract_addresses_[0] && log.topics[0] == event_signatures_[0]) {
-                      LogEvent(log);
-                  }
-              }
-          }
-      }
+**Important**: Bootstrap nodes are for discovery only. They do NOT send block data.
+The discovered peers (full/archive nodes) are what provide `NewBlockHashes`.
 
-  private:
-      std::vector<std::string> contract_addresses_;
-      std::vector<std::string> event_signatures_;
+---
 
-      bool BloomFilterMatch(const std::vector<uint8_t>& header) {
-          // Extract Bloom filter from header, check for contract addresses
-          return true; // Placeholder
-      }
+### ETH Protocol Messages (`include/eth/messages.hpp`, `include/eth/objects.hpp`)
 
-      void LogTransaction(const std::vector<uint8_t>& txn) {
-          // Process/store transaction
-      }
+All eth/66+ messages are implemented with full encode/decode and the
+`request_id` envelope required by eth/66+.
 
-      void LogEvent(const std::vector<uint8_t>& log) {
-          // Process/store event log
-      }
-  };
-  ```
-- **Notes**:
-  - Filter transactions by `to` field or input data (function signatures).
-  - Filter logs by address and topic[0] (event signature, e.g., keccak256("Transfer(address,address,uint256)")).
-  - Use Bloom filters in headers/receipts to reduce `GetReceipts` calls.
+```cpp
+// Request receipts for a block
+eth::GetReceiptsMessage req{.request_id = 1, .block_hashes = {hash}};
+auto encoded = eth::protocol::encode_get_receipts(req);
 
-#### 6. Cross-Chain Setup
-- **Config**: For each chain (Ethereum, Polygon, Base, BSC):
-  - Hardcode bootnodes (from chain docs).
-  - Set chain ID (Ethereum: 1, Polygon: 137, Base: 8453, BSC: 56).
-  - Use `eth/66` (or chain-specific version).
-- **Connections**: Run separate Discovery and RLPxSession instances per chain.
-- **Consensus Rules**:
-  - Ethereum: Post-Merge PoS, verify validator signatures.
-  - Polygon: PoS, check Heimdall checkpoints.
-  - Base: L2, verify L1 state roots.
-  - BSC: PoSA, check authority signatures or PoW.
+// Decode incoming receipts
+auto msg = eth::protocol::decode_receipts(payload);
+// msg.request_id correlates back to the request
+// msg.receipts[i] = vector of Receipt for block i
+```
 
-### Challenges and Mitigations
-- **Resource Use**: Limit peers to 10-15 per chain, cache headers in memory (~1MB per 1000 blocks).
-- **RLP Complexity**: Implement recursive RLP decoding for lists (blocks, receipts).
-- **Peer Reliability**: Handle dropped connections with reconnect logic; maintain diverse peers.
-- **Chain Quirks**: Test on testnets (Sepolia, Amoy, Base Sepolia, BSC Testnet) for chain-specific behaviors.
-- **Log Overhead**: Use Bloom filters to skip irrelevant blocks/receipts.
+Transaction types fully supported: legacy, EIP-2930, EIP-1559 (EIP-2718 wire format).
 
-### Workflow
-1. Initialize Discovery for each chain with bootnodes.
-2. Connect to peers via RLPx, negotiate `eth` subprotocol.
-3. Sync headers from a trusted checkpoint to track chain tip.
-4. Listen for `NewPooledTransactionHashes`, `Transactions`, `NewBlock` messages.
-5. Filter transactions for your contract addresses; fetch receipts for logs if Bloom filter matches.
-6. Verify block headers for consensus (canonical chain).
-7. Log/process matched transactions/logs.
+---
 
-This C++ implementation ensures decentralized monitoring of your smart contracts across EVM chains using RLPx and `eth` gossip, with minimal dependencies (ENet, OpenSSL). If you need specific message formats or chain bootnodes, let me know!
+### Event Filtering (`include/eth/event_filter.hpp`)
 
+Follows `eth_getLogs` semantics. Each `EventFilter` specifies:
+- `addresses` — contract addresses to watch (empty = any contract)
+- `topics` — per-position constraints (`nullopt` = wildcard)
+- `from_block` / `to_block` — optional block range
 
+```cpp
+eth::EventFilter filter;
+filter.addresses.push_back(contract_address);
+filter.topics.push_back(eth::abi::event_signature_hash("Transfer(address,address,uint256)"));
 
+eth::EventWatcher watcher;
+auto id = watcher.watch(filter, [](const eth::MatchedEvent& ev) { ... });
+watcher.process_receipt(receipt, tx_hash, block_number, block_hash);
+watcher.unwatch(id);
+```
+
+---
+
+### ABI Decoder (`include/eth/abi_decoder.hpp`)
+
+Decodes EVM ABI-encoded event parameters from log topics and data fields.
+
+```cpp
+// Compute topic[0] for an event signature
+auto sig_hash = eth::abi::event_signature_hash("Transfer(address,address,uint256)");
+
+// Describe the event parameters
+std::vector<eth::abi::AbiParam> params = {
+    {eth::abi::AbiParamKind::kAddress, true,  "from"},   // indexed
+    {eth::abi::AbiParamKind::kAddress, true,  "to"},     // indexed
+    {eth::abi::AbiParamKind::kUint,    false, "value"},  // non-indexed (in data)
+};
+
+// Decode a log entry
+auto result = eth::abi::decode_log(log, "Transfer(address,address,uint256)", params);
+// result->at(0) = Address (from)
+// result->at(1) = Address (to)
+// result->at(2) = intx::uint256 (value)
+```
+
+Supported types: `address`, `uint256`, `bytes32`, `bool`, `bytes`, `string`.
+
+---
+
+### EthWatchService (`include/eth/eth_watch_service.hpp`)
+
+The main integration point. Ties together the event filter, ABI decoder, chain
+tracker, and outbound send callback into a single object.
+
+```cpp
+eth::EthWatchService svc;
+
+// Wire outbound messages back to the RLPx session
+svc.set_send_callback([&session, eth_offset](uint8_t eth_id, std::vector<uint8_t> payload) {
+    session->post_message({.id = eth_offset + eth_id, .payload = std::move(payload)});
+});
+
+// Register a watch
+auto id = svc.watch_event(
+    contract_address,
+    "Transfer(address,address,uint256)",
+    params,
+    [](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals) {
+        const auto& from  = std::get<eth::codec::Address>(vals[0]);
+        const auto& to    = std::get<eth::codec::Address>(vals[1]);
+        const auto& value = std::get<intx::uint256>(vals[2]);
+        // ... process event
+    });
+
+// Feed incoming eth wire messages (from set_generic_handler)
+svc.process_message(eth_id, payload);
+// Automatically emits GetReceipts for new blocks,
+// correlates Receipts responses, fires callbacks.
+
+// Query chain tip
+uint64_t tip_number = svc.tip();
+```
+
+---
+
+### ChainTracker (`include/eth/chain_tracker.hpp`)
+
+Prevents duplicate `GetReceipts` requests for the same block. Maintains a
+sliding window of seen block hashes (default 1024).
+
+```cpp
+eth::ChainTracker tracker;              // default window = 1024
+
+if (tracker.mark_seen(block_hash, block_number)) {
+    // First time seeing this block — request receipts
+} else {
+    // Already seen — skip
+}
+
+uint64_t tip = tracker.tip();
+auto     tip_hash = tracker.tip_hash(); // optional<Hash256>
+```
+
+`EthWatchService` owns a `ChainTracker` internally and consults it automatically
+inside `request_receipts`. Callers do not need to manage it directly.
+
+---
+
+### CLI Helpers (`include/eth/eth_watch_cli.hpp`)
+
+Header-only utilities for command-line argument parsing.
+
+```cpp
+// Parse an Ethereum address (with or without 0x prefix)
+auto addr = eth::cli::parse_address("0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70");
+
+// Get standard ABI params for well-known event signatures
+auto params = eth::cli::infer_params("Transfer(address,address,uint256)");
+// Returns the 3-param Transfer list; empty for unknown signatures
+
+// A watch specification from the command line
+eth::cli::WatchSpec spec{"0x9af805...", "Transfer(address,address,uint256)"};
+```
+
+---
+
+## Data Flow: NewBlockHashes → Decoded Event Callback
+
+```
+Peer sends NewBlockHashes([{hash1, 100}, {hash2, 101}])
+    │
+    ▼
+eth_watch generic_handler receives msg (id = offset + 0x01)
+    │
+    ▼
+EthWatchService::process_message(kNewBlockHashesMessageId, payload)
+    │
+    ├─ decode_new_block_hashes(payload)
+    │
+    └─ for each entry:
+           ChainTracker::mark_seen(hash, number)
+               │ first time? yes → continue; no → skip
+               ▼
+           GetReceiptsMessage{request_id=N, block_hashes=[hash]}
+               │
+               ▼
+           encode_get_receipts → send_cb_(kGetReceiptsMessageId, bytes)
+               │
+               ▼
+           pending_requests_[N] = {hash, number}
+
+Peer sends Receipts(request_id=N, [[receipt0, receipt1, ...]])
+    │
+    ▼
+EthWatchService::process_message(kReceiptsMessageId, payload)
+    │
+    ├─ decode_receipts(payload)
+    │
+    ├─ look up pending_requests_[N] → {block_hash, block_number}
+    │
+    └─ process_receipts(block_receipts, tx_hashes, block_number, block_hash)
+           │
+           └─ EventWatcher::process_receipt(receipt, tx_hash, block_number, block_hash)
+                  │
+                  └─ for each log in receipt:
+                         EventFilter::matches(log, block_number)?
+                             │ yes
+                             ▼
+                         ABI decode → DecodedEventCallback(ev, vals)
+```
+
+---
+
+## GNUS.AI Contract Addresses
+
+All addresses are registered and tested in `test/eth/gnus_contracts_test.cpp`.
+
+### Production (Mainnet)
+
+| Chain | Address |
+|---|---|
+| Ethereum | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+| Polygon | `0x127E47abA094a9a87D084a3a93732909Ff031419` |
+| BSC | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+| Base | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+
+### Testnet
+
+| Chain | Address |
+|---|---|
+| Sepolia | `0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70` |
+| Polygon Amoy | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+| BSC Testnet | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+| Base Testnet | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+
+---
+
+## Known Limitations
+
+See `CHECKPOINT.md` — Known Limitations section for the full list.
+Key items: bootstrap nodes are discovery-only; no Bloom filter pre-screening;
+no historical backfill; single peer connection.
+
+---
+
+## Build & Test
+
+```bash
+cd build/OSX/Debug
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+ninja
+ctest   # 441/441 should pass
+```

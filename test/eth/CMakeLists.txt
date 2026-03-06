@@ -49,6 +49,18 @@ add_executable(eth_watch_cli_test
 )
 target_link_libraries(eth_watch_cli_test PRIVATE rlp GTest::gtest_main)
 
+# ChainTracker tests
+add_executable(chain_tracker_test
+    chain_tracker_test.cpp
+)
+target_link_libraries(chain_tracker_test PRIVATE rlp GTest::gtest_main)
+
+# GNUS.AI contract address tests
+add_executable(gnus_contracts_test
+    gnus_contracts_test.cpp
+)
+target_link_libraries(gnus_contracts_test PRIVATE rlp GTest::gtest_main)
+
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(eth_messages_test)
@@ -59,4 +71,6 @@ gtest_discover_tests(event_filter_test)
 gtest_discover_tests(abi_decoder_test)
 gtest_discover_tests(eth_watch_service_test)
 gtest_discover_tests(eth_watch_cli_test)
+gtest_discover_tests(chain_tracker_test)
+gtest_discover_tests(gnus_contracts_test)
 

@@ -67,3 +67,8 @@ Mistakes made by LLM agents during C++ development. Each entry describes what we
 **Root cause**: The rewrite focused on the code changes and did not preserve the existing documentation.  
 **Rule**: When editing or rewriting any function declaration, always carry forward all existing Doxygen comments verbatim. Only add or modify comments that are directly related to the change being made. Never silently drop `@brief`, `@param`, `@return`, or `@note` tags.
 
+### M010 — Misuse of `[[nodiscard]]` on side-effect functions
+**What happened**: `mark_seen()` was declared `[[nodiscard]]` even though its primary purpose is the side effect of recording a block. This produced 17 warnings at call sites where the return value is intentionally unused (setup code in tests, production dispatch loops).  
+**Root cause**: `[[nodiscard]]` was applied mechanically without considering whether the return value is the *primary* reason to call the function.  
+**Rule**: Only apply `[[nodiscard]]` to functions whose *sole or primary* purpose is to produce a return value (factory functions, pure queries, error-returning operations). Do NOT apply it to functions whose primary purpose is a side effect and whose return value is merely a convenience indicator. When in doubt: if the function name is a verb acting on state (`mark_*`, `set_*`, `push_*`, `process_*`), do not use `[[nodiscard]]`.
+

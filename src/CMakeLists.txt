@@ -9,6 +9,7 @@ add_library(rlp STATIC
         ${CMAKE_CURRENT_LIST_DIR}/eth/objects.cpp
         ${CMAKE_CURRENT_LIST_DIR}/eth/event_filter.cpp
         ${CMAKE_CURRENT_LIST_DIR}/eth/abi_decoder.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/eth/chain_tracker.cpp
         ${CMAKE_CURRENT_LIST_DIR}/eth/eth_watch_service.cpp
 )
 

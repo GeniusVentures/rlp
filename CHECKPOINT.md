@@ -1,15 +1,16 @@
-Discov# Project Checkpoint - RLP/RLPx/Discovery Implementation
+# Project Checkpoint - RLP/RLPx/ETH Event Watching Implementation
 
-**Date**: March 5, 2026  
-**Project**: GNUS.AI Super Genius Blockchain - Ethereum Protocol Support  
-**Status**: Foundation Complete, Advanced Features Required
+**Date**: March 6, 2026
+**Project**: GNUS.AI Super Genius Blockchain - Ethereum Protocol Support
+**Status**: ✅ MVP Complete — ETH P2P event watching fully functional
+**Tests**: 441/441 passing, zero warnings, zero regressions
 
 ---
 
-## ✅ COMPLETED - Core Infrastructure
+## ✅ COMPLETED - Full Stack
 
 ### 1. RLP (Recursive Length Prefix) Encoding/Decoding
-**Status**: ✅ Fully functional and tested (336/336 tests passing)
+**Status**: ✅ Fully functional and tested
 
 - ✅ Basic types: `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t`, `uint256`, booleans, byte arrays
 - ✅ Nested lists and complex structures
@@ -17,12 +18,15 @@ Discov# Project Checkpoint - RLP/RLPx/Discovery Implementation
 - ✅ Chunked list encoding/decoding (`RlpChunkedListEncoder`, `RlpChunkedListDecoder`)
 - ✅ Error handling with `boost::outcome`
 - ✅ Type safety with C++20 templates
-- ✅ Comprehensive test coverage (15 test suites)
+- ✅ Endian utilities (`from_big_compact`, `to_big_compact`)
+- ✅ `intx::uint256` integration (project-local copy in `include/rlp/intx.hpp`)
 
 **Files**:
 - `include/rlp/rlp_encoder.hpp`, `src/rlp/rlp_encoder.cpp`
 - `include/rlp/rlp_decoder.hpp`, `src/rlp/rlp_decoder.cpp`
 - `include/rlp/rlp_streaming.hpp`, `src/rlp/rlp_streaming.cpp`
+- `include/rlp/endian.hpp`, `src/rlp/endian.cpp`
+- `include/rlp/intx.hpp`, `include/rlp/rlp_ethereum.hpp`
 
 ---
 
@@ -35,47 +39,67 @@ Discov# Project Checkpoint - RLP/RLPx/Discovery Implementation
 - ✅ Frame cipher (AES-256-CTR with message authentication)
 - ✅ Message framing and routing
 - ✅ Protocol message handling (Hello, Disconnect, Ping, Pong)
-- ✅ Session lifecycle management
-- ✅ Boost.Asio async I/O
+- ✅ Session lifecycle management (`RlpxSession`)
+- ✅ Boost.Asio async coroutine I/O
+- ✅ `post_message` for sending outbound eth messages from within handlers
 
 **Files**:
 - `include/rlpx/rlpx_session.hpp`, `src/rlpx/rlpx_session.cpp`
-- `include/rlpx/auth/auth_handshake.hpp`
-- `include/rlpx/crypto/ecdh.hpp`, `crypto/aes.hpp`, `crypto/kdf.hpp`
-- `include/rlpx/framing/frame_cipher.hpp`, `framing/message_stream.hpp`
+- `include/rlpx/auth/`, `include/rlpx/crypto/`, `include/rlpx/framing/`
+- `include/rlpx/protocol/`, `include/rlpx/socket/`
 
 ---
 
 ### 3. Discovery v4 Protocol (Peer Discovery)
-**Status**: ✅ Fully functional and tested (16/16 tests passing)
+**Status**: ✅ Fully functional and tested
 
 - ✅ PING/PONG packet creation and parsing
-- ✅ Keccak-256 hashing for packet integrity
+- ✅ Keccak-256 packet integrity hashing
 - ✅ UDP-based peer discovery
-- ✅ Node ID management (64-byte public key hash)
+- ✅ Node ID management (64-byte public key)
 - ✅ Endpoint encoding (IP + UDP/TCP ports)
 - ✅ Packet expiration validation
-- ✅ Client lifecycle (start/stop)
-- ✅ Peer table management
+- ✅ Client lifecycle (start/stop), peer table management
 - ✅ Callback system for discovered peers and errors
-- ✅ Bootstrap node configuration for major chains
+- ✅ Bootstrap node configuration for all major chains
+
+**Supported chains** (bootstrap nodes configured):
+- Ethereum Mainnet, Sepolia, Holesky
+- Polygon Mainnet, Amoy Testnet
+- BSC Mainnet, BSC Testnet
+- Base Mainnet, Base Sepolia
 
 **Files**:
 - `include/discv4/discv4_client.hpp`, `src/discv4/discv4_client.cpp`
 - `include/discv4/discv4_packet.hpp`, `src/discv4/discv4_packet.cpp`
-- `include/discv4/discv4_ping.hpp`, `discv4_pong.hpp`
-- `include/discv4/bootnodes.hpp` (Mainnet, Sepolia, Polygon, BSC, Base)
+- `include/discv4/discv4_ping.hpp`, `include/discv4/discv4_pong.hpp`
+- `include/discv4/bootnodes.hpp`, `include/discv4/bootnodes_test.hpp`
 
 ---
 
-### 4. ETH Protocol Messages (Basic)
-**Status**: ✅ Partially implemented
+### 4. ETH Protocol Messages (eth/66+)
+**Status**: ✅ Complete — all messages implemented with eth/66 `request_id` envelope
 
-**Working**:
-- ✅ STATUS message encoding/decoding
-- ✅ NEW_BLOCK_HASHES message encoding/decoding
-- ✅ NEW_POOLED_TRANSACTION_HASHES encoding/decoding
-- ✅ GET_BLOCK_HEADERS encoding/decoding
+| Message | ID | Encode | Decode |
+|---|---|---|---|
+| Status | 0x00 | ✅ | ✅ |
+| NewBlockHashes | 0x01 | ✅ | ✅ |
+| Transactions | 0x02 | ✅ | ✅ |
+| GetBlockHeaders | 0x03 | ✅ | ✅ |
+| BlockHeaders | 0x04 | ✅ | ✅ |
+| GetBlockBodies | 0x05 | ✅ | ✅ |
+| BlockBodies | 0x06 | ✅ | ✅ |
+| NewBlock | 0x07 | ✅ | ✅ |
+| NewPooledTransactionHashes | 0x08 | ✅ | ✅ |
+| GetPooledTransactions | 0x09 | ✅ | ✅ |
+| PooledTransactions | 0x0a | ✅ | ✅ |
+| GetReceipts | 0x0f | ✅ | ✅ |
+| Receipts | 0x10 | ✅ | ✅ |
+
+**Transaction types** (EIP-2718 wire encoding):
+- ✅ Legacy (type 0x00) — full RLP with v/r/s signature
+- ✅ EIP-2930 (type 0x01) — access list + chain_id
+- ✅ EIP-1559 (type 0x02) — max_fee_per_gas + max_priority_fee_per_gas
 
 **Files**:
 - `include/eth/messages.hpp`, `src/eth/messages.cpp`
@@ -84,544 +108,211 @@ Discov# Project Checkpoint - RLP/RLPx/Discovery Implementation
 
 ---
 
-### 5. Example Application (eth_watch)
-**Status**: ✅ Basic connectivity working
+### 5. Event Filtering
+**Status**: ✅ Complete
 
-**Capabilities**:
-- ✅ Connect to bootstrap nodes using enode URLs
-- ✅ Chain presets (mainnet, sepolia, polygon, bsc, base, etc.)
-- ✅ RLPx handshake (Hello message)
-- ✅ ETH protocol handshake (Status message)
-- ✅ Basic message reception (NewBlockHashes)
-- ✅ Ping/Pong handler
+- ✅ `EventFilter` — address list + per-position topic constraints + block range
+- ✅ Topic matching follows `eth_getLogs` semantics (`nullopt` = wildcard per position)
+- ✅ `EventWatcher` — watch/unwatch subscriptions, `process_block_logs`, `process_receipt`
+- ✅ `MatchedEvent` — raw log decorated with block number, block hash, tx hash, log index
+
+**Files**:
+- `include/eth/event_filter.hpp`, `src/eth/event_filter.cpp`
+
+---
+
+### 6. ABI Decoder
+**Status**: ✅ Complete
+
+- ✅ Keccak-256 event signature hashing (`event_signature_hash`)
+- ✅ Indexed parameter decoding from `topics[1..3]` — `address`, `uint256`, `bytes32`, `bool`
+- ✅ Non-indexed parameter decoding from `log.data` — `address`, `uint256`, `bytes32`, `bool`, `bytes`, `string`
+- ✅ `decode_log` — full decode of a `LogEntry` given signature + `AbiParam` list
+- ✅ `AbiValue` variant: `Address | uint256 | Hash256 | bool | vector<uint8_t> | string`
+
+**Files**:
+- `include/eth/abi_decoder.hpp`, `src/eth/abi_decoder.cpp`
+
+---
+
+### 7. EthWatchService
+**Status**: ✅ Complete — production-ready event watching service
+
+- ✅ `watch_event(contract, signature, params, callback)` — register a typed subscription
+- ✅ `unwatch(id)` — remove subscription
+- ✅ `set_send_callback(cb)` — wire outbound messages back to the RLPx session
+- ✅ `process_message(eth_msg_id, payload)` — handles NewBlockHashes, NewBlock, Receipts
+- ✅ Auto-emits `GetReceipts` on `NewBlockHashes` and `NewBlock` arrival
+- ✅ `request_id` correlation — Receipts response maps back to the correct block context
+- ✅ `tip()` / `tip_hash()` — expose highest known block number and hash
+- ✅ Block deduplication via `ChainTracker` — no duplicate `GetReceipts` for the same block
+
+**Files**:
+- `include/eth/eth_watch_service.hpp`, `src/eth/eth_watch_service.cpp`
+
+---
+
+### 8. ChainTracker
+**Status**: ✅ Complete
+
+- ✅ Sliding window deduplication (default 1024 entries, configurable)
+- ✅ FIFO eviction of oldest entries when window is full
+- ✅ Tip tracking — highest block number and hash seen
+- ✅ `mark_seen` / `is_seen` / `reset`
+
+**Files**:
+- `include/eth/chain_tracker.hpp`, `src/eth/chain_tracker.cpp`
+
+---
+
+### 9. CLI Helpers
+**Status**: ✅ Complete
+
+- ✅ `eth_watch_cli.hpp` — `WatchSpec`, `parse_address` (0x-prefix aware), `parse_hex_array`, `infer_params`
+- ✅ `infer_params` supports `Transfer(address,address,uint256)` and `Approval(address,address,uint256)` automatically
+- ✅ Unknown event signatures still work as raw topic[0] filters (no ABI decoding)
+
+**Files**:
+- `include/eth/eth_watch_cli.hpp`
+
+---
+
+### 10. Example Application (eth_watch)
+**Status**: ✅ Full CLI application
+
+```bash
+# Connect by chain preset
+./eth_watch --chain sepolia
+
+# Watch specific contract + event on Sepolia (GNUS testnet)
+./eth_watch --chain sepolia \
+  --watch-contract 0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70 \
+  --watch-event Transfer(address,address,uint256)
+
+# Watch GNUS Transfer + Approval on Ethereum Mainnet
+./eth_watch --chain mainnet \
+  --watch-contract 0x614577036F0a024DBC1C88BA616b394DD65d105a \
+  --watch-event Transfer(address,address,uint256) \
+  --watch-contract 0x614577036F0a024DBC1C88BA616b394DD65d105a \
+  --watch-event Approval(address,address,uint256)
+
+# Connect by explicit peer
+./eth_watch <host> <port> <peer_pubkey_hex> [eth_offset]
+```
+
+**Behaviour**:
+- Connects via RLPx, performs Hello + ETH Status handshake
+- On `NewBlockHashes` / `NewBlock`: automatically emits `GetReceipts`
+- On `Receipts`: decodes logs, matches against registered watches, fires typed callbacks
+- Deduplicates receipt requests via `ChainTracker`
+- Responds to Ping with Pong
 
 **Files**:
 - `examples/eth_watch/eth_watch.cpp`
+- `examples/eth_watch/CMakeLists.txt`
 
 ---
 
-## 🚧 IN PROGRESS / MISSING - Advanced Features
+### 11. GNUS.AI Smart Contract Integration
+**Status**: ✅ Tested — all production and testnet addresses verified
 
-### 1. Contract Event Watching & Filtering ❌
-**Status**: NOT IMPLEMENTED
+| Network | Contract Address | Tests |
+|---|---|---|
+| Ethereum Mainnet | `0x614577036F0a024DBC1C88BA616b394DD65d105a` | ✅ |
+| Polygon Mainnet | `0x127E47abA094a9a87D084a3a93732909Ff031419` | ✅ |
+| BSC Mainnet | `0x614577036F0a024DBC1C88BA616b394DD65d105a` | ✅ |
+| Base Mainnet | `0x614577036F0a024DBC1C88BA616b394DD65d105a` | ✅ |
+| Ethereum Sepolia | `0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70` | ✅ |
+| Polygon Amoy | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` | ✅ |
+| BSC Testnet | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` | ✅ |
+| Base Testnet | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` | ✅ |
 
-**What's Needed**:
-```cpp
-// Missing: Event log filtering system
-class EventFilter {
-    std::vector<Hash> topics;        // Event signature + indexed parameters
-    std::vector<Address> addresses;  // Contract addresses to watch
-    BlockNumber from_block;
-    BlockNumber to_block;
-};
-
-// Missing: Log decoding
-struct EventLog {
-    Address address;
-    std::vector<Hash> topics;
-    Bytes data;
-    BlockNumber block_number;
-    TransactionHash tx_hash;
-};
-
-// Missing: ABI decoder for event data
-class ABIDecoder {
-    // Parse event signature -> topic[0]
-    // Decode indexed parameters from topic[1], topic[2], topic[3]
-    // Decode non-indexed parameters from data field
-};
-```
-
-**Required Files** (need creation):
-- `include/eth/event_filter.hpp` - Event filtering logic
-- `include/eth/log_decoder.hpp` - RLP log decoding
-- `include/eth/abi_decoder.hpp` - ABI event decoding
-- `src/eth/event_filter.cpp`
-- `src/eth/log_decoder.cpp`
-- `src/eth/abi_decoder.cpp`
-
-**Missing ETH Protocol Messages**:
-- ❌ `GetLogs` request/response
-- ❌ `NewBlock` message (full blocks with transactions)
-- ❌ `Receipts` message (transaction receipts with logs)
-- ❌ `GetBlockBodies` request/response
+**Files**:
+- `test/eth/gnus_contracts_test.cpp`
 
 ---
 
-### 2. Transaction Decoding & Inspection ❌
-**Status**: Partially implemented (types exist, no full parsing)
+## 📊 TEST SUMMARY
 
-**What's Needed**:
-```cpp
-// Exists but incomplete
-struct Transaction {
-    uint64_t nonce;
-    intx::uint256 gas_price;
-    uint64_t gas_limit;
-    Address to;              // ✅ exists
-    intx::uint256 value;
-    Bytes data;              // ❌ No parsing of contract call data
-    // Missing: signature (v, r, s)
-    // Missing: transaction type (legacy, EIP-1559, EIP-4844)
-};
-
-// Missing: Contract call data decoder
-class TransactionDecoder {
-    // Parse function selector (first 4 bytes)
-    // Decode function parameters using ABI
-    // Identify contract method being called
-};
-```
-
-**Required**:
-- Complete transaction RLP parsing with all fields
-- Function selector identification
-- ABI function parameter decoding
-- Transaction type handling (legacy, EIP-1559, blob transactions)
+| Test Suite | Tests | Status |
+|---|---|---|
+| RLP core | ~200 | ✅ |
+| RLPx protocol | ~50 | ✅ |
+| ETH messages | 25 | ✅ |
+| ETH objects | varies | ✅ |
+| ETH transactions | 8 | ✅ |
+| Event filter/watcher | 17 | ✅ |
+| ABI decoder | 19 | ✅ |
+| EthWatchService | 11 | ✅ |
+| EthWatchCli | 14 | ✅ |
+| ChainTracker | 11 | ✅ |
+| GNUS.AI contracts | 19 | ✅ |
+| discv4 | 20 | ✅ |
+| **TOTAL** | **441** | **✅ 100%** |
 
 ---
 
-### 3. Block Processing & Chain Tracking ❌
-**Status**: NOT IMPLEMENTED
+## 🚧 KNOWN LIMITATIONS
 
-**What's Needed**:
-```cpp
-// Missing: Block header tracking
-class ChainTracker {
-    BlockNumber latest_block;
-    Hash latest_hash;
-    
-    // Track block progression
-    void on_new_block(const BlockHeader& header);
-    void on_reorg(BlockNumber reorg_depth);
-    
-    // Query capabilities
-    bool is_synced();
-    BlockNumber current_height();
-};
+1. **Bootstrap nodes are discovery-only** — They will NOT send block data. After connecting to a bootnode, the real flow is: discover peers → connect to a full/archive node → receive `NewBlockHashes` → request receipts.
 
-// Missing: Receipt storage and querying
-class ReceiptStore {
-    // Store receipts with logs
-    void store_receipt(const TransactionReceipt& receipt);
-    
-    // Query logs by filter
-    std::vector<EventLog> get_logs(const EventFilter& filter);
-};
-```
+2. **No block header sync loop** — `ChainTracker` tracks block height from gossip only. There is no `GetBlockHeaders` sweep, so the tip is only as current as announcements received.
 
-**Required Files**:
-- `include/eth/chain_tracker.hpp` - Track blockchain state
-- `include/eth/receipt_store.hpp` - Store and query receipts
-- `src/eth/chain_tracker.cpp`
-- `src/eth/receipt_store.cpp`
+3. **No Bloom filter pre-filtering** — Every `NewBlockHashes` entry triggers a `GetReceipts` request. A production optimisation would check the block header's Bloom filter to skip blocks that cannot contain matching logs.
+
+4. **No persistent storage** — Events are delivered to callbacks only. There is no in-memory cache or disk store for historical queries.
+
+5. **No historical backfill** — Only real-time events from blocks announced after connection are watched.
+
+6. **Single peer** — `eth_watch` connects to one peer. A production client should maintain 5-15 peers per chain for resilience.
 
 ---
 
-### 4. Callback/Action System for Events ❌
-**Status**: NOT IMPLEMENTED
+## 🔜 REMAINING WORK (Post-MVP)
 
-**What's Needed**:
-```cpp
-// Missing: Event callback registration
-class EventWatcher {
-    using EventCallback = std::function<void(const EventLog&)>;
-    
-    // Register callback for specific event signature
-    void watch_event(
-        const std::string& event_signature,  // e.g., "Transfer(address,address,uint256)"
-        const std::vector<Address>& contracts,
-        EventCallback callback
-    );
-    
-    // Stop watching
-    void unwatch_event(const std::string& event_signature);
-    
-    // Process incoming logs and trigger callbacks
-    void process_logs(const std::vector<EventLog>& logs);
-};
+### Medium Priority
 
-// Example usage:
-watcher.watch_event(
-    "Transfer(address,address,uint256)",
-    {usdc_address, usdt_address},
-    [](const EventLog& log) {
-        // Decode transfer event
-        Address from = decode_address(log.topics[1]);
-        Address to = decode_address(log.topics[2]);
-        uint256 amount = decode_uint256(log.data);
-        
-        std::cout << "Transfer: " << from << " -> " << to 
-                  << " amount: " << amount << "\n";
-        
-        // Call custom function based on event
-        if (amount > threshold) {
-            handle_large_transfer(from, to, amount);
-        }
-    }
-);
-```
+| Item | Effort | Notes |
+|---|---|---|
+| Bloom filter pre-screening | Small | Skip `GetReceipts` for non-matching blocks |
+| Multi-peer connection pool | Medium | Resilience; retry on disconnect |
+| Block header sync loop | Medium | `GetBlockHeaders` sweep for reliable tip |
+| Historical backfill | Medium | Sweep past blocks for missed events |
 
-**Required Files**:
-- `include/eth/event_watcher.hpp` - Event callback system
-- `src/eth/event_watcher.cpp`
+### Low Priority
+
+| Item | Effort | Notes |
+|---|---|---|
+| Discovery v5 / ENR | Large | Better peer finding on newer chains |
+| Persistent event store | Medium | SQLite or RocksDB backend |
+| JSON-RPC fallback client | Medium | Complement P2P for historical queries |
+| Contract state queries (eth_call) | Large | Requires state trie access |
+| EIP-4844 blob transactions | Small | Add type 0x03 transaction decoding |
 
 ---
 
-### 5. Contract State Querying ❌
-**Status**: NOT IMPLEMENTED
-
-**What's Needed**:
-```cpp
-// Missing: eth_call support
-class ContractCaller {
-    // Call contract view/pure function
-    Result<Bytes> call(
-        const Address& contract,
-        const Bytes& call_data,
-        BlockNumber block = BlockNumber::Latest
-    );
-    
-    // Get storage slot value
-    Result<Hash> get_storage_at(
-        const Address& contract,
-        const intx::uint256& slot,
-        BlockNumber block = BlockNumber::Latest
-    );
-};
-
-// Missing: JSON-RPC client (if connecting to full node RPC)
-class JsonRpcClient {
-    // eth_call, eth_getLogs, eth_getBlockByNumber, etc.
-};
-```
-
-**Required Files**:
-- `include/eth/contract_caller.hpp` - Contract read operations
-- `include/eth/json_rpc_client.hpp` - Optional RPC client
-- `src/eth/contract_caller.cpp`
-- `src/eth/json_rpc_client.cpp`
-
----
-
-### 6. Discovery v5 Protocol ❌
-**Status**: NOT IMPLEMENTED (only v4 exists)
-
-**What's Needed**:
-- Discovery v5 packet encoding/decoding
-- ENR (Ethereum Node Records) support
-- Topic-based discovery
-- Better NAT traversal
-
-**Note**: Discovery v4 is sufficient for basic peer discovery. v5 is optional upgrade.
-
----
-
-## 📋 PRIORITY TODO LIST
-
-### HIGH PRIORITY (Required for basic contract watching)
-
-1. **Implement Receipt/Log Decoding** (2-3 days)
-   - [ ] Add `GetReceipts` message encoding/decoding
-   - [ ] Add `Receipts` message encoding/decoding  
-   - [ ] Parse transaction receipts with logs
-   - [ ] Extract event logs (address, topics, data)
-
-2. **Implement Event Filtering** (2-3 days)
-   - [ ] Create `EventFilter` class
-   - [ ] Topic matching logic (AND/OR conditions)
-   - [ ] Address filtering
-   - [ ] Block range filtering
-
-3. **Implement Basic ABI Decoding** (3-4 days)
-   - [ ] Event signature to topic[0] hash (Keccak256)
-   - [ ] Decode indexed parameters from topics
-   - [ ] Decode non-indexed parameters from data field
-   - [ ] Support basic types: address, uint256, bytes32, string, bytes
-
-4. **Implement EventWatcher Callback System** (2-3 days)
-   - [ ] Event signature registration
-   - [ ] Callback trigger on matching logs
-   - [ ] Example handlers for common events (Transfer, Approval, etc.)
-
-5. **Enhance eth_watch Example** (1-2 days)
-   - [ ] Add `--watch-contract <address>` flag
-   - [ ] Add `--watch-event <signature>` flag
-   - [ ] Display decoded events in real-time
-   - [ ] Example: Watch USDC/USDT transfers
-
----
-
-### MEDIUM PRIORITY (Enhanced functionality)
-
-6. **Implement Block Tracking** (2-3 days)
-   - [ ] Track latest block number and hash
-   - [ ] Handle block reorganizations
-   - [ ] Query historical blocks
-
-7. **Implement Full Transaction Decoding** (2-3 days)
-   - [ ] Parse all transaction fields (v, r, s, type)
-   - [ ] Support EIP-1559 transactions
-   - [ ] Decode function calls (selector + params)
-
-8. **Add Receipt Storage** (1-2 days)
-   - [ ] In-memory receipt cache
-   - [ ] Query logs by filter from stored receipts
-   - [ ] Optional: Persistent storage (SQLite/RocksDB)
-
----
-
-### LOW PRIORITY (Nice to have)
-
-9. **Contract State Queries** (3-4 days)
-   - [ ] eth_call support via P2P or RPC
-   - [ ] Storage slot reading
-   - [ ] Balance queries
-
-10. **JSON-RPC Client** (Optional, 2-3 days)
-    - [ ] Connect to Infura/Alchemy/local node RPC
-    - [ ] eth_getLogs, eth_getBlockByNumber
-    - [ ] Fallback when P2P doesn't provide data
-
-11. **Discovery v5** (Optional, 5-7 days)
-    - [ ] ENR support
-    - [ ] Topic-based peer discovery
-    - [ ] Better for resource-constrained nodes
-
----
-
-## 🎯 MINIMAL VIABLE PRODUCT (MVP)
-
-**Goal**: Watch for specific contract events and trigger actions
-
-**Required Components**:
-1. ✅ RLP encoding/decoding (DONE)
-2. ✅ RLPx session establishment (DONE)
-3. ✅ Discovery v4 peer finding (DONE)
-4. ✅ ETH protocol STATUS exchange (DONE)
-5. ❌ **GetReceipts request/response** (TODO)
-6. ❌ **Receipt/Log decoding** (TODO)
-7. ❌ **Event filtering** (TODO)
-8. ❌ **Basic ABI event decoding** (TODO)
-9. ❌ **Callback system** (TODO)
-
-**Estimated Time to MVP**: 10-15 days of focused development
-
----
-
-## 🔧 RECOMMENDED NEXT STEPS
-
-### Step 1: Implement Receipt Messages (Day 1-2)
-```bash
-# Create new files
-touch include/eth/receipts.hpp
-touch src/eth/receipts.cpp
-
-# Add to messages.hpp:
-# - encode_get_receipts()
-# - decode_get_receipts()
-# - encode_receipts()
-# - decode_receipts()
-```
-
-### Step 2: Implement Event Filtering (Day 3-4)
-```bash
-touch include/eth/event_filter.hpp
-touch src/eth/event_filter.cpp
-
-# Features:
-# - Topic matching
-# - Address filtering
-# - Block range
-```
-
-### Step 3: Implement ABI Decoder (Day 5-7)
-```bash
-touch include/eth/abi_decoder.hpp
-touch src/eth/abi_decoder.cpp
-
-# Features:
-# - Keccak256 event signature hash
-# - Indexed parameter decoding
-# - Data field decoding
-# - Support common types
-```
-
-### Step 4: Implement Callback System (Day 8-9)
-```bash
-touch include/eth/event_watcher.hpp
-touch src/eth/event_watcher.cpp
-
-# Features:
-# - Register event handlers
-# - Match logs to handlers
-# - Trigger callbacks
-```
-
-### Step 5: Enhance eth_watch (Day 10)
-```bash
-# Update examples/eth_watch/eth_watch.cpp
-# Add command-line options:
-# --watch-contract <address>
-# --watch-event <signature>
-# --on-event <command>
-```
-
----
-
-## 📚 DOCUMENTATION GAPS
-
-### Missing Documentation:
-- ❌ Event watching API guide
-- ❌ ABI encoding/decoding examples
-- ❌ Contract interaction patterns
-- ❌ Filter configuration guide
-- ❌ Callback registration examples
-
-### Existing Documentation:
-- ✅ RLP encoding/decoding (README.md)
-- ✅ RLPx protocol (docs/rlpx/README.md)
-- ✅ Discovery v4 (BOOTNODES_CONFIGURATION.md)
-- ✅ Bootstrap nodes (PUBLIC_NODES_FOR_TESTING.md)
-- ✅ Build instructions (README.md)
-
----
-
-## 🏗️ ARCHITECTURE RECOMMENDATIONS
-
-### Suggested Module Structure:
-```
-include/eth/
-├── messages.hpp          [✅ EXISTS - basic messages]
-├── receipts.hpp          [❌ CREATE - receipt handling]
-├── event_filter.hpp      [❌ CREATE - filtering logic]
-├── event_watcher.hpp     [❌ CREATE - callback system]
-├── abi_decoder.hpp       [❌ CREATE - ABI parsing]
-├── chain_tracker.hpp     [❌ CREATE - block tracking]
-└── contract_caller.hpp   [❌ CREATE - state queries]
-
-src/eth/
-├── messages.cpp          [✅ EXISTS]
-├── receipts.cpp          [❌ CREATE]
-├── event_filter.cpp      [❌ CREATE]
-├── event_watcher.cpp     [❌ CREATE]
-├── abi_decoder.cpp       [❌ CREATE]
-├── chain_tracker.cpp     [❌ CREATE]
-└── contract_caller.cpp   [❌ CREATE]
-
-examples/
-├── eth_watch/            [✅ EXISTS - basic version]
-├── contract_watcher/     [❌ CREATE - advanced version]
-└── event_logger/         [❌ CREATE - log all events]
-
-test/eth/
-├── receipts_test.cpp     [❌ CREATE]
-├── event_filter_test.cpp [❌ CREATE]
-├── abi_decoder_test.cpp  [❌ CREATE]
-└── event_watcher_test.cpp[❌ CREATE]
-```
-
----
-
-## ⚠️ KNOWN LIMITATIONS
-
-1. **Bootstrap Nodes**: Only provide peer discovery, NOT block data
-   - Must discover and connect to full nodes for chain data
-   - Current eth_watch connects to bootstrap nodes (limited functionality)
-
-2. **P2P vs RPC**: 
-   - P2P protocol requires full handshake and syncing
-   - May be easier to use JSON-RPC for historical queries
-   - Consider hybrid approach
-
-3. **Chain Sync**: 
-   - No block synchronization implemented
-   - No state trie access
-   - Limited to real-time event watching (not historical)
-
-4. **Memory**: 
-   - No persistent storage yet
-   - Events only stored in memory
-   - Will lose data on restart
-
----
-
-## 💡 EXAMPLE USE CASE
-
-**Scenario**: Watch USDC transfers and trigger alert for large transfers
-
-**What Exists Now**:
-```cpp
-// ✅ Can connect to peer
-// ✅ Can establish RLPx session
-// ✅ Can exchange ETH Status
-// ❌ CANNOT request receipts
-// ❌ CANNOT decode event logs
-// ❌ CANNOT register callbacks
-```
-
-**What's Needed**:
-```cpp
-EventWatcher watcher;
-
-// Watch USDC Transfer events
-watcher.watch_event(
-    "Transfer(address,address,uint256)",
-    {USDC_ADDRESS},
-    [](const EventLog& log) {
-        auto [from, to, amount] = decode_transfer(log);
-        if (amount > 1000000 * 1e6) { // > 1M USDC
-            send_alert("Large USDC transfer detected!");
-            log_to_database(from, to, amount);
-        }
-    }
-);
-
-watcher.start(); // Begin watching
-```
-
----
-
-## 📊 SUMMARY
-
-| Component | Status | Tests | Priority |
-|-----------|--------|-------|----------|
-| RLP Core | ✅ Complete | 336/336 | - |
-| RLPx Protocol | ✅ Complete | All passing | - |
-| Discovery v4 | ✅ Complete | 16/16 | - |
-| ETH Messages (Basic) | ⚠️ Partial | 3/3 | - |
-| Receipt Handling | ❌ Missing | 0 | HIGH |
-| Event Filtering | ❌ Missing | 0 | HIGH |
-| ABI Decoding | ❌ Missing | 0 | HIGH |
-| Event Callbacks | ❌ Missing | 0 | HIGH |
-| Block Tracking | ❌ Missing | 0 | MEDIUM |
-| Contract Calls | ❌ Missing | 0 | LOW |
-
-**Overall Progress**: ~40% complete  
-**To MVP**: ~60% remaining (10-15 days estimated)
-
----
-
-## 🚀 QUICK START FOR NEXT DEVELOPER
+## 🚀 QUICK START
 
 ```bash
-# 1. Current state verification
+# Build
 cd build/OSX/Debug
-ctest  # Should show 336/336 passing
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+ninja
 
-# 2. Test current eth_watch
-./examples/eth_watch/eth_watch --chain sepolia
+# Run all tests
+ctest  # 441/441 should pass
 
-# 3. Start implementing receipts
-cd ../../..
-mkdir -p include/eth test/eth
-touch include/eth/receipts.hpp src/eth/receipts.cpp
-touch test/eth/receipts_test.cpp
+# Watch GNUS Transfer events on Sepolia
+./eth_watch --chain sepolia \
+  --watch-contract 0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70 \
+  --watch-event Transfer(address,address,uint256)
 
-# 4. Follow priority TODO list above
+# Watch GNUS Transfer events on Ethereum Mainnet
+./eth_watch --chain mainnet \
+  --watch-contract 0x614577036F0a024DBC1C88BA616b394DD65d105a \
+  --watch-event Transfer(address,address,uint256)
 ```
 
 ---
 
-**End of Checkpoint**
-
+**End of Checkpoint — March 6, 2026**

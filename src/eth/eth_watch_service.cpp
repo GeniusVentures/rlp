@@ -88,6 +88,12 @@ void EthWatchService::request_receipts(const Hash256& block_hash,
         return;
     }
 
+    // Deduplicate — skip if we have already requested receipts for this block
+    if (!chain_tracker_.mark_seen(block_hash, block_number))
+    {
+        return;
+    }
+
     const uint64_t req_id = next_req_id_++;
 
     GetReceiptsMessage req;
