@@ -4,6 +4,7 @@
 #pragma once
 
 #include <eth/abi_decoder.hpp>
+#include <eth/chain_tracker.hpp>
 #include <eth/event_filter.hpp>
 #include <eth/messages.hpp>
 #include <functional>
@@ -74,6 +75,18 @@ public:
         std::optional<uint64_t>           from_block = std::nullopt,
         std::optional<uint64_t>           to_block   = std::nullopt) noexcept;
 
+    /// @brief Return the highest block number seen so far (0 if none).
+    [[nodiscard]] uint64_t tip() const noexcept
+    {
+        return chain_tracker_.tip();
+    }
+
+    /// @brief Return the hash of the highest block seen, if any.
+    [[nodiscard]] std::optional<Hash256> tip_hash() const noexcept
+    {
+        return chain_tracker_.tip_hash();
+    }
+
     /// @brief Remove a previously registered subscription.
     void unwatch(EventWatchId id) noexcept;
 
@@ -138,6 +151,7 @@ private:
     };
 
     SendCallback              send_cb_;
+    ChainTracker              chain_tracker_;
     EventWatcher              watcher_;
     std::vector<Subscription> subscriptions_;
     EventWatchId              next_id_     = 1;
