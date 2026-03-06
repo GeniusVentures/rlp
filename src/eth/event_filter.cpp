@@ -1,0 +1,134 @@
+// Copyright 2025 GeniusVentures
+// SPDX-License-Identifier: Apache-2.0
+
+#include <eth/event_filter.hpp>
+#include <algorithm>
+
+namespace eth {
+
+// ---------------------------------------------------------------------------
+// EventFilter::matches
+// ---------------------------------------------------------------------------
+
+bool EventFilter::matches(const codec::LogEntry& log, uint64_t block) const noexcept
+{
+    // Block range check
+    if (from_block.has_value() && block < from_block.value())
+    {
+        return false;
+    }
+    if (to_block.has_value() && block > to_block.value())
+    {
+        return false;
+    }
+
+    // Address check: if filter specifies addresses, the log's emitter must be in the list
+    if (!addresses.empty())
+    {
+        const auto it = std::find(addresses.begin(), addresses.end(), log.address);
+        if (it == addresses.end())
+        {
+            return false;
+        }
+    }
+
+    // Topic check: per-position matching
+    for (size_t i = 0; i < topics.size(); ++i)
+    {
+        if (!topics[i].has_value())
+        {
+            // Wildcard – any value (including absent) is fine
+            continue;
+        }
+
+        if (i >= log.topics.size())
+        {
+            // Log doesn't have a topic at this position but filter requires one
+            return false;
+        }
+
+        if (log.topics[i] != topics[i].value())
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// EventWatcher
+// ---------------------------------------------------------------------------
+
+WatchId EventWatcher::watch(EventFilter filter, EventCallback callback) noexcept
+{
+    const WatchId id = next_id_++;
+    subscriptions_.push_back({id, std::move(filter), std::move(callback)});
+    return id;
+}
+
+void EventWatcher::unwatch(WatchId id) noexcept
+{
+    subscriptions_.erase(
+        std::remove_if(
+            subscriptions_.begin(),
+            subscriptions_.end(),
+            [id](const Subscription& s) { return s.id == id; }),
+        subscriptions_.end());
+}
+
+void EventWatcher::process_block_logs(
+    const std::vector<codec::LogEntry>& logs,
+    uint64_t                            block_number,
+    const codec::Hash256&               block_hash) noexcept
+{
+    uint32_t log_index = 0;
+    for (const auto& log : logs)
+    {
+        for (const auto& sub : subscriptions_)
+        {
+            if (sub.filter.matches(log, block_number))
+            {
+                MatchedEvent event{
+                    log,
+                    block_number,
+                    block_hash,
+                    codec::Hash256{},   // tx_hash unknown at block-log level
+                    log_index
+                };
+                sub.callback(event);
+            }
+        }
+        ++log_index;
+    }
+}
+
+void EventWatcher::process_receipt(
+    const codec::Receipt& receipt,
+    const codec::Hash256& tx_hash,
+    uint64_t              block_number,
+    const codec::Hash256& block_hash) noexcept
+{
+    uint32_t log_index = 0;
+    for (const auto& log : receipt.logs)
+    {
+        for (const auto& sub : subscriptions_)
+        {
+            if (sub.filter.matches(log, block_number))
+            {
+                MatchedEvent event{
+                    log,
+                    block_number,
+                    block_hash,
+                    tx_hash,
+                    log_index
+                };
+                sub.callback(event);
+            }
+        }
+        ++log_index;
+    }
+}
+
+} // namespace eth
+

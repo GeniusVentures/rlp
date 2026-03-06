@@ -15,6 +15,8 @@ inline constexpr uint8_t kNewBlockHashesMessageId = 0x01;
 inline constexpr uint8_t kTransactionsMessageId = 0x02;
 inline constexpr uint8_t kGetBlockHeadersMessageId = 0x03;
 inline constexpr uint8_t kBlockHeadersMessageId = 0x04;
+inline constexpr uint8_t kGetBlockBodiesMessageId = 0x05;
+inline constexpr uint8_t kBlockBodiesMessageId = 0x06;
 inline constexpr uint8_t kNewBlockMessageId = 0x07;
 inline constexpr uint8_t kNewPooledTransactionHashesMessageId = 0x08;
 inline constexpr uint8_t kGetPooledTransactionsMessageId = 0x09;
@@ -44,5 +46,36 @@ using DecodeResult = rlp::Result<T>;
 [[nodiscard]] EncodeResult encode_get_block_headers(const GetBlockHeadersMessage& msg) noexcept;
 [[nodiscard]] DecodeResult<GetBlockHeadersMessage> decode_get_block_headers(rlp::ByteView rlp_data) noexcept;
 
-} // namespace eth::protocol
+// BLOCK_HEADERS
+[[nodiscard]] EncodeResult encode_block_headers(const BlockHeadersMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<BlockHeadersMessage> decode_block_headers(rlp::ByteView rlp_data) noexcept;
 
+// GET_BLOCK_BODIES
+[[nodiscard]] EncodeResult encode_get_block_bodies(const GetBlockBodiesMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<GetBlockBodiesMessage> decode_get_block_bodies(rlp::ByteView rlp_data) noexcept;
+
+// BLOCK_BODIES
+[[nodiscard]] EncodeResult encode_block_bodies(const BlockBodiesMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<BlockBodiesMessage> decode_block_bodies(rlp::ByteView rlp_data) noexcept;
+
+// NEW_BLOCK
+[[nodiscard]] EncodeResult encode_new_block(const NewBlockMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<NewBlockMessage> decode_new_block(rlp::ByteView rlp_data) noexcept;
+
+// GET_RECEIPTS
+[[nodiscard]] EncodeResult encode_get_receipts(const GetReceiptsMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<GetReceiptsMessage> decode_get_receipts(rlp::ByteView rlp_data) noexcept;
+
+// RECEIPTS
+[[nodiscard]] EncodeResult encode_receipts(const ReceiptsMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<ReceiptsMessage> decode_receipts(rlp::ByteView rlp_data) noexcept;
+
+// GET_POOLED_TRANSACTIONS
+[[nodiscard]] EncodeResult encode_get_pooled_transactions(const GetPooledTransactionsMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<GetPooledTransactionsMessage> decode_get_pooled_transactions(rlp::ByteView rlp_data) noexcept;
+
+// POOLED_TRANSACTIONS
+[[nodiscard]] EncodeResult encode_pooled_transactions(const PooledTransactionsMessage& msg) noexcept;
+[[nodiscard]] DecodeResult<PooledTransactionsMessage> decode_pooled_transactions(rlp::ByteView rlp_data) noexcept;
+
+} // namespace eth::protocol

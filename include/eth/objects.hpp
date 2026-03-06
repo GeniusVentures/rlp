@@ -19,10 +19,58 @@ using Address = rlp::Address;
 using Bloom = rlp::Bloom;
 using ByteBuffer = std::vector<uint8_t>;
 
-struct LogEntry {
+/// @brief EVM log entry emitted by a CALL or CREATE instruction.
+struct LogEntry
+{
     Address address{};
     std::vector<Hash256> topics;
     ByteBuffer data;
+};
+
+/// @brief Ethereum transaction types per EIP-2718.
+enum class TransactionType : uint8_t
+{
+    kLegacy   = 0x00, ///< Pre-EIP-2718 (no type prefix)
+    kAccessList = 0x01, ///< EIP-2930
+    kDynamicFee = 0x02  ///< EIP-1559
+};
+
+/// @brief An EIP-2930 access list entry: contract address + storage slots.
+struct AccessListEntry
+{
+    Address address{};
+    std::vector<Hash256> storage_keys;
+};
+
+/// @brief Full Ethereum transaction covering legacy, EIP-2930 and EIP-1559 formats.
+struct Transaction
+{
+    TransactionType type = TransactionType::kLegacy;
+
+    // Common fields (all types)
+    uint64_t nonce = 0;
+    uint64_t gas_limit = 0;
+    std::optional<Address> to;   ///< Empty for contract creation
+    intx::uint256 value{};
+    ByteBuffer data;
+
+    // Legacy / EIP-2930 gas price
+    std::optional<intx::uint256> gas_price;
+
+    // EIP-1559 fee fields
+    std::optional<intx::uint256> max_priority_fee_per_gas;
+    std::optional<intx::uint256> max_fee_per_gas;
+
+    // EIP-2930 / EIP-1559 access list
+    std::vector<AccessListEntry> access_list;
+
+    // Chain-id (present in EIP-2930 and EIP-1559; replicated by v in legacy)
+    std::optional<uint64_t> chain_id;
+
+    // ECDSA signature
+    intx::uint256 v{};
+    intx::uint256 r{};
+    intx::uint256 s{};
 };
 
 struct Receipt {
@@ -59,6 +107,14 @@ using DecodeResult = rlp::Result<T>;
 
 [[nodiscard]] EncodeResult encode_log_entry(const LogEntry& entry) noexcept;
 [[nodiscard]] DecodeResult<LogEntry> decode_log_entry(rlp::ByteView rlp_data) noexcept;
+
+[[nodiscard]] EncodeResult encode_access_list_entry(const AccessListEntry& entry) noexcept;
+[[nodiscard]] DecodeResult<AccessListEntry> decode_access_list_entry(rlp::ByteView rlp_data) noexcept;
+
+/// @brief Encode a transaction.  Typed transactions (EIP-2930, EIP-1559)
+///        are prefixed with their type byte before the RLP payload, per EIP-2718.
+[[nodiscard]] EncodeResult encode_transaction(const Transaction& tx) noexcept;
+[[nodiscard]] DecodeResult<Transaction> decode_transaction(rlp::ByteView raw_data) noexcept;
 
 [[nodiscard]] EncodeResult encode_receipt(const Receipt& receipt) noexcept;
 [[nodiscard]] DecodeResult<Receipt> decode_receipt(rlp::ByteView rlp_data) noexcept;

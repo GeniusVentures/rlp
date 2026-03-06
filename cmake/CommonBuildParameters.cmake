@@ -75,7 +75,9 @@ set(Boost_USE_STATIC_LIBS ON)
 set(Boost_NO_SYSTEM_PATHS ON)
 option(Boost_USE_STATIC_RUNTIME "Use static runtimes" ON)
 
-cmake_policy(SET CMP0167 OLD)
+if(POLICY CMP0167)
+        cmake_policy(SET CMP0167 OLD)
+endif()
 
 # header only libraries must not be added here
 find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options json)

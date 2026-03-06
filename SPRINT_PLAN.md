@@ -41,19 +41,27 @@
 - ✅ Sprint planning
 - **Status**: Foundation solid, ready to implement event watching
 
-#### **DAY 2 (March 6 - Thu)** - Receipt Types & Messages
-**Morning Session (10am-1pm)**
-- [ ] Review existing eth/messages.hpp structure
-- [ ] Create `include/eth/receipts.hpp` with types
-- [ ] Design TransactionReceipt and EventLog structures
-- [ ] Implement GetReceipts message encoding
-- **Break for lunch**
+#### **DAY 2 (March 6 - Thu)** ✅ COMPLETED - ETH P2P (eth/66+) Full Packet Semantics
+- ✅ **Transaction types** (legacy, EIP-2930, EIP-1559) — `codec::Transaction`, `encode_transaction`, `decode_transaction`
+- ✅ **Access list** encode/decode — `codec::AccessListEntry`
+- ✅ **GetBlockBodies / BlockBodies** messages (0x05/0x06) with eth/66 request_id envelope
+- ✅ **NewBlock** message (0x07) — full block gossip: header + typed txs + ommers + totalDifficulty
+- ✅ **EIP-2718 wire encoding** — typed txs wrapped as RLP byte-strings inside block/body tx lists
+- ✅ **EventFilter** — address + per-position topic matching + block range filtering
+- ✅ **EventWatcher** — callback registration (watch/unwatch), process_block_logs, process_receipt
+- ✅ 25 new tests (8 transaction + 17 event filter/watcher) — all passing
+- ✅ **367/367 total tests passing**, zero regressions
 
-**Afternoon Session (2pm-6:30pm)**
-- [ ] Implement Receipts message decoding
-- [ ] Add receipt message IDs to eth/messages.hpp
-- [ ] Test encoding/decoding with sample data
-- [ ] **End of day**: Can encode/decode receipt messages
+**New files**:
+- `include/eth/objects.hpp` — `TransactionType`, `AccessListEntry`, `Transaction`
+- `include/eth/eth_types.hpp` — `GetBlockBodiesMessage`, `BlockBody`, `BlockBodiesMessage`, `NewBlockMessage`
+- `include/eth/messages.hpp` — `kGetBlockBodiesMessageId`, `kBlockBodiesMessageId` + encode/decode declarations
+- `include/eth/event_filter.hpp` — `EventFilter`, `MatchedEvent`, `EventWatcher`
+- `src/eth/objects.cpp` — access list + transaction encode/decode
+- `src/eth/messages.cpp` — GetBlockBodies, BlockBodies, NewBlock encode/decode; EIP-2718 tx list helpers
+- `src/eth/event_filter.cpp` — EventFilter::matches, EventWatcher::watch/unwatch/process_*
+- `test/eth/eth_transactions_test.cpp` — 8 tests
+- `test/eth/event_filter_test.cpp` — 17 tests
 
 #### **DAY 3 (March 7 - Fri)** - Receipt Tests & Event Filter Foundation
 **Morning Session (10am-1pm)**
@@ -255,7 +263,9 @@ TEST(ReceiptsTest, ParseEventLogs) { ... }
 
 ### Sprint Progress:
 - ✅ **Day 1 (March 5)**: Foundation complete, all tests passing
-- ⏳ **Day 2 (March 6)**: Receipt types & messages - STARTS 10am tomorrow
+- ✅ **Day 2 (March 6)**: ETH P2P packet semantics complete — Transaction types (legacy/EIP-2930/EIP-1559), GetBlockBodies, BlockBodies, NewBlock, EventFilter, EventWatcher — 367/367 tests passing
+- ✅ **Day 3 (March 6)**: ABI decoder complete — Keccak256, event signature hashing, indexed/non-indexed param decoding, dynamic types (bytes/string), full ERC-20 Transfer/Approval decode — 386/386 tests passing
+- ⏳ **Day 4**: Next sprint item
 - ⏳ **Day 3 (March 7)**: Receipt tests & event filter
 - ⏳ **Day 4 (March 10)**: Event filter implementation
 - ⏳ **Day 5 (March 11)**: ABI decoder foundation

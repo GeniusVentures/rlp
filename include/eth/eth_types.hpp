@@ -9,6 +9,7 @@
 #include <vector>
 #include <rlp/intx.hpp>
 #include <rlp/rlp_ethereum.hpp>
+#include "objects.hpp"
 
 namespace eth {
 
@@ -44,11 +45,63 @@ struct NewPooledTransactionHashesMessage {
 };
 
 struct GetBlockHeadersMessage {
+    std::optional<uint64_t> request_id;
     std::optional<Hash256> start_hash;
     std::optional<uint64_t> start_number;
     uint64_t max_headers = 0;
     uint64_t skip = 0;
     bool reverse = false;
+};
+
+struct BlockHeadersMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<codec::BlockHeader> headers;
+};
+
+struct GetReceiptsMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<Hash256> block_hashes;
+};
+
+struct ReceiptsMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<std::vector<codec::Receipt>> receipts;
+};
+
+struct GetPooledTransactionsMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<Hash256> transaction_hashes;
+};
+
+struct PooledTransactionsMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<std::vector<uint8_t>> encoded_transactions;
+};
+
+/// @brief Request for block bodies by hash (message id 0x05).
+struct GetBlockBodiesMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<Hash256> block_hashes;
+};
+
+/// @brief A single block body: transactions + ommers (uncle headers).
+struct BlockBody {
+    std::vector<codec::Transaction> transactions;
+    std::vector<codec::BlockHeader> ommers;
+};
+
+/// @brief Response to GetBlockBodies (message id 0x06).
+struct BlockBodiesMessage {
+    std::optional<uint64_t> request_id;
+    std::vector<BlockBody> bodies;
+};
+
+/// @brief Full new block announcement (message id 0x07).
+struct NewBlockMessage {
+    codec::BlockHeader header;
+    std::vector<codec::Transaction> transactions;
+    std::vector<codec::BlockHeader> ommers;
+    intx::uint256 total_difficulty{};
 };
 
 } // namespace eth

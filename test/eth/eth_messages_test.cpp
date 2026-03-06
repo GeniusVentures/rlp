@@ -124,3 +124,166 @@ TEST(EthMessagesTest, GetBlockHeadersRoundtripByNumber) {
     EXPECT_EQ(result.reverse, original.reverse);
 }
 
+TEST(EthMessagesTest, GetBlockHeadersRoundtripEth66Envelope) {
+    eth::GetBlockHeadersMessage original;
+    original.request_id = 42;
+    original.start_hash = make_filled<eth::Hash256>(0x55);
+    original.max_headers = 16;
+    original.skip = 1;
+    original.reverse = false;
+
+    auto encoded = eth::protocol::encode_get_block_headers(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_get_block_headers(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    ASSERT_TRUE(result.start_hash.has_value());
+    EXPECT_EQ(result.start_hash.value(), original.start_hash.value());
+    EXPECT_EQ(result.max_headers, original.max_headers);
+    EXPECT_EQ(result.skip, original.skip);
+    EXPECT_EQ(result.reverse, original.reverse);
+}
+
+TEST(EthMessagesTest, BlockHeadersRoundtripEth66Envelope) {
+    eth::BlockHeadersMessage original;
+    original.request_id = 88;
+
+    eth::codec::BlockHeader header;
+    header.parent_hash = make_filled<eth::Hash256>(0x01);
+    header.ommers_hash = make_filled<eth::Hash256>(0x02);
+    header.beneficiary = make_filled<eth::Address>(0x03);
+    header.state_root = make_filled<eth::Hash256>(0x04);
+    header.transactions_root = make_filled<eth::Hash256>(0x05);
+    header.receipts_root = make_filled<eth::Hash256>(0x06);
+    header.logs_bloom = make_filled<eth::Bloom>(0x07);
+    header.difficulty = intx::uint256(123);
+    header.number = 900;
+    header.gas_limit = 30000000;
+    header.gas_used = 21000;
+    header.timestamp = 1700000000;
+    header.extra_data = {0xab, 0xcd};
+    header.mix_hash = make_filled<eth::Hash256>(0x08);
+    header.nonce = make_filled<std::array<uint8_t, 8>>(0x09);
+    header.base_fee_per_gas = intx::uint256(100);
+    original.headers.push_back(header);
+
+    auto encoded = eth::protocol::encode_block_headers(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_block_headers(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    ASSERT_EQ(result.headers.size(), 1u);
+    EXPECT_EQ(result.headers[0].parent_hash, header.parent_hash);
+    EXPECT_EQ(result.headers[0].number, header.number);
+}
+
+TEST(EthMessagesTest, GetReceiptsRoundtripEth66Envelope) {
+    eth::GetReceiptsMessage original;
+    original.request_id = 1001;
+    original.block_hashes.push_back(make_filled<eth::Hash256>(0x21));
+    original.block_hashes.push_back(make_filled<eth::Hash256>(0x31));
+
+    auto encoded = eth::protocol::encode_get_receipts(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_get_receipts(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    EXPECT_EQ(result.block_hashes, original.block_hashes);
+}
+
+TEST(EthMessagesTest, ReceiptsRoundtripEth66Envelope) {
+    eth::ReceiptsMessage original;
+    original.request_id = 1002;
+
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.cumulative_gas_used = intx::uint256(21000);
+    receipt.bloom = make_filled<eth::Bloom>(0x40);
+
+    eth::codec::LogEntry log;
+    log.address = make_filled<eth::Address>(0x50);
+    log.topics.push_back(make_filled<eth::Hash256>(0x60));
+    log.data = {0xaa, 0xbb};
+    receipt.logs.push_back(log);
+
+    original.receipts.push_back({receipt});
+
+    auto encoded = eth::protocol::encode_receipts(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_receipts(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    ASSERT_EQ(result.receipts.size(), 1u);
+    ASSERT_EQ(result.receipts[0].size(), 1u);
+    ASSERT_TRUE(result.receipts[0][0].status.has_value());
+    EXPECT_TRUE(result.receipts[0][0].status.value());
+    EXPECT_EQ(result.receipts[0][0].logs.size(), 1u);
+    EXPECT_EQ(result.receipts[0][0].logs[0].address, log.address);
+}
+
+TEST(EthMessagesTest, GetPooledTransactionsRoundtripEth66Envelope) {
+    eth::GetPooledTransactionsMessage original;
+    original.request_id = 2001;
+    original.transaction_hashes.push_back(make_filled<eth::Hash256>(0x71));
+    original.transaction_hashes.push_back(make_filled<eth::Hash256>(0x81));
+
+    auto encoded = eth::protocol::encode_get_pooled_transactions(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_get_pooled_transactions(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    EXPECT_EQ(result.transaction_hashes, original.transaction_hashes);
+}
+
+TEST(EthMessagesTest, PooledTransactionsRoundtripEth66Envelope) {
+    rlp::RlpEncoder tx1_encoder;
+    ASSERT_TRUE(tx1_encoder.BeginList().has_value());
+    ASSERT_TRUE(tx1_encoder.add(static_cast<uint8_t>(0x01)).has_value());
+    ASSERT_TRUE(tx1_encoder.add(static_cast<uint8_t>(0x02)).has_value());
+    ASSERT_TRUE(tx1_encoder.EndList().has_value());
+    auto tx1_bytes = tx1_encoder.GetBytes();
+    ASSERT_TRUE(tx1_bytes.has_value());
+
+    rlp::RlpEncoder tx2_encoder;
+    ASSERT_TRUE(tx2_encoder.BeginList().has_value());
+    ASSERT_TRUE(tx2_encoder.add(static_cast<uint8_t>(0x03)).has_value());
+    ASSERT_TRUE(tx2_encoder.EndList().has_value());
+    auto tx2_bytes = tx2_encoder.GetBytes();
+    ASSERT_TRUE(tx2_bytes.has_value());
+
+    eth::PooledTransactionsMessage original;
+    original.request_id = 2002;
+    original.encoded_transactions.emplace_back(tx1_bytes.value()->begin(), tx1_bytes.value()->end());
+    original.encoded_transactions.emplace_back(tx2_bytes.value()->begin(), tx2_bytes.value()->end());
+
+    auto encoded = eth::protocol::encode_pooled_transactions(original);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_pooled_transactions(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto& result = decoded.value();
+    ASSERT_TRUE(result.request_id.has_value());
+    EXPECT_EQ(result.request_id.value(), original.request_id.value());
+    EXPECT_EQ(result.encoded_transactions, original.encoded_transactions);
+}
