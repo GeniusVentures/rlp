@@ -263,9 +263,12 @@ TEST(ReceiptsTest, ParseEventLogs) { ... }
 
 ### Sprint Progress:
 - ✅ **Day 1 (March 5)**: Foundation complete, all tests passing
-- ✅ **Day 2 (March 6)**: ETH P2P packet semantics complete — Transaction types (legacy/EIP-2930/EIP-1559), GetBlockBodies, BlockBodies, NewBlock, EventFilter, EventWatcher — 367/367 tests passing
-- ✅ **Day 3 (March 6)**: ABI decoder complete — Keccak256, event signature hashing, indexed/non-indexed param decoding, dynamic types (bytes/string), full ERC-20 Transfer/Approval decode — 386/386 tests passing
-- ⏳ **Day 4**: Next sprint item
+- ✅ **Day 2 (March 6)**: ETH P2P packet semantics — Transactions (legacy/EIP-2930/EIP-1559), GetBlockBodies, BlockBodies, NewBlock, EventFilter, EventWatcher — 367/367
+- ✅ **Day 3 (March 6)**: ABI decoder — Keccak256, event signature hashing, indexed/non-indexed decoding, dynamic types — 386/386
+- ✅ **Day 4 (March 6)**: EthWatchService integration — EventWatcher + ABI decoder wired into eth wire dispatch, eth_watch example updated — 394/394
+- ✅ **Day 5 (March 6)**: CLI flags + tests — `--watch-contract`/`--watch-event`, `eth_watch_cli.hpp`, `infer_params`, `parse_address` — 408/408
+- ✅ **Day 6 (March 6)**: Request flow — `SendCallback`, `request_receipts`, `GetReceipts` auto-emission on NewBlockHashes/NewBlock, request_id correlation for Receipts response, `set_send_callback` wired into eth_watch — 411/411
+- ⏳ **Day 7**: Real-world testing against Sepolia
 - ⏳ **Day 3 (March 7)**: Receipt tests & event filter
 - ⏳ **Day 4 (March 10)**: Event filter implementation
 - ⏳ **Day 5 (March 11)**: ABI decoder foundation

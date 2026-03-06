@@ -19,6 +19,8 @@
 #include <string_view>
 
 #include <eth/messages.hpp>
+#include <eth/eth_watch_service.hpp>
+#include <eth/eth_watch_cli.hpp>
 #include <discv4/bootnodes.hpp>
 #include <discv4/bootnodes_test.hpp>
 #include <rlpx/crypto/ecdh.hpp>
@@ -32,6 +34,7 @@ struct Config {
     uint16_t port = 0;
     std::string peer_pubkey_hex;
     uint8_t eth_offset = 0x10;
+    std::vector<eth::cli::WatchSpec> watch_specs;
 };
 
 std::optional<uint8_t> hex_to_nibble(char c) {
@@ -81,6 +84,7 @@ std::optional<uint8_t> parse_uint8(std::string_view value) {
     }
     return static_cast<uint8_t>(out);
 }
+
 
 std::optional<Config> parse_enode(std::string_view enode) {
     constexpr std::string_view kPrefix = "enode://";
@@ -205,6 +209,13 @@ void print_usage(const char* exe) {
     std::cout << "Usage:\n"
               << "  " << exe << " <host> <port> <peer_pubkey_hex> [eth_offset]\n"
               << "  " << exe << " --chain <chain_name>\n"
+              << "\nOptional watch flags (repeatable, must follow connection args):\n"
+              << "  --watch-contract <0x20byteHex>   Contract address to filter (omit for any)\n"
+              << "  --watch-event    <signature>      Event signature, e.g. Transfer(address,address,uint256)\n"
+              << "  Each --watch-event pairs with the preceding --watch-contract (or any contract if none).\n"
+              << "\nExamples:\n"
+              << "  " << exe << " --chain sepolia --watch-event Transfer(address,address,uint256)\n"
+              << "  " << exe << " --chain mainnet --watch-contract 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 --watch-event Transfer(address,address,uint256)\n"
               << "\nAvailable chains:\n"
               << "  Ethereum: mainnet, sepolia, holesky\n"
               << "  Polygon:  polygon, polygon-amoy\n"
@@ -215,7 +226,9 @@ void print_usage(const char* exe) {
 boost::asio::awaitable<void> run_watch(std::string host,
                                        uint16_t port,
                                        rlpx::PublicKey peer_pubkey,
-                                       uint8_t eth_offset) {
+                                       uint8_t eth_offset,
+                                       std::vector<eth::cli::WatchSpec> watch_specs)
+{
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if (!keypair_result) {
         std::cout << "Failed to generate local keypair.\n";
@@ -250,24 +263,105 @@ boost::asio::awaitable<void> run_watch(std::string host,
     auto session_unique = std::move(session_result.value());
     auto session = std::shared_ptr<rlpx::RlpxSession>(std::move(session_unique));
 
+    // -------------------------------------------------------------------------
+    // EthWatchService — register watches from CLI args (or default to Transfer)
+    // -------------------------------------------------------------------------
+    auto watch_svc = std::make_shared<eth::EthWatchService>();
+
+    if (watch_specs.empty())
+    {
+        // Default: watch all Transfer events on any contract
+        watch_specs.push_back(eth::cli::WatchSpec{"", "Transfer(address,address,uint256)"});
+    }
+
+    for (const auto& spec : watch_specs)
+    {
+        eth::codec::Address contract{};
+        if (!spec.contract_hex.empty())
+        {
+            auto addr = eth::cli::parse_address(spec.contract_hex);
+            if (!addr)
+            {
+                std::cout << "Invalid contract address: " << spec.contract_hex << "\n";
+                co_return;
+            }
+            contract = *addr;
+        }
+
+        const auto params = eth::cli::infer_params(spec.event_signature);
+        const std::string sig_copy = spec.event_signature;
+
+        watch_svc->watch_event(
+            contract,
+            spec.event_signature,
+            params,
+            [sig_copy](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
+            {
+                std::cout << sig_copy << " at block " << ev.block_number << "\n";
+                for (size_t i = 0; i < vals.size(); ++i)
+                {
+                    std::cout << "  [" << i << "] ";
+                    if (const auto* addr = std::get_if<eth::codec::Address>(&vals[i]))
+                    {
+                        std::cout << "address: 0x";
+                        for (const auto b : *addr) { std::cout << std::hex << static_cast<int>(b); }
+                        std::cout << std::dec;
+                    }
+                    else if (const auto* u256 = std::get_if<intx::uint256>(&vals[i]))
+                    {
+                        std::cout << "uint256: " << intx::to_string(*u256);
+                    }
+                    else if (const auto* b32 = std::get_if<eth::codec::Hash256>(&vals[i]))
+                    {
+                        std::cout << "bytes32: 0x";
+                        for (const auto b : *b32) { std::cout << std::hex << static_cast<int>(b); }
+                        std::cout << std::dec;
+                    }
+                    else if (const auto* bval = std::get_if<bool>(&vals[i]))
+                    {
+                        std::cout << "bool: " << (*bval ? "true" : "false");
+                    }
+                    std::cout << "\n";
+                }
+            });
+
+        std::cout << "Watching: " << spec.event_signature;
+        if (!spec.contract_hex.empty())
+        {
+            std::cout << " on contract " << spec.contract_hex;
+        }
+        std::cout << "\n";
+    }
+
+    watch_svc->set_send_callback([session, eth_offset](uint8_t eth_msg_id,
+                                                        std::vector<uint8_t> payload)
+    {
+        const auto post_result = session->post_message(rlpx::framing::Message{
+            .id      = static_cast<uint8_t>(eth_offset + eth_msg_id),
+            .payload = std::move(payload)
+        });
+        if (!post_result)
+        {
+            std::cout << "Failed to send eth message id=" << static_cast<int>(eth_msg_id) << "\n";
+        }
+    });
+
     session->set_hello_handler([session](const rlpx::protocol::HelloMessage& msg) {
         std::cout << "HELLO from peer: " << msg.client_id << "\n";
 
-        // Send ETH Status message after HELLO handshake completes
         eth::StatusMessage status{
-            .protocol_version = 68,  // Ethereum protocol version 68
-            .network_id = 1,         // Ethereum mainnet
+            .protocol_version = 68,
+            .network_id = 1,
             .total_difficulty = intx::uint256(0),
-            .best_hash = {},         // Empty block hash
-            .genesis_hash = {},      // Empty genesis hash
-            .fork_id = {}            // Default fork ID
+            .best_hash = {},
+            .genesis_hash = {},
+            .fork_id = {}
         };
 
         auto encoded = eth::protocol::encode_status(status);
         if (encoded) {
-            // ETH Status message ID is 0, so we send with message ID 0
             const auto post_result = session->post_message(rlpx::framing::Message{
-                .id = 0x00,  // ETH Status is always message 0
+                .id = 0x00,
                 .payload = std::move(encoded.value())
             });
             if (!post_result) {
@@ -288,19 +382,15 @@ boost::asio::awaitable<void> run_watch(std::string host,
     session->set_ping_handler([session](const rlpx::protocol::PingMessage&) {
         const rlpx::protocol::PongMessage pong;
         auto encoded = pong.encode();
-        if (!encoded) {
-            return;
-        }
+        if (!encoded) { return; }
         const auto post_result = session->post_message(rlpx::framing::Message{
             .id = rlpx::kPongMessageId,
             .payload = std::move(encoded.value())
         });
-        if (!post_result) {
-            return;
-        }
+        if (!post_result) { return; }
     });
 
-    session->set_generic_handler([session, eth_offset](const rlpx::protocol::Message& msg) {
+    session->set_generic_handler([session, eth_offset, watch_svc](const rlpx::protocol::Message& msg) {
         (void)session;
         if (msg.id < eth_offset) {
             std::cout << "Unknown message id=" << static_cast<int>(msg.id) << "\n";
@@ -308,8 +398,10 @@ boost::asio::awaitable<void> run_watch(std::string host,
         }
 
         const auto eth_id = static_cast<uint8_t>(msg.id - eth_offset);
+        const rlp::ByteView payload(msg.payload.data(), msg.payload.size());
+
         if (eth_id == eth::protocol::kStatusMessageId) {
-            auto decoded = eth::protocol::decode_status(rlp::ByteView(msg.payload.data(), msg.payload.size()));
+            auto decoded = eth::protocol::decode_status(payload);
             if (decoded) {
                 std::cout << "ETH STATUS: network_id=" << decoded.value().network_id
                           << " protocol=" << static_cast<int>(decoded.value().protocol_version)
@@ -321,25 +413,24 @@ boost::asio::awaitable<void> run_watch(std::string host,
         }
 
         if (eth_id == eth::protocol::kNewBlockHashesMessageId) {
-            auto decoded = eth::protocol::decode_new_block_hashes(rlp::ByteView(msg.payload.data(), msg.payload.size()));
+            auto decoded = eth::protocol::decode_new_block_hashes(payload);
             if (decoded) {
                 std::cout << "NewBlockHashes: " << decoded.value().entries.size() << " hashes\n";
             } else {
                 std::cout << "Failed to decode NewBlockHashes\n";
             }
-            return;
+            // Fall through to process_message so the service requests receipts
         }
+
+        // Dispatch to EthWatchService for NewBlockHashes, NewBlock, and Receipts
+        watch_svc->process_message(eth_id, payload);
 
         std::cout << "ETH message id=" << static_cast<int>(eth_id)
                   << " payload=" << msg.payload.size() << " bytes\n";
     });
 
-    std::cout << "Connected. Waiting for messages...\n"
-              << "\n⚠️  Note: Bootstrap nodes are for DISCOVERY ONLY (discv4 protocol)\n"
-              << "    They will NOT send block data. To receive blocks:\n"
-              << "    1. Use discv4 to discover real peer nodes, OR\n"
-              << "    2. Connect directly to a full node (not a bootstrap node)\n"
-              << "\n    See BOOTNODES_CONFIGURATION.md for more info.\n\n";
+    std::cout << "Connected. Watching for events...\n"
+              << "\n⚠️  Bootstrap nodes are for DISCOVERY ONLY — they will not send block data.\n\n";
 
     auto executor = co_await boost::asio::this_coro::executor;
     boost::asio::steady_timer timer(executor);
@@ -360,41 +451,76 @@ int main(int argc, char** argv) {
         }
 
         std::optional<Config> config;
-        if (std::string_view(argv[1]) == "--chain") {
+        int next_arg = 1;
+
+        if (std::string_view(argv[next_arg]) == "--chain") {
             if (argc < 3) {
                 print_usage(argv[0]);
                 return 1;
             }
-            const std::string chain_name = argv[2];
+            const std::string chain_name = argv[next_arg + 1];
             config = load_bootnode_for_chain(chain_name);
             if (!config) {
                 std::cout << "Failed to load bootnode for chain: " << chain_name << "\n";
                 return 1;
             }
+            next_arg += 2;
         } else if (argc >= 4) {
-            const auto port_value = parse_uint16(argv[2]);
+            const auto port_value = parse_uint16(argv[next_arg + 1]);
             if (!port_value) {
                 std::cout << "Invalid port value.\n";
                 return 1;
             }
 
             Config cfg;
-            cfg.host = argv[1];
+            cfg.host = argv[next_arg];
             cfg.port = *port_value;
-            cfg.peer_pubkey_hex = argv[3];
+            cfg.peer_pubkey_hex = argv[next_arg + 2];
+            next_arg += 3;
 
-            if (argc >= 5) {
-                auto offset_value = parse_uint8(argv[4]);
+            if (next_arg < argc && std::string_view(argv[next_arg]).find("--") == std::string_view::npos) {
+                auto offset_value = parse_uint8(argv[next_arg]);
                 if (!offset_value) {
                     std::cout << "Invalid eth_offset value.\n";
                     return 1;
                 }
                 cfg.eth_offset = *offset_value;
+                ++next_arg;
             }
             config = cfg;
         } else {
             print_usage(argv[0]);
             return 1;
+        }
+
+        // Parse optional --watch-contract / --watch-event flags
+        std::string pending_contract;
+        while (next_arg < argc) {
+            const std::string_view arg(argv[next_arg]);
+
+            if (arg == "--watch-contract") {
+                if (next_arg + 1 >= argc) {
+                    std::cout << "--watch-contract requires an address argument.\n";
+                    return 1;
+                }
+                pending_contract = argv[next_arg + 1];
+                next_arg += 2;
+            } else if (arg == "--watch-event") {
+                if (next_arg + 1 >= argc) {
+                    std::cout << "--watch-event requires a signature argument.\n";
+                    return 1;
+                }
+                eth::cli::WatchSpec spec;
+                spec.contract_hex    = pending_contract;
+                spec.event_signature = argv[next_arg + 1];
+                config->watch_specs.push_back(std::move(spec));
+                pending_contract.clear();
+                next_arg += 2;
+            } else {
+                std::cout << "Unknown argument: " << arg << "\n";
+                print_usage(argv[0]);
+                return 1;
+            }
         }
 
         rlpx::PublicKey peer_pubkey{};
@@ -410,7 +536,8 @@ int main(int argc, char** argv) {
         });
 
         boost::asio::co_spawn(io,
-                              run_watch(config->host, config->port, peer_pubkey, config->eth_offset),
+                              run_watch(config->host, config->port, peer_pubkey,
+                                        config->eth_offset, std::move(config->watch_specs)),
                               boost::asio::detached);
 
         io.run();
