@@ -37,6 +37,18 @@ add_executable(abi_decoder_test
 )
 target_link_libraries(abi_decoder_test PRIVATE rlp GTest::gtest_main)
 
+# EthWatchService tests
+add_executable(eth_watch_service_test
+    eth_watch_service_test.cpp
+)
+target_link_libraries(eth_watch_service_test PRIVATE rlp GTest::gtest_main)
+
+# EthWatchCli tests
+add_executable(eth_watch_cli_test
+    eth_watch_cli_test.cpp
+)
+target_link_libraries(eth_watch_cli_test PRIVATE rlp GTest::gtest_main)
+
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(eth_messages_test)
@@ -45,4 +57,6 @@ gtest_discover_tests(eth_watch_integration_test)
 gtest_discover_tests(eth_transactions_test)
 gtest_discover_tests(event_filter_test)
 gtest_discover_tests(abi_decoder_test)
+gtest_discover_tests(eth_watch_service_test)
+gtest_discover_tests(eth_watch_cli_test)
 

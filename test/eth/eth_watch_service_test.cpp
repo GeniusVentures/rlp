@@ -1,0 +1,446 @@
+// Copyright 2025 GeniusVentures
+// SPDX-License-Identifier: Apache-2.0
+
+#include <gtest/gtest.h>
+#include <eth/eth_watch_service.hpp>
+#include <eth/messages.hpp>
+
+namespace {
+
+template <typename Array>
+Array make_filled(uint8_t seed)
+{
+    Array value{};
+    for (size_t i = 0; i < value.size(); ++i)
+    {
+        value[i] = static_cast<uint8_t>(seed + i);
+    }
+    return value;
+}
+
+// Build a 32-byte ABI word with an address in the rightmost 20 bytes
+eth::codec::Hash256 make_address_word(const eth::codec::Address& addr)
+{
+    eth::codec::Hash256 word{};
+    std::copy(addr.begin(), addr.end(), word.begin() + 12);
+    return word;
+}
+
+// Append a uint64 as a big-endian uint256 (32 bytes) to a buffer
+void append_uint256(eth::codec::ByteBuffer& buf, uint64_t value)
+{
+    for (int i = 0; i < 24; ++i) { buf.push_back(0); }
+    for (int i = 7; i >= 0; --i)
+    {
+        buf.push_back(static_cast<uint8_t>((value >> (i * 8)) & 0xFF));
+    }
+}
+
+/// Build a minimal Transfer log entry with ABI-encoded fields.
+eth::codec::LogEntry make_transfer_log(
+    const eth::codec::Address& token,
+    const eth::codec::Address& from,
+    const eth::codec::Address& to,
+    uint64_t                   amount)
+{
+    eth::codec::LogEntry log;
+    log.address = token;
+    log.topics.push_back(eth::abi::event_signature_hash("Transfer(address,address,uint256)"));
+    log.topics.push_back(make_address_word(from));
+    log.topics.push_back(make_address_word(to));
+    append_uint256(log.data, amount);
+    return log;
+}
+
+} // namespace
+
+// ============================================================================
+// EthWatchService — watch_event / unwatch
+// ============================================================================
+
+TEST(EthWatchServiceTest, WatchAndUnwatch)
+{
+    eth::EthWatchService svc;
+    EXPECT_EQ(svc.subscription_count(), 0u);
+
+    const auto token = make_filled<eth::codec::Address>(0xAA);
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    auto id = svc.watch_event(token, "Transfer(address,address,uint256)", params,
+        [](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) {});
+
+    EXPECT_EQ(svc.subscription_count(), 1u);
+    svc.unwatch(id);
+    EXPECT_EQ(svc.subscription_count(), 0u);
+}
+
+// ============================================================================
+// EthWatchService — process_receipts dispatches decoded callbacks
+// ============================================================================
+
+TEST(EthWatchServiceTest, ProcessReceiptsDecodesTransferEvent)
+{
+    const auto token = make_filled<eth::codec::Address>(0xCC);
+    const auto from  = make_filled<eth::codec::Address>(0x11);
+    const auto to    = make_filled<eth::codec::Address>(0x22);
+    const uint64_t amount = 500000000ULL;
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    struct CallbackCapture {
+        eth::MatchedEvent              event;
+        std::vector<eth::abi::AbiValue> values;
+        int                            call_count = 0;
+    } capture;
+
+    eth::EthWatchService svc;
+    svc.watch_event(token, "Transfer(address,address,uint256)", params,
+        [&capture](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
+        {
+            capture.event  = ev;
+            capture.values = vals;
+            ++capture.call_count;
+        });
+
+    eth::codec::Receipt receipt;
+    receipt.status              = true;
+    receipt.cumulative_gas_used = intx::uint256(21000);
+    receipt.bloom               = {};
+    receipt.logs.push_back(make_transfer_log(token, from, to, amount));
+
+    const eth::Hash256 tx_hash    = make_filled<eth::Hash256>(0xDD);
+    const eth::Hash256 block_hash = make_filled<eth::Hash256>(0xEE);
+
+    svc.process_receipts({receipt}, {tx_hash}, 100, block_hash);
+
+    EXPECT_EQ(capture.call_count, 1);
+    EXPECT_EQ(capture.event.block_number, 100u);
+    EXPECT_EQ(capture.event.block_hash,   block_hash);
+    EXPECT_EQ(capture.event.tx_hash,      tx_hash);
+
+    ASSERT_EQ(capture.values.size(), 3u);
+
+    const auto* decoded_from = std::get_if<eth::codec::Address>(&capture.values[0]);
+    ASSERT_NE(decoded_from, nullptr);
+    EXPECT_EQ(*decoded_from, from);
+
+    const auto* decoded_to = std::get_if<eth::codec::Address>(&capture.values[1]);
+    ASSERT_NE(decoded_to, nullptr);
+    EXPECT_EQ(*decoded_to, to);
+
+    const auto* decoded_val = std::get_if<intx::uint256>(&capture.values[2]);
+    ASSERT_NE(decoded_val, nullptr);
+    EXPECT_EQ(*decoded_val, intx::uint256(amount));
+}
+
+TEST(EthWatchServiceTest, ProcessReceiptsIgnoresWrongContract)
+{
+    const auto watched_token  = make_filled<eth::codec::Address>(0xAA);
+    const auto other_token    = make_filled<eth::codec::Address>(0xBB);
+    const auto from           = make_filled<eth::codec::Address>(0x11);
+    const auto to             = make_filled<eth::codec::Address>(0x22);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int call_count = 0;
+    eth::EthWatchService svc;
+    svc.watch_event(watched_token, "Transfer(address,address,uint256)", params,
+        [&call_count](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&)
+        {
+            ++call_count;
+        });
+
+    // Receipt from a different contract
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.logs.push_back(make_transfer_log(other_token, from, to, 100ULL));
+
+    svc.process_receipts({receipt}, {{}}, 1, {});
+    EXPECT_EQ(call_count, 0);
+}
+
+TEST(EthWatchServiceTest, ProcessReceiptsMultipleLogsMultipleSubscribers)
+{
+    const auto token_a = make_filled<eth::codec::Address>(0xAA);
+    const auto token_b = make_filled<eth::codec::Address>(0xBB);
+    const auto from    = make_filled<eth::codec::Address>(0x11);
+    const auto to      = make_filled<eth::codec::Address>(0x22);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int count_a = 0;
+    int count_b = 0;
+
+    eth::EthWatchService svc;
+    svc.watch_event(token_a, "Transfer(address,address,uint256)", params,
+        [&count_a](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) { ++count_a; });
+    svc.watch_event(token_b, "Transfer(address,address,uint256)", params,
+        [&count_b](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) { ++count_b; });
+
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.logs.push_back(make_transfer_log(token_a, from, to, 100ULL));
+    receipt.logs.push_back(make_transfer_log(token_b, from, to, 200ULL));
+    receipt.logs.push_back(make_transfer_log(token_a, from, to, 300ULL));
+
+    svc.process_receipts({receipt}, {{}}, 1, {});
+
+    EXPECT_EQ(count_a, 2);
+    EXPECT_EQ(count_b, 1);
+}
+
+TEST(EthWatchServiceTest, AnyContractWatchWithZeroAddress)
+{
+    // Zero address = watch any contract
+    const eth::codec::Address zero_addr{};
+
+    const auto token_a = make_filled<eth::codec::Address>(0xAA);
+    const auto token_b = make_filled<eth::codec::Address>(0xBB);
+    const auto from    = make_filled<eth::codec::Address>(0x11);
+    const auto to      = make_filled<eth::codec::Address>(0x22);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int call_count = 0;
+    eth::EthWatchService svc;
+    svc.watch_event(zero_addr, "Transfer(address,address,uint256)", params,
+        [&call_count](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) { ++call_count; });
+
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.logs.push_back(make_transfer_log(token_a, from, to, 1ULL));
+    receipt.logs.push_back(make_transfer_log(token_b, from, to, 2ULL));
+
+    svc.process_receipts({receipt}, {{}}, 1, {});
+    EXPECT_EQ(call_count, 2);
+}
+
+// ============================================================================
+// EthWatchService — process_message (wire message dispatch)
+// ============================================================================
+
+TEST(EthWatchServiceTest, ProcessMessageReceiptsDispatchesCallbacks)
+{
+    const auto token = make_filled<eth::codec::Address>(0xCC);
+    const auto from  = make_filled<eth::codec::Address>(0x11);
+    const auto to    = make_filled<eth::codec::Address>(0x22);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int call_count = 0;
+    eth::EthWatchService svc;
+    svc.watch_event(token, "Transfer(address,address,uint256)", params,
+        [&call_count](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) { ++call_count; });
+
+    // Build a ReceiptsMessage with one block's receipts containing a Transfer log
+    eth::ReceiptsMessage receipts_msg;
+    receipts_msg.request_id = 1;
+
+    eth::codec::Receipt receipt;
+    receipt.status              = true;
+    receipt.cumulative_gas_used = intx::uint256(21000);
+    receipt.bloom               = {};
+    receipt.logs.push_back(make_transfer_log(token, from, to, 999ULL));
+    receipts_msg.receipts.push_back({receipt});
+
+    auto encoded = eth::protocol::encode_receipts(receipts_msg);
+    ASSERT_TRUE(encoded.has_value());
+
+    svc.process_message(
+        eth::protocol::kReceiptsMessageId,
+        rlp::ByteView(encoded.value().data(), encoded.value().size()));
+
+    EXPECT_EQ(call_count, 1);
+}
+
+TEST(EthWatchServiceTest, ProcessMessageUnknownIdIsIgnored)
+{
+    eth::EthWatchService svc;
+    // Should not crash on unknown message id
+    const std::vector<uint8_t> garbage = {0x01, 0x02, 0x03};
+    svc.process_message(0xFF, rlp::ByteView(garbage.data(), garbage.size()));
+}
+
+// ============================================================================
+// EthWatchService — set_send_callback / request flow
+// ============================================================================
+
+TEST(EthWatchServiceTest, SetSendCallbackCalledOnNewBlockHashes)
+{
+    eth::EthWatchService svc;
+
+    struct Capture {
+        uint8_t              msg_id = 0;
+        std::vector<uint8_t> payload;
+        int                  call_count = 0;
+    } capture;
+
+    svc.set_send_callback([&capture](uint8_t id, std::vector<uint8_t> p)
+    {
+        capture.msg_id     = id;
+        capture.payload    = std::move(p);
+        ++capture.call_count;
+    });
+
+    // Build a NewBlockHashes message with two entries
+    eth::NewBlockHashesMessage nbh;
+    nbh.entries.push_back({make_filled<eth::Hash256>(0x01), 100});
+    nbh.entries.push_back({make_filled<eth::Hash256>(0x02), 101});
+
+    auto encoded = eth::protocol::encode_new_block_hashes(nbh);
+    ASSERT_TRUE(encoded.has_value());
+
+    svc.process_message(
+        eth::protocol::kNewBlockHashesMessageId,
+        rlp::ByteView(encoded.value().data(), encoded.value().size()));
+
+    // Should have emitted one GetReceipts per block hash
+    EXPECT_EQ(capture.call_count, 2);
+    EXPECT_EQ(capture.msg_id, eth::protocol::kGetReceiptsMessageId);
+}
+
+TEST(EthWatchServiceTest, NoSendCallbackDoesNotCrashOnNewBlockHashes)
+{
+    eth::EthWatchService svc;
+    // No send callback registered — should silently do nothing
+
+    eth::NewBlockHashesMessage nbh;
+    nbh.entries.push_back({make_filled<eth::Hash256>(0x01), 100});
+
+    auto encoded = eth::protocol::encode_new_block_hashes(nbh);
+    ASSERT_TRUE(encoded.has_value());
+
+    // Should not crash
+    svc.process_message(
+        eth::protocol::kNewBlockHashesMessageId,
+        rlp::ByteView(encoded.value().data(), encoded.value().size()));
+}
+
+TEST(EthWatchServiceTest, ReceiptsCorrelatedToRequestId)
+{
+    const auto token = make_filled<eth::codec::Address>(0xCC);
+    const auto from  = make_filled<eth::codec::Address>(0x11);
+    const auto to    = make_filled<eth::codec::Address>(0x22);
+    const auto block_hash = make_filled<eth::Hash256>(0xBB);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int call_count = 0;
+    uint64_t received_block_number = 0;
+
+    eth::EthWatchService svc;
+
+    // Capture the GetReceipts payload so we can build a correlated response
+    std::vector<uint8_t> get_receipts_payload;
+    svc.set_send_callback([&get_receipts_payload](uint8_t, std::vector<uint8_t> p)
+    {
+        get_receipts_payload = std::move(p);
+    });
+
+    svc.watch_event(token, "Transfer(address,address,uint256)", params,
+        [&call_count, &received_block_number](
+            const eth::MatchedEvent& ev,
+            const std::vector<eth::abi::AbiValue>&)
+        {
+            ++call_count;
+            received_block_number = ev.block_number;
+        });
+
+    // Trigger a GetReceipts by announcing a new block hash
+    eth::NewBlockHashesMessage nbh;
+    nbh.entries.push_back({block_hash, 999});
+    auto nbh_encoded = eth::protocol::encode_new_block_hashes(nbh);
+    ASSERT_TRUE(nbh_encoded.has_value());
+
+    svc.process_message(
+        eth::protocol::kNewBlockHashesMessageId,
+        rlp::ByteView(nbh_encoded.value().data(), nbh_encoded.value().size()));
+
+    ASSERT_FALSE(get_receipts_payload.empty());
+
+    // Decode the GetReceipts to get the request_id
+    auto get_req = eth::protocol::decode_get_receipts(
+        rlp::ByteView(get_receipts_payload.data(), get_receipts_payload.size()));
+    ASSERT_TRUE(get_req.has_value());
+    ASSERT_TRUE(get_req.value().request_id.has_value());
+
+    const uint64_t req_id = get_req.value().request_id.value();
+
+    // Build the correlated Receipts response
+    eth::ReceiptsMessage resp;
+    resp.request_id = req_id;
+
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.logs.push_back(make_transfer_log(token, from, to, 42ULL));
+    resp.receipts.push_back({receipt});
+
+    auto resp_encoded = eth::protocol::encode_receipts(resp);
+    ASSERT_TRUE(resp_encoded.has_value());
+
+    svc.process_message(
+        eth::protocol::kReceiptsMessageId,
+        rlp::ByteView(resp_encoded.value().data(), resp_encoded.value().size()));
+
+    EXPECT_EQ(call_count, 1);
+    EXPECT_EQ(received_block_number, 999u);
+}
+
+TEST(EthWatchServiceTest, BlockRangeFilteringRespected)
+{
+    const auto token = make_filled<eth::codec::Address>(0xAA);
+    const auto from  = make_filled<eth::codec::Address>(0x11);
+    const auto to    = make_filled<eth::codec::Address>(0x22);
+
+    std::vector<eth::abi::AbiParam> params = {
+        {eth::abi::AbiParamKind::kAddress, true,  "from"},
+        {eth::abi::AbiParamKind::kAddress, true,  "to"},
+        {eth::abi::AbiParamKind::kUint,    false, "value"},
+    };
+
+    int call_count = 0;
+    eth::EthWatchService svc;
+    svc.watch_event(token, "Transfer(address,address,uint256)", params,
+        [&call_count](const eth::MatchedEvent&, const std::vector<eth::abi::AbiValue>&) { ++call_count; },
+        /*from_block=*/100,
+        /*to_block=*/200);
+
+    eth::codec::Receipt receipt;
+    receipt.status = true;
+    receipt.logs.push_back(make_transfer_log(token, from, to, 1ULL));
+
+    svc.process_receipts({receipt}, {{}}, 50,  {});   // before range — no dispatch
+    svc.process_receipts({receipt}, {{}}, 150, {});   // inside range — dispatched
+    svc.process_receipts({receipt}, {{}}, 250, {});   // after range — no dispatch
+
+    EXPECT_EQ(call_count, 1);
+}
+
