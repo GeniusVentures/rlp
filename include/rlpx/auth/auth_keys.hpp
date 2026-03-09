@@ -21,10 +21,10 @@ struct AuthKeyMaterial {
 
 // Derived frame encryption secrets
 struct FrameSecrets {
-    AesKey aes_secret;
-    MacKey mac_secret;
-    MacDigest egress_mac_seed;
-    MacDigest ingress_mac_seed;
+    AesKey     aes_secret;
+    MacKey     mac_secret;
+    ByteBuffer egress_mac_seed;   ///< Raw bytes written to egress MAC Keccak accumulator
+    ByteBuffer ingress_mac_seed;  ///< Raw bytes written to ingress MAC Keccak accumulator
 };
 
 } // namespace rlpx::auth

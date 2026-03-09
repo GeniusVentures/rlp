@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include <eth/messages.hpp>
 #include "bootnodes.hpp"
@@ -121,84 +122,27 @@ std::optional<Config> parse_enode(std::string_view enode) {
     return cfg;
 }
 
-std::optional<Config> load_bootnode_for_chain(std::string_view chain) {
-    // Ethereum Mainnet
-    if (chain == "mainnet") {
-        if (ETHEREUM_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_MAINNET_BOOTNODES.front());
-    }
+std::optional<Config> load_bootnode_for_chain(std::string_view chain_name)
+{
+    using BnList = const std::vector<std::string_view>*;
+    static const std::unordered_map<std::string, BnList> kChainBootnodes = {
+        { "mainnet",      &ETHEREUM_MAINNET_BOOTNODES },
+        { "sepolia",      &ETHEREUM_SEPOLIA_BOOTNODES },
+        { "holesky",      &ETHEREUM_HOLESKY_BOOTNODES },
+        { "polygon",      &POLYGON_MAINNET_BOOTNODES  },
+        { "polygon-amoy", &POLYGON_AMOY_BOOTNODES     },
+        { "bsc",          &BSC_MAINNET_BOOTNODES      },
+        { "bsc-testnet",  &BSC_TESTNET_STATICNODES    },
+        { "base",         &BASE_MAINNET_BOOTNODES     },
+        { "base-sepolia", &BASE_SEPOLIA_BOOTNODES     },
+    };
 
-    // Ethereum Sepolia Testnet
-    if (chain == "sepolia") {
-        if (ETHEREUM_SEPOLIA_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_SEPOLIA_BOOTNODES.front());
+    const auto it = kChainBootnodes.find(std::string(chain_name));
+    if (it == kChainBootnodes.end() || it->second->empty())
+    {
+        return std::nullopt;
     }
-
-    // Ethereum Holesky Testnet
-    if (chain == "holesky") {
-        if (ETHEREUM_HOLESKY_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_HOLESKY_BOOTNODES.front());
-    }
-
-    // Polygon PoS Mainnet
-    if (chain == "polygon") {
-        if (POLYGON_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(POLYGON_MAINNET_BOOTNODES.front());
-    }
-
-    // Polygon Amoy Testnet
-    if (chain == "polygon-amoy") {
-        if (POLYGON_AMOY_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(POLYGON_AMOY_BOOTNODES.front());
-    }
-
-    // BSC Mainnet (Note: uses port 30311)
-    if (chain == "bsc" || chain == "bsc-mainnet") {
-        if (BSC_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(BSC_MAINNET_BOOTNODES.front());
-    }
-
-    // BSC Testnet (Note: uses port 30311)
-    if (chain == "bsc-testnet") {
-        if (BSC_TESTNET_STATICNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(BSC_TESTNET_STATICNODES.front());
-    }
-
-    // Base Mainnet
-    if (chain == "base") {
-        if (BASE_MAINNET_BOOTNODES.empty()) {
-            std::cout << "Base mainnet bootnodes not yet configured.\n"
-                      << "Base uses OP Stack discovery - see https://docs.base.org/base-chain/node-operators/run-a-base-node\n";
-            return std::nullopt;
-        }
-        return parse_enode(BASE_MAINNET_BOOTNODES.front());
-    }
-
-    // Base Sepolia Testnet
-    if (chain == "base-sepolia") {
-        if (BASE_SEPOLIA_BOOTNODES.empty()) {
-            std::cout << "Base Sepolia bootnodes not yet configured.\n"
-                      << "Base uses OP Stack discovery - see https://docs.base.org/base-chain/node-operators/run-a-base-node\n";
-            return std::nullopt;
-        }
-        return parse_enode(BASE_SEPOLIA_BOOTNODES.front());
-    }
-
-    return std::nullopt;
+    return parse_enode(it->second->front());
 }
 
 void print_usage(const char* exe) {
@@ -208,7 +152,7 @@ void print_usage(const char* exe) {
               << "\nAvailable chains:\n"
               << "  Ethereum: mainnet, sepolia, holesky\n"
               << "  Polygon:  polygon, polygon-amoy\n"
-              << "  BSC:      bsc (or bsc-mainnet), bsc-testnet\n"
+              << "  BSC:      bsc, bsc-testnet\n"
               << "  Base:     base, base-sepolia\n";
 }
 

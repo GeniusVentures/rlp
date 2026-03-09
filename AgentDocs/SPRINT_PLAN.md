@@ -2,25 +2,24 @@
 
 **Start Date**: March 5, 2026  
 **Target MVP**: March 18-19, 2026 (10 working days)  
-**Actual Completion**: March 6, 2026 (~8 man-hours)  
 **Working Hours**: 10:00 AM - 6:30 PM (weekdays)  
 **Development Mode**: Human-guided with AI assistance (not autonomous)  
 **Goal**: Functional contract event watching with callbacks
 
 ---
 
-## ⚡ TIME ESTIMATES vs ACTUAL
+## ⚡ REALISTIC TIME ESTIMATES (Human-Guided Development)
 
-| Task | Solo Est. | With AI Collab Est. | Actual |
-|------|-----------|---------------------|--------|
-| Receipt Messages | 3 days | **1 day** | ~1 hour |
-| Event Filtering | 3 days | **1 day** | ~1 hour |
-| ABI Decoder | 5 days | **2 days** | ~1 hour |
-| Event Watcher | 3 days | **1 day** | ~1 hour |
-| Integration & Testing | 2 days | **1.5 days** | ~2 hours |
-| Polish & Documentation | 3 days | **1 day** | ~1 hour |
-| Buffer for issues | 2 days | **2.5 days** | ~1 hour |
-| **TOTAL** | **21 days** | **~10 working days** | **~8 man-hours** |
+| Task | Solo Est. | With AI Collab | Status |
+|------|-----------|----------------|--------|
+| Receipt Messages | 3 days | **1 day** | 📋 Ready |
+| Event Filtering | 3 days | **1 day** | 📋 Ready |
+| ABI Decoder | 5 days | **2 days** | 📋 Ready |
+| Event Watcher | 3 days | **1 day** | 📋 Ready |
+| Integration & Testing | 2 days | **1.5 days** | 📋 Ready |
+| Polish & Documentation | 3 days | **1 day** | 📋 Ready |
+| Buffer for issues | 2 days | **2.5 days** | 📋 Ready |
+| **TOTAL** | **21 days** | **~10 working days** | 🎯 |
 
 ---
 
@@ -42,37 +41,21 @@
 - ✅ Sprint planning
 - **Status**: Foundation solid, ready to implement event watching
 
-#### **DAY 2 (March 6 - Thu)** ✅ COMPLETED - ETH P2P (eth/66+) Full Packet Semantics
-- ✅ **Transaction types** (legacy, EIP-2930, EIP-1559) — `codec::Transaction`, `encode_transaction`, `decode_transaction`
-- ✅ **Access list** encode/decode — `codec::AccessListEntry`
-- ✅ **GetBlockBodies / BlockBodies** messages (0x05/0x06) with eth/66 request_id envelope
-- ✅ **NewBlock** message (0x07) — full block gossip: header + typed txs + ommers + totalDifficulty
-- ✅ **EIP-2718 wire encoding** — typed txs wrapped as RLP byte-strings inside block/body tx lists
-- ✅ **EventFilter** — address + per-position topic matching + block range filtering
-- ✅ **EventWatcher** — callback registration (watch/unwatch), process_block_logs, process_receipt
-- ✅ 25 new tests (8 transaction + 17 event filter/watcher) — all passing
-- ✅ **367/367 total tests passing**, zero regressions
+#### **DAY 2 (March 6 - Thu)** - Receipt Types & Messages
+**Morning Session (10am-1pm)**
+- [ ] Review existing eth/messages.hpp structure
+- [ ] Create `include/eth/receipts.hpp` with types
+- [ ] Design TransactionReceipt and EventLog structures
+- [ ] Implement GetReceipts message encoding
+- **Break for lunch**
 
-**New files**:
-- `include/eth/objects.hpp` — `TransactionType`, `AccessListEntry`, `Transaction`
-- `include/eth/eth_types.hpp` — `GetBlockBodiesMessage`, `BlockBody`, `BlockBodiesMessage`, `NewBlockMessage`
-- `include/eth/messages.hpp` — `kGetBlockBodiesMessageId`, `kBlockBodiesMessageId` + encode/decode declarations
-- `include/eth/event_filter.hpp` — `EventFilter`, `MatchedEvent`, `EventWatcher`
-- `src/eth/objects.cpp` — access list + transaction encode/decode
-- `src/eth/messages.cpp` — GetBlockBodies, BlockBodies, NewBlock encode/decode; EIP-2718 tx list helpers
-- `src/eth/event_filter.cpp` — EventFilter::matches, EventWatcher::watch/unwatch/process_*
-- `test/eth/eth_transactions_test.cpp` — 8 tests
-- `test/eth/event_filter_test.cpp` — 17 tests
+**Afternoon Session (2pm-6:30pm)**
+- [ ] Implement Receipts message decoding
+- [ ] Add receipt message IDs to eth/messages.hpp
+- [ ] Test encoding/decoding with sample data
+- [ ] **End of day**: Can encode/decode receipt messages
 
-- ✅ **Day 1 (March 5)**: Foundation complete — 441/441
-- ✅ **Day 2 (March 6)**: ETH P2P packet semantics — Transactions, GetBlockBodies, BlockBodies, NewBlock, EventFilter, EventWatcher — 441/441
-- ✅ **Day 3 (March 6)**: ABI decoder — Keccak256, event signature hashing, indexed/non-indexed decoding, dynamic types — 441/441
-- ✅ **Day 4 (March 6)**: EthWatchService integration — EventWatcher + ABI decoder wired into eth wire dispatch — 441/441
-- ✅ **Day 5 (March 6)**: CLI flags — `--watch-contract`/`--watch-event`, `eth_watch_cli.hpp`, `infer_params`, `parse_address` — 441/441
-- ✅ **Day 6 (March 6)**: Request flow — `SendCallback`, `request_receipts`, `GetReceipts` auto-emission, request_id correlation — 441/441
-- ✅ **Day 7 (March 6)**: ChainTracker + GNUS.AI contract tests — block deduplication, sliding window eviction, tip tracking, 19 contract-specific tests for all mainnet/testnet addresses — 441/441
-- ✅ **Day 8 (March 6)**: Documentation — CHECKPOINT.md fully rewritten to reflect actual state; Architecture.md rewritten with layer diagram, component reference, data flow walkthrough, and GNUS.AI contract table — 441/441
-- ⏳ **Day 9**: Bloom filter pre-screening + multi-peer connection pool
+#### **DAY 3 (March 7 - Fri)** - Receipt Tests & Event Filter Foundation
 **Morning Session (10am-1pm)**
 - [ ] Create `test/eth/receipts_test.cpp`
 - [ ] Write comprehensive receipt encoding tests
@@ -272,12 +255,7 @@ TEST(ReceiptsTest, ParseEventLogs) { ... }
 
 ### Sprint Progress:
 - ✅ **Day 1 (March 5)**: Foundation complete, all tests passing
-- ✅ **Day 2 (March 6)**: ETH P2P packet semantics — Transactions (legacy/EIP-2930/EIP-1559), GetBlockBodies, BlockBodies, NewBlock, EventFilter, EventWatcher — 367/367
-- ✅ **Day 3 (March 6)**: ABI decoder — Keccak256, event signature hashing, indexed/non-indexed decoding, dynamic types — 386/386
-- ✅ **Day 4 (March 6)**: EthWatchService integration — EventWatcher + ABI decoder wired into eth wire dispatch, eth_watch example updated — 394/394
-- ✅ **Day 5 (March 6)**: CLI flags + tests — `--watch-contract`/`--watch-event`, `eth_watch_cli.hpp`, `infer_params`, `parse_address` — 408/408
-- ✅ **Day 6 (March 6)**: Request flow — `SendCallback`, `request_receipts`, `GetReceipts` auto-emission on NewBlockHashes/NewBlock, request_id correlation for Receipts response, `set_send_callback` wired into eth_watch — 411/411
-- ⏳ **Day 7**: Real-world testing against Sepolia
+- ⏳ **Day 2 (March 6)**: Receipt types & messages - STARTS 10am tomorrow
 - ⏳ **Day 3 (March 7)**: Receipt tests & event filter
 - ⏳ **Day 4 (March 10)**: Event filter implementation
 - ⏳ **Day 5 (March 11)**: ABI decoder foundation

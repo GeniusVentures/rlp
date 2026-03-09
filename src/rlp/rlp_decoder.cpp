@@ -35,7 +35,7 @@ namespace { // Anonymous namespace for internal helpers
         if ( input_len < h.header_size_bytes ) return DecodingError::kInputTooShort;
         h.payload_size_bytes = b - kShortStringOffset;
         if ( h.payload_size_bytes == 1 ) {
-            if ( input_len < h.header_size_bytes + 1 ) return DecodingError::kInputTooShort;
+            if ( input_len < kSingleByteStringSize ) return DecodingError::kInputTooShort;
             if ( static_cast<uint8_t>(v[1]) < kShortStringOffset ) {
                 return DecodingError::kNonCanonicalSize; // byte < 0x80 must be encoded as itself
             }

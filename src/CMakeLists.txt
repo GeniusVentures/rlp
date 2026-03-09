@@ -68,6 +68,9 @@ install(DIRECTORY
         FILES_MATCHING PATTERN "*.hpp"
 )
 
+# Add base logger
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)
+
 # Add RLPx subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx)
 

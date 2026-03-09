@@ -30,6 +30,7 @@ target_link_libraries(rlpx PUBLIC
     OpenSSL::SSL
     OpenSSL::Crypto
     Microsoft.GSL::GSL
+    logger
     rlp
 )
 

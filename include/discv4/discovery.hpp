@@ -2,6 +2,7 @@
 #include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
 #include <rlp/common.hpp>
+#include <discv4/discv4_constants.hpp>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -238,7 +239,7 @@ rlp::EncodingResult<rlp::Bytes> EncodePing() {
     }
 
     uint32_t now = static_cast<std::uint32_t>(std::time(nullptr));
-    uint32_t expire_in_1_minute = now + 60;
+    uint32_t expire_in_1_minute = now + discv4::kPacketExpirySeconds;
 
     rlp::RlpEncoder encoder;
     if (auto res = encoder.BeginList(); !res) {
@@ -328,15 +329,15 @@ int test_ping()
             return 1;
         }
 
-        std::vector<uint8_t> sigvec(sig64, sig64 + 64);
+        std::vector<uint8_t> sigvec(sig64, sig64 + discv4::kWireSigSize);
         std::vector<uint8_t> msg_cpp;
-        msg_cpp.reserve(32 + 64 + 1 + packet.size());
-        msg_cpp.insert(msg_cpp.end(), 32, 0);
+        msg_cpp.reserve(discv4::kWireHashSize + discv4::kWireSigSize + discv4::kWirePacketTypeSize + packet.size());
+        msg_cpp.insert(msg_cpp.end(), discv4::kWireHashSize, 0);
         msg_cpp.insert(msg_cpp.end(), sigvec.begin(), sigvec.end());
         msg_cpp.insert(msg_cpp.end(), recid);
         msg_cpp.insert(msg_cpp.end(), packet.begin(), packet.end());
-        auto payload_hash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(msg_cpp.begin() + 32, msg_cpp.end());
-        std::array<uint8_t, 32> payload_array = payload_hash;
+        auto payload_hash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(msg_cpp.begin() + discv4::kWireHashSize, msg_cpp.end());
+        std::array<uint8_t, discv4::kWireHashSize> payload_array = payload_hash;
         std::copy(payload_array.begin(), payload_array.end(), msg_cpp.begin());
     
         asio::io_context io;

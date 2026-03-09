@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <eth/abi_decoder.hpp>
+#include <eth/eth_constants.hpp>
 #include <rlp/errors.hpp>
 #include <algorithm>
 #include <cstring>
@@ -59,7 +60,7 @@ bool is_dynamic(AbiParamKind kind) noexcept
 codec::Hash256 keccak256(const uint8_t* data, size_t len) noexcept
 {
     auto hash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>(data, data + len);
-    std::array<uint8_t, 32> hash_array = hash;
+    std::array<uint8_t, kKeccak256Size> hash_array = hash;
     codec::Hash256 out{};
     std::copy(hash_array.begin(), hash_array.end(), out.begin());
     return out;
@@ -87,9 +88,9 @@ rlp::Result<AbiValue> decode_abi_word(
     {
         case AbiParamKind::kAddress:
         {
-            // Address occupies the rightmost 20 bytes of the 32-byte word.
+            // Address occupies the rightmost kAbiAddressSize bytes of the 32-byte word.
             codec::Address addr{};
-            std::copy(word.begin() + 12, word.end(), addr.begin());
+            std::copy(word.begin() + kAbiAddressPadding, word.end(), addr.begin());
             return AbiValue{addr};
         }
 
@@ -106,8 +107,8 @@ rlp::Result<AbiValue> decode_abi_word(
 
         case AbiParamKind::kBool:
         {
-            // Any non-zero byte in the word means true; canonically it's word[31].
-            bool val = (word[31] != 0);
+            // Any non-zero byte in the word means true; canonically it's word[kAbiBoolByteIndex].
+            bool val = (word[kAbiBoolByteIndex] != 0);
             return AbiValue{val};
         }
 
@@ -151,8 +152,8 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
         return std::vector<AbiValue>{};
     }
 
-    // Each head slot is 32 bytes.  Dynamic types store an offset in the head.
-    const size_t head_size = params.size() * 32;
+    // Each head slot is kAbiWordSize bytes.  Dynamic types store an offset in the head.
+    const size_t head_size = params.size() * kAbiWordSize;
 
     if (data.size() < head_size)
     {
@@ -165,14 +166,14 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
     for (size_t i = 0; i < params.size(); ++i)
     {
         const AbiParamKind kind = params[i].kind;
-        const size_t       head_offset = i * 32;
+        const size_t       head_offset = i * kAbiWordSize;
 
         if (!is_dynamic(kind))
         {
             codec::Hash256 word{};
             std::copy(
                 data.data() + head_offset,
-                data.data() + head_offset + 32,
+                data.data() + head_offset + kAbiWordSize,
                 word.begin());
 
             auto val = decode_abi_word(word, kind);
@@ -186,7 +187,7 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
             codec::Hash256 offset_word{};
             std::copy(
                 data.data() + head_offset,
-                data.data() + head_offset + 32,
+                data.data() + head_offset + kAbiWordSize,
                 offset_word.begin());
 
             const intx::uint256 raw_offset = read_uint256_be(offset_word.data());
@@ -199,8 +200,8 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
 
             const size_t tail_offset = static_cast<size_t>(raw_offset);
 
-            // Read 32-byte length prefix at tail_offset.
-            if (data.size() < tail_offset + 32)
+            // Read kAbiWordSize-byte length prefix at tail_offset.
+            if (data.size() < tail_offset + kAbiWordSize)
             {
                 return rlp::DecodingError::kInputTooShort;
             }
@@ -208,7 +209,7 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
             codec::Hash256 len_word{};
             std::copy(
                 data.data() + tail_offset,
-                data.data() + tail_offset + 32,
+                data.data() + tail_offset + kAbiWordSize,
                 len_word.begin());
 
             const intx::uint256 raw_len = read_uint256_be(len_word.data());
@@ -219,7 +220,7 @@ rlp::Result<std::vector<AbiValue>> decode_log_data(
             }
 
             const size_t content_len    = static_cast<size_t>(raw_len);
-            const size_t content_offset = tail_offset + 32;
+            const size_t content_offset = tail_offset + kAbiWordSize;
 
             if (data.size() < content_offset + content_len)
             {

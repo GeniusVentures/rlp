@@ -9,6 +9,7 @@
 #include "discv4/discv4_error.hpp"
 #include <rlp/result.hpp>
 #include <rlpx/rlpx_error.hpp>
+#include <base/logger.hpp>
 #include <array>
 #include <chrono>
 #include <functional>
@@ -17,6 +18,9 @@
 #include <vector>
 
 namespace discv4 {
+
+using rlp::base::Logger;
+using rlp::base::createLogger;
 
 namespace asio = boost::asio;
 using udp = asio::ip::udp;
@@ -127,8 +131,9 @@ private:
     static NodeId compute_node_id(const std::array<uint8_t, 64>& public_key);
 
     asio::io_context& io_context_;
-    discv4Config config_;
-    udp::socket socket_;
+    discv4Config      config_;
+    udp::socket       socket_;
+    Logger logger_ = createLogger("discv4");
 
     // Peer table
     mutable std::mutex peers_mutex_;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <eth/objects.hpp>
+#include <eth/eth_constants.hpp>
 #include <rlp/rlp_decoder.hpp>
 #include <rlp/rlp_encoder.hpp>
 
@@ -266,7 +267,7 @@ EncodeResult encode_transaction(const Transaction& tx) noexcept
     {
         // EIP-2930: 0x01 || RLP([chainId, nonce, gasPrice, gasLimit, to, value, data, accessList, v, r, s])
         if (!encoder.BeginList()) { return rlp::EncodingError::kUnclosedList; }
-        if (!encoder.add(tx.chain_id.value_or(1ULL))) { return rlp::EncodingError::kPayloadTooLarge; }
+        if (!encoder.add(tx.chain_id.value_or(kDefaultChainId))) { return rlp::EncodingError::kPayloadTooLarge; }
         if (!encoder.add(tx.nonce)) { return rlp::EncodingError::kPayloadTooLarge; }
         const intx::uint256 gp = tx.gas_price.value_or(intx::uint256(0));
         if (!encoder.add(gp)) { return rlp::EncodingError::kPayloadTooLarge; }
@@ -292,7 +293,7 @@ EncodeResult encode_transaction(const Transaction& tx) noexcept
         if (!rlp_bytes) { return rlp_bytes; }
 
         ByteBuffer typed;
-        typed.reserve(1 + rlp_bytes.value().size());
+        typed.reserve(kTypedTxPrefixSize + rlp_bytes.value().size());
         typed.push_back(static_cast<uint8_t>(TransactionType::kAccessList));
         typed.insert(typed.end(), rlp_bytes.value().begin(), rlp_bytes.value().end());
         return typed;
@@ -302,7 +303,7 @@ EncodeResult encode_transaction(const Transaction& tx) noexcept
     {
         // EIP-1559: 0x02 || RLP([chainId, nonce, maxPriorityFeePerGas, maxFeePerGas, gasLimit, to, value, data, accessList, v, r, s])
         if (!encoder.BeginList()) { return rlp::EncodingError::kUnclosedList; }
-        if (!encoder.add(tx.chain_id.value_or(1ULL))) { return rlp::EncodingError::kPayloadTooLarge; }
+        if (!encoder.add(tx.chain_id.value_or(kDefaultChainId))) { return rlp::EncodingError::kPayloadTooLarge; }
         if (!encoder.add(tx.nonce)) { return rlp::EncodingError::kPayloadTooLarge; }
         const intx::uint256 mpf = tx.max_priority_fee_per_gas.value_or(intx::uint256(0));
         if (!encoder.add(mpf)) { return rlp::EncodingError::kPayloadTooLarge; }
@@ -330,7 +331,7 @@ EncodeResult encode_transaction(const Transaction& tx) noexcept
         if (!rlp_bytes) { return rlp_bytes; }
 
         ByteBuffer typed;
-        typed.reserve(1 + rlp_bytes.value().size());
+        typed.reserve(kTypedTxPrefixSize + rlp_bytes.value().size());
         typed.push_back(static_cast<uint8_t>(TransactionType::kDynamicFee));
         typed.insert(typed.end(), rlp_bytes.value().begin(), rlp_bytes.value().end());
         return typed;
@@ -345,8 +346,8 @@ DecodeResult<Transaction> decode_transaction(rlp::ByteView raw_data) noexcept
 
     Transaction tx;
 
-    // Detect EIP-2718 typed transaction: first byte < 0xC0 means it is a type prefix
-    if (raw_data[0] < 0xC0)
+    // Detect EIP-2718 typed transaction: first byte < kRlpListPrefixMin means it is a type prefix
+    if (raw_data[0] < kRlpListPrefixMin)
     {
         const uint8_t type_byte = raw_data[0];
         if (type_byte == static_cast<uint8_t>(TransactionType::kAccessList))
@@ -362,7 +363,7 @@ DecodeResult<Transaction> decode_transaction(rlp::ByteView raw_data) noexcept
             return rlp::DecodingError::kUnexpectedString;
         }
 
-        const rlp::ByteView rlp_payload = raw_data.substr(1);
+        const rlp::ByteView rlp_payload = raw_data.substr(kTypedTxPrefixSize);
         rlp::RlpDecoder decoder(rlp_payload);
 
         auto list_size = decoder.ReadListHeaderBytes();

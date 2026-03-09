@@ -22,7 +22,7 @@ EncodingResult<Bytes> encode_header_bytes(bool list, size_t payload_size_bytes) 
             // RLP spec limits length field to 8 bytes
             return EncodingError::kPayloadTooLarge;
         }
-        header_bytes.reserve(header_bytes.size() + 1 + len_be.length());
+        header_bytes.reserve(header_bytes.size() + kLongPrefixByteSize + len_be.length());
         header_bytes.push_back(static_cast<uint8_t>(long_offset + len_be.length()));
         header_bytes.append(len_be.data(), len_be.length());
     }

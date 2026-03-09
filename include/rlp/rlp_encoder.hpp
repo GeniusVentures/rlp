@@ -94,7 +94,8 @@ inline auto RlpEncoder::add_integral(const T& n) noexcept -> std::enable_if_t<is
         if ( val < kRlpSingleByteThreshold ) {
             buffer_.push_back(val);
         } else {
-            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + 1));
+            // Single byte that is >= 0x80: encode as 1-byte string (prefix = kShortStringOffset + kLongPrefixByteSize)
+            buffer_.push_back(static_cast<uint8_t>(kShortStringOffset + kLongPrefixByteSize));
             buffer_.push_back(val);
         }
     } else if constexpr (sizeof(T) == 2) {

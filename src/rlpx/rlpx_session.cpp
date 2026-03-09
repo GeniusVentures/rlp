@@ -106,87 +106,124 @@ Awaitable<Result<std::unique_ptr<RlpxSession>>>
 RlpxSession::connect(const SessionConnectParams& params) noexcept {
     // Step 1: Establish TCP connection with timeout
     auto executor = co_await boost::asio::this_coro::executor;
-    
-    constexpr auto kConnectionTimeout = std::chrono::seconds(10);
+
     auto transport_result = co_await socket::connect_with_timeout(
         executor,
         params.remote_host,
         params.remote_port,
-        kConnectionTimeout
+        kTcpConnectionTimeout
     );
-    
     if (!transport_result) {
         co_return transport_result.error();
     }
-    
-    auto transport = std::move(transport_result.value());
-    
-    // Step 2: Perform RLPx handshake as initiator
-    // TODO: Implement full handshake with AuthHandshake class
-    // For now, create dummy secrets for testing connection flow
-    auth::FrameSecrets secrets;
-    std::memset(secrets.aes_secret.data(), 0, secrets.aes_secret.size());
-    std::memset(secrets.mac_secret.data(), 0, secrets.mac_secret.size());
-    std::memset(secrets.ingress_mac_seed.data(), 0, secrets.ingress_mac_seed.size());
-    std::memset(secrets.egress_mac_seed.data(), 0, secrets.egress_mac_seed.size());
-    
-    // Step 3: Create frame cipher with handshake secrets
-    auto cipher = std::make_unique<framing::FrameCipher>(std::move(secrets));
-    
-    // Step 4: Create message stream
+
+    // Step 2: Run the real RLPx auth handshake (auth → ack)
+    auth::HandshakeConfig hs_config;
+    std::copy(params.local_public_key.begin(),  params.local_public_key.end(),  hs_config.local_public_key.begin());
+    std::copy(params.local_private_key.begin(), params.local_private_key.end(), hs_config.local_private_key.begin());
+    hs_config.client_id    = std::string(params.client_id);
+    hs_config.listen_port  = params.listen_port;
+    hs_config.peer_public_key = params.peer_public_key;
+
+    auth::AuthHandshake handshake(hs_config, std::move(transport_result.value()));
+    auto hs_result = co_await handshake.execute();
+    if (!hs_result) {
+        co_return hs_result.error();
+    }
+    auto& hs = hs_result.value();
+
+    // Step 3: Build MessageStream with derived frame secrets
+    if (!hs.transport) {
+        co_return SessionError::kAuthenticationFailed;
+    }
+    auto cipher = std::make_unique<framing::FrameCipher>(hs.frame_secrets);
     auto stream = std::make_unique<framing::MessageStream>(
         std::move(cipher),
-        std::move(transport)
+        std::move(hs.transport.value())
     );
-    
-    // Step 5: Create session with peer info
+
+    // Step 4: Build session with peer info
     PeerInfo peer_info{
-        .public_key = params.peer_public_key,
-        .client_id = std::string(params.client_id),
-        .listen_port = params.listen_port,
-        .remote_address = "",  // TODO: Get from transport
-        .remote_port = params.remote_port
+        .public_key      = params.peer_public_key,
+        .client_id       = std::string(params.client_id),
+        .listen_port     = params.listen_port,
+        .remote_address  = "",
+        .remote_port     = params.remote_port
     };
-    
+
     auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
         std::move(stream),
         std::move(peer_info),
         true  // is_initiator
     ));
-    
-    // Transition to active state
+
+    // Step 5: Send our HELLO (initiator sends first)
+    protocol::HelloMessage hello;
+    hello.protocol_version = kProtocolVersion;
+    hello.client_id        = std::string(params.client_id);
+    hello.capabilities     = { protocol::Capability{ "eth", 68 },
+                                protocol::Capability{ "eth", 67 },
+                                protocol::Capability{ "eth", 66 } };
+    hello.listen_port      = params.listen_port;
+    std::copy(params.local_public_key.begin(),
+              params.local_public_key.end(),
+              hello.node_id.begin());
+
+    auto hello_encoded = hello.encode();
+    if (!hello_encoded) {
+        co_return SessionError::kHandshakeFailed;
+    }
+
+    framing::MessageSendParams hello_send{
+        .message_id = kHelloMessageId,
+        .payload    = std::move(hello_encoded.value()),
+        .compress   = false
+    };
+    auto send_result = co_await session->stream_->send_message(hello_send);
+    if (!send_result) {
+        co_return send_result.error();
+    }
+
+    // Step 6: Receive peer HELLO
+    auto recv_result = co_await session->stream_->receive_message();
+    if (!recv_result) {
+        co_return recv_result.error();
+    }
+    auto& peer_msg = recv_result.value();
+    if (peer_msg.id == kHelloMessageId) {
+        auto peer_hello = protocol::HelloMessage::decode(
+            ByteView(peer_msg.payload.data(), peer_msg.payload.size()));
+        if (peer_hello) {
+            session->peer_info_.client_id     = peer_hello.value().client_id;
+            session->peer_info_.listen_port   = peer_hello.value().listen_port;
+            // Fire handler if already registered (unlikely here, but safe)
+            if (session->hello_handler_) {
+                session->hello_handler_(peer_hello.value());
+            }
+        }
+    }
+
+    // Step 7: Activate session and start I/O loops
     session->state_.store(SessionState::kActive, std::memory_order_release);
-    
-    // Step 6: Start send/receive loops as background coroutines
-    // Note: We pass raw pointers because the session unique_ptr ownership
-    // will be returned to caller, and the loops run until session closes
-    // Using custom completion handler instead of detached to avoid exception handling
+
     boost::asio::co_spawn(
         executor,
         [session_ptr = session.get()]() -> Awaitable<void> {
             auto result = co_await session_ptr->run_send_loop();
-            // Log error if needed
-            co_return;
+            (void)result;
         },
-        [](std::exception_ptr) noexcept {
-            // Completion handler that ignores exceptions (none should occur)
-        }
+        [](std::exception_ptr) noexcept {}
     );
-    
+
     boost::asio::co_spawn(
         executor,
         [session_ptr = session.get()]() -> Awaitable<void> {
             auto result = co_await session_ptr->run_receive_loop();
-            // Log error if needed
-            co_return;
+            (void)result;
         },
-        [](std::exception_ptr) noexcept {
-            // Completion handler that ignores exceptions (none should occur)
-        }
+        [](std::exception_ptr) noexcept {}
     );
-    
-    // TODO: Step 7: Exchange Hello messages after proper handshake
-    
+
     co_return std::move(session);
 }
 
@@ -294,12 +331,12 @@ Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
         auto msg = send_channel_->try_pop();
         
         if (!msg) {
-            // No messages pending - wait a bit and check again
-            // TODO: Use proper condition variable or async wait instead of polling
+            // No messages pending — yield and check again
+            // TODO: Replace polling with proper async condition variable
             boost::system::error_code ec;
             co_await boost::asio::steady_timer(
                 co_await boost::asio::this_coro::executor,
-                std::chrono::milliseconds(10)
+                kSendLoopPollInterval
             ).async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
             
             if (ec) {
