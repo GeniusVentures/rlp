@@ -27,6 +27,12 @@ EncodeResult finalize_encoding(rlp::RlpEncoder& encoder)
 
 rlp::EncodingOperationResult encode_get_block_headers_payload(rlp::RlpEncoder& encoder, const GetBlockHeadersMessage& msg)
 {
+    // go-ethereum: HashOrNumber must have exactly one set — both set is invalid.
+    if (msg.start_hash.has_value() && msg.start_number.has_value())
+    {
+        return rlp::EncodingError::kEmptyInput;  // reuse available error; means "invalid input"
+    }
+
     if (!encoder.BeginList())
     {
         return rlp::EncodingError::kUnclosedList;
@@ -46,10 +52,7 @@ rlp::EncodingOperationResult encode_get_block_headers_payload(rlp::RlpEncoder& e
             return rlp::EncodingError::kPayloadTooLarge;
         }
     }
-    else
-    {
-        return rlp::EncodingError::kEmptyInput;
-    }
+    // else: neither set → empty inner list (go-ethereum nil packet)
 
     if (!encoder.add(msg.max_headers))
     {
