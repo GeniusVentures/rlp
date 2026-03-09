@@ -24,6 +24,7 @@
 #include <eth/eth_watch_cli.hpp>
 #include <discv4/bootnodes.hpp>
 #include <discv4/bootnodes_test.hpp>
+#include <discv4/dial_history.hpp>
 #include <discv4/discv4_client.hpp>
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/rlpx_error.hpp>
@@ -217,17 +218,27 @@ void print_usage(const char* exe) {
               << "  Base:     base, base-sepolia\n";
 }
 
+/// @brief Attempts an RLPx connection to a peer and runs the ETH watch loop.
+///        Clears @p connected on every exit path so the discovery callback can
+///        retry the next discovered peer.  The session lifetime is controlled by
+///        a timer that the disconnect handler cancels, matching go-ethereum's
+///        pattern of re-entering discovery after any disconnection.
+/// @param connected  Shared atomic flag — cleared before this coroutine returns.
 boost::asio::awaitable<void> run_watch(std::string host,
                                        uint16_t port,
                                        rlpx::PublicKey peer_pubkey,
                                        uint8_t eth_offset,
                                        uint64_t network_id,
                                        eth::Hash256 genesis_hash,
-                                       std::vector<eth::cli::WatchSpec> watch_specs)
+                                       std::vector<eth::cli::WatchSpec> watch_specs,
+                                       std::shared_ptr<std::atomic<bool>> connected)
 {
+    static auto log = rlp::base::createLogger("eth_watch");
+
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if (!keypair_result) {
-        std::cout << "Failed to generate local keypair.\n";
+        SPDLOG_LOGGER_ERROR(log, "run_watch: failed to generate local keypair");
+        connected->store(false);
         co_return;
     }
 
@@ -243,21 +254,46 @@ boost::asio::awaitable<void> run_watch(std::string host,
         .listen_port = 0
     };
 
+    SPDLOG_LOGGER_DEBUG(log, "run_watch: connecting to {}:{}", host, port);
     auto session_result = co_await rlpx::RlpxSession::connect(params);
     if (!session_result) {
         auto err = session_result.error();
-        std::cout << "Failed to connect to " << host << ":" << port << "\n"
-                  << "Error code: " << static_cast<int>(err) << "\n"
-                  << "Error: " << rlpx::to_string(err) << "\n"
-                  << "\nNote: Error 12 (kConnectionFailed) typically means:\n"
-                  << "  - Bootstrap node is offline or unreachable\n"
-                  << "  - Wrong port number (try 30303 for Ethereum, 30311 for BSC)\n"
-                  << "  - Public key doesn't match the bootstrap node\n";
+        std::cout << "Failed to connect to " << host << ":" << port
+                  << " (error " << static_cast<int>(err) << ": " << rlpx::to_string(err) << ")\n";
+        connected->store(false);
         co_return;
     }
 
     auto session_unique = std::move(session_result.value());
     auto session = std::shared_ptr<rlpx::RlpxSession>(std::move(session_unique));
+
+    // HELLO was already exchanged inside connect(). Send ETH Status immediately.
+    std::cout << "HELLO from peer: " << session->peer_info().client_id << "\n";
+    {
+        eth::StatusMessage status{
+            .protocol_version = 68,
+            .network_id = network_id,
+            .genesis_hash = genesis_hash,
+            .fork_id = {},
+            .earliest_block = 0,
+            .latest_block = 0,
+            .latest_block_hash = genesis_hash,
+        };
+        auto encoded = eth::protocol::encode_status(status);
+        if (encoded) {
+            const auto post_result = session->post_message(rlpx::framing::Message{
+                .id = static_cast<uint8_t>(eth_offset + eth::protocol::kStatusMessageId),
+                .payload = std::move(encoded.value())
+            });
+            if (!post_result) {
+                SPDLOG_LOGGER_ERROR(log, "run_watch: failed to post ETH Status message");
+            } else {
+                SPDLOG_LOGGER_DEBUG(log, "run_watch: ETH Status posted (network_id={})", network_id);
+            }
+        } else {
+            SPDLOG_LOGGER_ERROR(log, "run_watch: failed to encode ETH Status message");
+        }
+    }
 
     // -------------------------------------------------------------------------
     // EthWatchService — register watches from CLI args (or default to Transfer)
@@ -279,6 +315,7 @@ boost::asio::awaitable<void> run_watch(std::string host,
             if (!addr)
             {
                 std::cout << "Invalid contract address: " << spec.contract_hex << "\n";
+                connected->store(false);
                 co_return;
             }
             contract = *addr;
@@ -338,41 +375,22 @@ boost::asio::awaitable<void> run_watch(std::string host,
         });
         if (!post_result)
         {
-            std::cout << "Failed to send eth message id=" << static_cast<int>(eth_msg_id) << "\n";
+            static auto cb_log = rlp::base::createLogger("eth_watch");
+            SPDLOG_LOGGER_WARN(cb_log, "send_callback: failed to post eth_msg_id=0x{:02x}", eth_msg_id);
         }
     });
 
-    session->set_hello_handler([session, network_id, genesis_hash, eth_offset](const rlpx::protocol::HelloMessage& msg) {
-        std::cout << "HELLO from peer: " << msg.client_id << "\n";
+    // Create the lifetime timer as a shared_ptr so the disconnect handler
+    // (which fires from the receive loop, not this coroutine) can cancel it,
+    // waking run_watch so it exits and clears `connected` — re-entering discovery.
+    auto executor = co_await boost::asio::this_coro::executor;
+    auto lifetime = std::make_shared<boost::asio::steady_timer>(executor);
+    lifetime->expires_after(std::chrono::hours(24 * 365));
 
-        eth::StatusMessage status{
-            .protocol_version = 68,
-            .network_id = network_id,
-            .total_difficulty = intx::uint256(0),
-            .best_hash = genesis_hash,
-            .genesis_hash = genesis_hash,
-            .fork_id = {}
-        };
-
-        auto encoded = eth::protocol::encode_status(status);
-        if (encoded) {
-            const auto post_result = session->post_message(rlpx::framing::Message{
-                .id = static_cast<uint8_t>(eth_offset + eth::protocol::kStatusMessageId),
-                .payload = std::move(encoded.value())
-            });
-            if (!post_result) {
-                std::cout << "Failed to send ETH Status message\n";
-            } else {
-                std::cout << "Sent ETH Status message to peer\n";
-            }
-        } else {
-            std::cout << "Failed to encode ETH Status message\n";
-        }
-    });
-
-    session->set_disconnect_handler([session](const rlpx::protocol::DisconnectMessage& msg) {
+    session->set_disconnect_handler([session, lifetime](const rlpx::protocol::DisconnectMessage& msg) {
         (void)session;
         std::cout << "Disconnected: reason=" << static_cast<int>(msg.reason) << "\n";
+        lifetime->cancel();
     });
 
     session->set_ping_handler([session](const rlpx::protocol::PingMessage&) {
@@ -388,8 +406,9 @@ boost::asio::awaitable<void> run_watch(std::string host,
 
     session->set_generic_handler([session, eth_offset, watch_svc](const rlpx::protocol::Message& msg) {
         (void)session;
+        static auto gh_log = rlp::base::createLogger("eth_watch");
         if (msg.id < eth_offset) {
-            std::cout << "Unknown message id=" << static_cast<int>(msg.id) << "\n";
+            SPDLOG_LOGGER_DEBUG(gh_log, "generic_handler: unknown p2p msg id=0x{:02x}", msg.id);
             return;
         }
 
@@ -401,9 +420,10 @@ boost::asio::awaitable<void> run_watch(std::string host,
             if (decoded) {
                 std::cout << "ETH STATUS: network_id=" << decoded.value().network_id
                           << " protocol=" << static_cast<int>(decoded.value().protocol_version)
+                          << " latest_block=" << decoded.value().latest_block
                           << "\n";
             } else {
-                std::cout << "Failed to decode ETH STATUS\n";
+                SPDLOG_LOGGER_WARN(gh_log, "generic_handler: ETH Status decode failed, payload_size={}", msg.payload.size());
             }
             return;
         }
@@ -411,29 +431,27 @@ boost::asio::awaitable<void> run_watch(std::string host,
         if (eth_id == eth::protocol::kNewBlockHashesMessageId) {
             auto decoded = eth::protocol::decode_new_block_hashes(payload);
             if (decoded) {
-                std::cout << "NewBlockHashes: " << decoded.value().entries.size() << " hashes\n";
+                SPDLOG_LOGGER_DEBUG(gh_log, "generic_handler: NewBlockHashes count={}", decoded.value().entries.size());
             } else {
-                std::cout << "Failed to decode NewBlockHashes\n";
+                SPDLOG_LOGGER_WARN(gh_log, "generic_handler: NewBlockHashes decode failed");
             }
             // Fall through to process_message so the service requests receipts
         }
 
+        SPDLOG_LOGGER_DEBUG(gh_log, "generic_handler: ETH msg id=0x{:02x} payload_size={}", eth_id, msg.payload.size());
+
         // Dispatch to EthWatchService for NewBlockHashes, NewBlock, and Receipts
         watch_svc->process_message(eth_id, payload);
-
-        std::cout << "ETH message id=" << static_cast<int>(eth_id)
-                  << " payload=" << msg.payload.size() << " bytes\n";
     });
 
-    std::cout << "Connected. Watching for events...\n"
-              << "\n⚠️  Bootstrap nodes are for DISCOVERY ONLY — they will not send block data.\n\n";
+    std::cout << "Connected. Watching for events...\n";
 
-    auto executor = co_await boost::asio::this_coro::executor;
-    boost::asio::steady_timer timer(executor);
-    timer.expires_after(std::chrono::hours(24 * 365));
     boost::system::error_code ec;
-    co_await timer.async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_await lifetime->async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    // ec == operation_aborted means the disconnect handler cancelled the timer.
+    // Either way, clear connected so the discovery callback can try the next peer.
     (void)session;
+    connected->store(false);
     co_return;
 }
 
@@ -565,6 +583,10 @@ int main(int argc, char** argv) {
             io.stop();
         });
 
+        // dv4 declared outside the if-block so it lives past io.run().
+        // If --chain mode is not used, this stays null (no-op).
+        std::shared_ptr<discv4::discv4_client> dv4;
+
         if (!config->bootnode_enodes.empty())
         {
             // --chain mode: use discv4 to find a real full node, then connect via RLPx
@@ -583,17 +605,21 @@ int main(int argc, char** argv) {
             std::copy(keypair.public_key.begin(), keypair.public_key.end(),
                       dv4_cfg.public_key.begin());
 
-            auto dv4 = std::make_shared<discv4::discv4_client>(io, dv4_cfg);
+            dv4 = std::make_shared<discv4::discv4_client>(io, dv4_cfg);
 
             // Capture config values needed in the callback
             const uint64_t   network_id   = config->network_id;
             const auto       genesis_hash = config->genesis_hash;
             const uint8_t    eth_offset   = config->eth_offset;
             const auto       watch_specs  = config->watch_specs;
-            auto connected = std::make_shared<std::atomic<bool>>(false);
+            auto connected    = std::make_shared<std::atomic<bool>>(false);
+            // Mirrors go-ethereum's dial history: suppresses re-dialing the same
+            // node for dialHistoryExpiration (35 s) after each attempt.
+            auto dial_history = std::make_shared<discv4::DialHistory>();
 
             dv4->set_peer_discovered_callback(
-                [&io, dv4, network_id, genesis_hash, eth_offset, watch_specs, connected]
+                [&io, network_id, genesis_hash, eth_offset, watch_specs,
+                 connected, dial_history]
                 (const discv4::DiscoveredPeer& peer)
                 {
                     // Validate public key before attempting connection
@@ -604,26 +630,33 @@ int main(int argc, char** argv) {
                         return;  // Skip peers with invalid pubkeys
                     }
 
-                    // Only attempt one successful connection at a time
+                    // Prune stale history, then skip nodes dialed recently.
+                    // Mirrors go-ethereum's checkDial() + startDial() pattern.
+                    dial_history->expire();
+                    if (dial_history->contains(peer.node_id))
+                    {
+                        return;
+                    }
+
+                    // Only one connection attempt in flight at a time.
                     if (connected->exchange(true))
                     {
                         return;
                     }
 
+                    // Record before spawning — same order as go-ethereum's startDial().
+                    dial_history->add(peer.node_id);
+
                     std::cout << "Discovered peer: " << peer.ip
                               << ":" << peer.tcp_port << " — connecting...\n";
 
-                    dv4->stop();
-
                     boost::asio::co_spawn(io,
-                        [&io, pubkey, peer, eth_offset, network_id, genesis_hash,
+                        [pubkey, peer, eth_offset, network_id, genesis_hash,
                          watch_specs, connected]() -> boost::asio::awaitable<void>
                         {
                             co_await run_watch(peer.ip, peer.tcp_port, pubkey,
                                                eth_offset, network_id, genesis_hash,
-                                               watch_specs);
-                            // Allow retry if this connection failed immediately
-                            connected->store(false);
+                                               watch_specs, connected);
                         },
                         boost::asio::detached);
                 });
@@ -679,7 +712,8 @@ int main(int argc, char** argv) {
                           config->eth_offset,
                           config->network_id,
                           config->genesis_hash,
-                          std::move(config->watch_specs)),
+                          std::move(config->watch_specs),
+                          std::make_shared<std::atomic<bool>>(true)),
                 boost::asio::detached);
         }
 
