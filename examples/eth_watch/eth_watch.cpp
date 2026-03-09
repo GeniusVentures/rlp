@@ -404,7 +404,7 @@ boost::asio::awaitable<void> run_watch(std::string host,
         if (!post_result) { return; }
     });
 
-    session->set_generic_handler([session, eth_offset, watch_svc](const rlpx::protocol::Message& msg) {
+    session->set_generic_handler([session, eth_offset, network_id, genesis_hash, watch_svc](const rlpx::protocol::Message& msg) {
         (void)session;
         static auto gh_log = rlp::base::createLogger("eth_watch");
         if (msg.id < eth_offset) {
@@ -417,14 +417,51 @@ boost::asio::awaitable<void> run_watch(std::string host,
 
         if (eth_id == eth::protocol::kStatusMessageId) {
             auto decoded = eth::protocol::decode_status(payload);
-            if (decoded) {
-                std::cout << "ETH STATUS: network_id=" << decoded.value().network_id
-                          << " protocol=" << static_cast<int>(decoded.value().protocol_version)
-                          << " latest_block=" << decoded.value().latest_block
-                          << "\n";
-            } else {
-                SPDLOG_LOGGER_WARN(gh_log, "generic_handler: ETH Status decode failed, payload_size={}", msg.payload.size());
+            if (!decoded) {
+                SPDLOG_LOGGER_WARN(gh_log, "generic_handler: ETH Status decode failed, payload_size={}, error={}",
+                                   msg.payload.size(), static_cast<int>(decoded.error()));
+                return;
             }
+            const auto& status = decoded.value();
+            // Accept any ETH version we advertise (66, 67, 68).
+            // go-ethereum validates status.ProtocolVersion == negotiated version;
+            // we don't yet track the negotiated version from HELLO so we accept
+            // any version in our advertised set and treat it as the negotiated one.
+            constexpr std::array<uint8_t, 3> kAdvertisedVersions = {68, 67, 66};
+            const bool version_ok = std::find(kAdvertisedVersions.begin(),
+                                              kAdvertisedVersions.end(),
+                                              status.protocol_version) != kAdvertisedVersions.end();
+            auto valid = version_ok
+                ? eth::protocol::validate_status(status, status.protocol_version,
+                                                 network_id, genesis_hash)
+                : eth::protocol::validate_status(status, 0 /* force mismatch */,
+                                                 network_id, genesis_hash);
+            if (!valid) {
+                using E = eth::StatusValidationError;
+                switch (valid.error()) {
+                case E::kProtocolVersionMismatch:
+                    SPDLOG_LOGGER_WARN(gh_log, "ETH Status: protocol version not supported (peer={})",
+                                       status.protocol_version);
+                    break;
+                case E::kNetworkIDMismatch:
+                    SPDLOG_LOGGER_WARN(gh_log, "ETH Status: network_id mismatch (peer={}, ours={})",
+                                       status.network_id, network_id);
+                    break;
+                case E::kGenesisMismatch:
+                    SPDLOG_LOGGER_WARN(gh_log, "ETH Status: genesis mismatch");
+                    break;
+                case E::kInvalidBlockRange:
+                    SPDLOG_LOGGER_WARN(gh_log, "ETH Status: invalid block range (earliest={} > latest={})",
+                                       status.earliest_block, status.latest_block);
+                    break;
+                }
+                session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
+                return;
+            }
+            SPDLOG_LOGGER_INFO(gh_log, "ETH Status: network_id={} protocol={} latest_block={}",
+                               status.network_id,
+                               static_cast<int>(status.protocol_version),
+                               status.latest_block);
             return;
         }
 

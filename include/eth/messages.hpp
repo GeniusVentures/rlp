@@ -30,6 +30,31 @@ using EncodeResult = rlp::EncodingResult<ByteBuffer>;
 template <typename T>
 using DecodeResult = rlp::Result<T>;
 
+/// @brief Result type for Status validation (void on success, error on mismatch).
+///        Uses boost::outcome with StatusValidationError — mirrors go-ethereum's
+///        readStatus() return values from eth/protocols/eth/handshake.go.
+using ValidationResult = rlp::outcome::result<void, eth::StatusValidationError,
+                                               rlp::outcome::policy::all_narrow>;
+
+/// @brief Validate a decoded StatusMessage against our expected chain parameters.
+///
+/// Mirrors go-ethereum's readStatus() checks (handshake.go):
+///   - ProtocolVersion must match @p expected_version
+///   - NetworkID must match @p expected_network_id
+///   - Genesis must match @p expected_genesis
+///   - EarliestBlock must be <= LatestBlock (when LatestBlock != 0)
+///
+/// @param msg              The decoded peer Status message.
+/// @param expected_version Negotiated ETH sub-protocol version (e.g. 68).
+/// @param expected_network_id  Our chain's network ID.
+/// @param expected_genesis     Our chain's genesis block hash.
+/// @return Success, or the first validation error encountered.
+[[nodiscard]] ValidationResult validate_status(
+    const eth::StatusMessage&  msg,
+    uint8_t                    expected_version,
+    uint64_t                   expected_network_id,
+    const eth::Hash256&        expected_genesis) noexcept;
+
 // STATUS
 [[nodiscard]] EncodeResult encode_status(const StatusMessage& msg) noexcept;
 [[nodiscard]] DecodeResult<StatusMessage> decode_status(rlp::ByteView rlp_data) noexcept;

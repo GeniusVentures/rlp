@@ -584,19 +584,12 @@ EncodeResult encode_status(const StatusMessage& msg) noexcept
     {
         return rlp::EncodingError::kPayloadTooLarge;
     }
-    if (!encoder.add(msg.total_difficulty))
-    {
-        return rlp::EncodingError::kPayloadTooLarge;
-    }
-    if (!encoder.add(rlp::ByteView(msg.best_hash.data(), msg.best_hash.size())))
-    {
-        return rlp::EncodingError::kPayloadTooLarge;
-    }
     if (!encoder.add(rlp::ByteView(msg.genesis_hash.data(), msg.genesis_hash.size())))
     {
         return rlp::EncodingError::kPayloadTooLarge;
     }
 
+    // ForkID as a nested list [hash, next]
     if (!encoder.BeginList())
     {
         return rlp::EncodingError::kUnclosedList;
@@ -612,6 +605,19 @@ EncodeResult encode_status(const StatusMessage& msg) noexcept
     if (!encoder.EndList())
     {
         return rlp::EncodingError::kUnclosedList;
+    }
+
+    if (!encoder.add(msg.earliest_block))
+    {
+        return rlp::EncodingError::kPayloadTooLarge;
+    }
+    if (!encoder.add(msg.latest_block))
+    {
+        return rlp::EncodingError::kPayloadTooLarge;
+    }
+    if (!encoder.add(rlp::ByteView(msg.latest_block_hash.data(), msg.latest_block_hash.size())))
+    {
+        return rlp::EncodingError::kPayloadTooLarge;
     }
 
     if (!encoder.EndList())
@@ -642,14 +648,6 @@ DecodeResult<StatusMessage> decode_status(rlp::ByteView rlp_data) noexcept
     {
         return rlp::DecodingError::kUnexpectedString;
     }
-    if (!decoder.read(msg.total_difficulty))
-    {
-        return rlp::DecodingError::kUnexpectedString;
-    }
-    if (!decoder.read(msg.best_hash))
-    {
-        return rlp::DecodingError::kUnexpectedLength;
-    }
     if (!decoder.read(msg.genesis_hash))
     {
         return rlp::DecodingError::kUnexpectedLength;
@@ -669,7 +667,37 @@ DecodeResult<StatusMessage> decode_status(rlp::ByteView rlp_data) noexcept
         return rlp::DecodingError::kUnexpectedString;
     }
 
+    if (!decoder.read(msg.earliest_block))
+    {
+        return rlp::DecodingError::kUnexpectedString;
+    }
+    if (!decoder.read(msg.latest_block))
+    {
+        return rlp::DecodingError::kUnexpectedString;
+    }
+    if (!decoder.read(msg.latest_block_hash))
+    {
+        return rlp::DecodingError::kUnexpectedLength;
+    }
+
     return msg;
+}
+
+ValidationResult validate_status(
+    const eth::StatusMessage&  msg,
+    uint8_t                    expected_version,
+    uint64_t                   expected_network_id,
+    const eth::Hash256&        expected_genesis) noexcept
+{
+    if (msg.protocol_version != expected_version)
+        return eth::StatusValidationError::kProtocolVersionMismatch;
+    if (msg.network_id != expected_network_id)
+        return eth::StatusValidationError::kNetworkIDMismatch;
+    if (msg.genesis_hash != expected_genesis)
+        return eth::StatusValidationError::kGenesisMismatch;
+    if (msg.latest_block != 0 && msg.earliest_block > msg.latest_block)
+        return eth::StatusValidationError::kInvalidBlockRange;
+    return rlp::outcome::success();
 }
 
 EncodeResult encode_new_block_hashes(const NewBlockHashesMessage& msg) noexcept
