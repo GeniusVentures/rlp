@@ -22,13 +22,25 @@ struct ForkId {
     uint64_t next_fork = 0;
 };
 
+/// @brief ETH status message (ETH/68 wire format).
+/// Field order matches go-ethereum's StatusPacket struct exactly.
 struct StatusMessage {
-    uint8_t protocol_version = 66;
-    uint64_t network_id = 0;
-    intx::uint256 total_difficulty{};
-    Hash256 best_hash{};
-    Hash256 genesis_hash{};
-    ForkId fork_id{};
+    uint8_t  protocol_version = 68;    ///< ETH sub-protocol version (68)
+    uint64_t network_id = 0;           ///< Chain network ID
+    Hash256  genesis_hash{};           ///< Genesis block hash
+    ForkId   fork_id{};                ///< EIP-2124 fork identifier
+    uint64_t earliest_block = 0;       ///< Earliest available block number
+    uint64_t latest_block = 0;         ///< Latest available block number (head)
+    Hash256  latest_block_hash{};      ///< Latest available block hash
+};
+
+/// @brief Errors returned by validate_status(), mirroring go-ethereum's
+///        readStatus error values from eth/protocols/eth/handshake.go.
+enum class StatusValidationError {
+    kProtocolVersionMismatch,  ///< status.ProtocolVersion != negotiated version
+    kNetworkIDMismatch,        ///< status.NetworkID != expected network ID
+    kGenesisMismatch,          ///< status.Genesis != our genesis hash
+    kInvalidBlockRange,        ///< status.EarliestBlock > status.LatestBlock
 };
 
 struct NewBlockHashEntry {
