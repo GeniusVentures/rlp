@@ -6,6 +6,7 @@
 #include "../rlpx_types.hpp"
 #include "../rlpx_error.hpp"
 #include "../auth/auth_keys.hpp"
+#include <memory>
 
 namespace rlpx::framing {
 
@@ -29,6 +30,8 @@ public:
     // Initialize with secrets from handshake
     explicit FrameCipher(const auth::FrameSecrets& secrets) noexcept;
 
+    ~FrameCipher();
+
     // Encrypt frame: returns [header || header_mac || frame || frame_mac]
     [[nodiscard]] FramingResult<ByteBuffer>
     encrypt_frame(const FrameEncryptParams& params) noexcept;
@@ -50,17 +53,17 @@ public:
     }
 
 private:
-    // Update rolling MAC state
+    // Update rolling MAC state — legacy stubs, logic now in FrameCipherImpl
     void update_egress_mac(ByteView data) noexcept;
     void update_ingress_mac(ByteView data) noexcept;
 
     [[nodiscard]] MacDigest compute_header_mac(ByteView header_ct) noexcept;
     [[nodiscard]] MacDigest compute_frame_mac(ByteView frame_ct) noexcept;
 
-    // Store secrets as member for grouped access
     auth::FrameSecrets secrets_;
-    MacDigest egress_mac_state_;
-    MacDigest ingress_mac_state_;
+
+    struct FrameCipherImpl;
+    std::unique_ptr<FrameCipherImpl> impl_;  ///< Pimpl for OpenSSL CTR and hashMAC state
 };
 
 } // namespace rlpx::framing

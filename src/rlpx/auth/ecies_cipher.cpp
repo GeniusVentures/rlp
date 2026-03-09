@@ -3,9 +3,9 @@
 
 #include <rlpx/auth/ecies_cipher.hpp>
 #include <rlpx/crypto/ecdh.hpp>
+#include <base/logger.hpp>
 #include <secp256k1.h>
 #include <openssl/evp.h>
-#include <openssl/aes.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <cstring>
@@ -14,229 +14,189 @@ namespace rlpx::auth {
 
 namespace {
 
-// Generate random IV for AES
-std::array<uint8_t, kAesBlockSize> generate_iv() noexcept {
-    std::array<uint8_t, kAesBlockSize> iv{};
-    RAND_bytes(iv.data(), static_cast<int>(iv.size()));
-    return iv;
+static rlp::base::Logger& ecies_log() {
+    static auto log = rlp::base::createLogger("rlpx.ecies");
+    return log;
 }
 
-// AES-256-CTR encryption
-ByteBuffer aes_encrypt(ByteView plaintext, ByteView key, ByteView iv) noexcept {
-    ByteBuffer ciphertext(plaintext.size());
-    
+/// go-ethereum ecies deriveKeys: concatKDF then hash Km.
+/// concatKDF(SHA256, z, nil, 32) = SHA256(0x00000001 || z) → 32 bytes
+/// Ke = result[0:16], Km_raw = result[16:32], Km = SHA256(Km_raw)
+struct EciesKeys {
+    std::array<uint8_t, 16> enc_key{};  ///< AES-128 encryption key
+    std::array<uint8_t, 32> mac_key{};  ///< HMAC key = SHA256(Km_raw)
+};
+
+EciesKeys derive_keys(const SharedSecret& shared_secret) noexcept {
+    // Step 1: concatKDF — SHA256(0x00000001 || z) → 32 bytes
+    uint8_t kdf_input[4 + kSharedSecretSize];
+    kdf_input[0] = 0x00;
+    kdf_input[1] = 0x00;
+    kdf_input[2] = 0x00;
+    kdf_input[3] = 0x01;
+    std::memcpy(kdf_input + 4, shared_secret.data(), kSharedSecretSize);
+
+    uint8_t kdf_out[32];
+    EVP_Digest(kdf_input, sizeof(kdf_input), kdf_out, nullptr, EVP_sha256(), nullptr);
+
+    EciesKeys keys;
+    // Ke = first 16 bytes
+    std::memcpy(keys.enc_key.data(), kdf_out, 16);
+    // Km = SHA256(kdf_out[16:32])  — go-ethereum deriveKeys hashes Km before use
+    EVP_Digest(kdf_out + 16, 16, keys.mac_key.data(), nullptr, EVP_sha256(), nullptr);
+    return keys;
+}
+
+/// AES-128-CTR encrypt/decrypt (symmetric).
+ByteBuffer aes128_ctr(ByteView data, const std::array<uint8_t, 16>& key, ByteView iv) noexcept {
+    ByteBuffer out(data.size());
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    if ( !ctx ) return {};
-    
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_ctr(), nullptr, key.data(), iv.data());
-    
+    if (!ctx) { return {}; }
+    EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), nullptr, key.data(), iv.data());
     int len = 0;
-    EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), 
-                     static_cast<int>(plaintext.size()));
-    
+    EVP_EncryptUpdate(ctx, out.data(), &len, data.data(), static_cast<int>(data.size()));
     EVP_CIPHER_CTX_free(ctx);
-    ciphertext.resize(static_cast<size_t>(len));
-    return ciphertext;
+    out.resize(static_cast<size_t>(len));
+    return out;
 }
 
-// AES-256-CTR decryption (same as encryption for CTR mode)
-ByteBuffer aes_decrypt(ByteView ciphertext, ByteView key, ByteView iv) noexcept {
-    return aes_encrypt(ciphertext, key, iv);
-}
-
-// HMAC-SHA256
+/// HMAC-SHA256(key, data) — key and data are arbitrary length.
 std::array<uint8_t, 32> hmac_sha256(ByteView key, ByteView data) noexcept {
     std::array<uint8_t, 32> mac{};
     unsigned int mac_len = 0;
-    
     HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
          data.data(), data.size(), mac.data(), &mac_len);
-    
     return mac;
 }
 
 } // anonymous namespace
 
+// ---------------------------------------------------------------------------
+// Public interface
+// ---------------------------------------------------------------------------
+
 AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) noexcept {
     // Generate ephemeral keypair
     secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-    if ( !ctx ) {
-        return AuthError::kEciesEncryptFailed;
+    if (!ctx) { return AuthError::kEciesEncryptFailed; }
+
+    PrivateKey ephemeral_priv{};
+    for (;;) {
+        RAND_bytes(ephemeral_priv.data(), static_cast<int>(ephemeral_priv.size()));
+        if (secp256k1_ec_seckey_verify(ctx, ephemeral_priv.data())) { break; }
     }
-        
-        PrivateKey ephemeral_private_key{};
-        RAND_bytes(ephemeral_private_key.data(), static_cast<int>(ephemeral_private_key.size()));
-        
-        secp256k1_pubkey ephemeral_public_key;
-        if ( !secp256k1_ec_pubkey_create(ctx, &ephemeral_public_key, ephemeral_private_key.data()) ) {
-            secp256k1_context_destroy(ctx);
-            return AuthError::kInvalidPublicKey;
-        }
-        
-        // Compute shared secret
-        auto shared_result = compute_shared_secret(params.recipient_public_key, 
-                                                   ephemeral_private_key);
-        if ( !shared_result ) {
-            secp256k1_context_destroy(ctx);
-            return shared_result.error();
-        }
-        
-        SharedSecret shared_secret = shared_result.value();
-        
-        // Derive encryption keys
-        AesKey aes_key = derive_aes_key(shared_secret);
-        MacKey mac_key = derive_mac_key(shared_secret);
-        
-        // Generate IV and encrypt
-        auto iv = generate_iv();
-        ByteBuffer ciphertext = aes_encrypt(params.plaintext, aes_key, iv);
-        
-        // Serialize ephemeral public key
-        PublicKey ephemeral_pub_serialized{};
-        size_t pub_len = ephemeral_pub_serialized.size();
-        secp256k1_ec_pubkey_serialize(ctx, ephemeral_pub_serialized.data(), &pub_len,
-                                     &ephemeral_public_key, SECP256K1_EC_UNCOMPRESSED);
-        
-        // Compute MAC over (IV || ciphertext || shared_mac_data)
-        ByteBuffer mac_input;
-        mac_input.reserve(iv.size() + ciphertext.size() + params.shared_mac_data.size());
-        mac_input.insert(mac_input.end(), iv.begin(), iv.end());
-        mac_input.insert(mac_input.end(), ciphertext.begin(), ciphertext.end());
-        mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
-        
-        auto mac = hmac_sha256(mac_key, mac_input);
-        
-        // Pack result: [ephemeral_public_key || iv || ciphertext || mac]
-        ByteBuffer result;
-        result.reserve(ephemeral_pub_serialized.size() + iv.size() + ciphertext.size() + mac.size());
-        result.insert(result.end(), ephemeral_pub_serialized.begin(), ephemeral_pub_serialized.end());
-        result.insert(result.end(), iv.begin(), iv.end());
-        result.insert(result.end(), ciphertext.begin(), ciphertext.end());
-        result.insert(result.end(), mac.begin(), mac.end());
-        
+
+    secp256k1_pubkey ephemeral_secp_pub;
+    if (!secp256k1_ec_pubkey_create(ctx, &ephemeral_secp_pub, ephemeral_priv.data())) {
+        ecies_log()->debug("encrypt: pubkey_create failed");
         secp256k1_context_destroy(ctx);
-        return result;
+        return AuthError::kInvalidPublicKey;
+    }
+
+    // Serialize ephemeral public key (65 bytes uncompressed)
+    std::array<uint8_t, kUncompressedPubKeySize> ephemeral_pub_bytes{};
+    size_t pub_len = kUncompressedPubKeySize;
+    secp256k1_ec_pubkey_serialize(ctx, ephemeral_pub_bytes.data(), &pub_len,
+                                  &ephemeral_secp_pub, SECP256K1_EC_UNCOMPRESSED);
+    secp256k1_context_destroy(ctx);
+
+    // ECDH: shared secret = x-coordinate of (ephemeral_priv * recipient_pub)
+    auto shared_result = compute_shared_secret(params.recipient_public_key, ephemeral_priv);
+    if (!shared_result) {
+        ecies_log()->debug("encrypt: compute_shared_secret failed (code {})",
+                           static_cast<int>(shared_result.error()));
+        return shared_result.error();
+    }
+
+    // Derive AES-128 + MAC-16 keys
+    const auto keys = derive_keys(shared_result.value());
+
+    // Generate random 16-byte IV
+    std::array<uint8_t, kAesBlockSize> iv{};
+    RAND_bytes(iv.data(), static_cast<int>(iv.size()));
+
+    // AES-128-CTR encrypt
+    const ByteBuffer ciphertext = aes128_ctr(params.plaintext, keys.enc_key, iv);
+
+    // MAC: HMAC-SHA256(mac_key, iv || ciphertext || shared_mac_data)
+    ByteBuffer mac_input;
+    mac_input.reserve(iv.size() + ciphertext.size() + params.shared_mac_data.size());
+    mac_input.insert(mac_input.end(), iv.begin(), iv.end());
+    mac_input.insert(mac_input.end(), ciphertext.begin(), ciphertext.end());
+    mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
+    const auto mac = hmac_sha256(ByteView(keys.mac_key.data(), keys.mac_key.size()), mac_input);
+
+    // Wire format: ephemeral_pub(65) || iv(16) || ciphertext(N) || mac(32)
+    ByteBuffer result;
+    result.reserve(ephemeral_pub_bytes.size() + iv.size() + ciphertext.size() + mac.size());
+    result.insert(result.end(), ephemeral_pub_bytes.begin(), ephemeral_pub_bytes.end());
+    result.insert(result.end(), iv.begin(), iv.end());
+    result.insert(result.end(), ciphertext.begin(), ciphertext.end());
+    result.insert(result.end(), mac.begin(), mac.end());
+    return result;
 }
 
 AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) noexcept {
-    // Parse message: [public_key(65) || iv(16) || ciphertext || mac(32)]
-    constexpr size_t kMinSize = 65 + 16 + 32;
-    if ( params.ciphertext.size() < kMinSize ) {
+    // Wire: ephemeral_pub(65) || iv(16) || ciphertext(N) || mac(32)
+    constexpr size_t kMinSize = kUncompressedPubKeySize + kAesBlockSize + 32; // +32 for mac
+    if (params.ciphertext.size() < kMinSize) {
         return AuthError::kEciesDecryptFailed;
     }
-        
-        ByteView ephemeral_public_key_data = params.ciphertext.subspan(0, 65);
-        ByteView iv = params.ciphertext.subspan(65, 16);
-        size_t ciphertext_len = params.ciphertext.size() - kMinSize;
-        ByteView ciphertext = params.ciphertext.subspan(81, ciphertext_len);
-        ByteView mac = params.ciphertext.subspan(81 + ciphertext_len, 32);
-        
-        // Parse ephemeral public key
-        secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
-        if ( !ctx ) {
-            return AuthError::kEciesDecryptFailed;
-        }
-        
-        secp256k1_pubkey ephemeral_public_key;
-        if ( !secp256k1_ec_pubkey_parse(ctx, &ephemeral_public_key, 
-                                       ephemeral_public_key_data.data(), 
-                                       ephemeral_public_key_data.size()) ) {
-            secp256k1_context_destroy(ctx);
-            return AuthError::kInvalidPublicKey;
-        }
-        
-        // Compute shared secret
-        PublicKey ephemeral_pub_key{};
-        std::memcpy(ephemeral_pub_key.data(), ephemeral_public_key_data.data(), 64);
-        
-        auto shared_result = compute_shared_secret(ephemeral_pub_key, 
-                                                   params.recipient_private_key);
-        if ( !shared_result ) {
-            secp256k1_context_destroy(ctx);
-            return shared_result.error();
-        }
-        
-        SharedSecret shared_secret = shared_result.value();
-        
-        // Derive encryption keys
-        AesKey aes_key = derive_aes_key(shared_secret);
-        MacKey mac_key = derive_mac_key(shared_secret);
-        
-        // Verify MAC
-        ByteBuffer mac_input;
-        mac_input.reserve(iv.size() + ciphertext.size() + params.shared_mac_data.size());
-        mac_input.insert(mac_input.end(), iv.begin(), iv.end());
-        mac_input.insert(mac_input.end(), ciphertext.begin(), ciphertext.end());
-        mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
-        
-        auto expected_mac = hmac_sha256(mac_key, mac_input);
-        if ( std::memcmp(mac.data(), expected_mac.data(), 32) != 0 ) {
-            secp256k1_context_destroy(ctx);
-            return AuthError::kEciesDecryptFailed;
-        }
-        
-        // Decrypt
-        ByteBuffer plaintext = aes_decrypt(ciphertext, aes_key, iv);
-        
-        secp256k1_context_destroy(ctx);
-        return plaintext;
+
+    const ByteView ephemeral_pub_bytes = params.ciphertext.subspan(0, kUncompressedPubKeySize);
+    const ByteView iv                  = params.ciphertext.subspan(kUncompressedPubKeySize, kAesBlockSize);
+    const size_t   ct_offset           = kUncompressedPubKeySize + kAesBlockSize;
+    const size_t   ct_len              = params.ciphertext.size() - kMinSize;
+    const ByteView ciphertext          = params.ciphertext.subspan(ct_offset, ct_len);
+    const ByteView mac                 = params.ciphertext.subspan(ct_offset + ct_len, 32);
+
+    // Parse ephemeral public key (skip 0x04 prefix)
+    PublicKey ephemeral_pub{};
+    std::memcpy(ephemeral_pub.data(),
+                ephemeral_pub_bytes.data() + kUncompressedPubKeyPrefixSize,
+                kPublicKeySize);
+
+    // ECDH
+    auto shared_result = compute_shared_secret(ephemeral_pub, params.recipient_private_key);
+    if (!shared_result) { return shared_result.error(); }
+
+    const auto keys = derive_keys(shared_result.value());
+
+    // Verify MAC
+    ByteBuffer mac_input;
+    mac_input.reserve(iv.size() + ciphertext.size() + params.shared_mac_data.size());
+    mac_input.insert(mac_input.end(), iv.begin(), iv.end());
+    mac_input.insert(mac_input.end(), ciphertext.begin(), ciphertext.end());
+    mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
+    const auto expected_mac = hmac_sha256(ByteView(keys.mac_key.data(), keys.mac_key.size()), mac_input);
+
+    if (std::memcmp(mac.data(), expected_mac.data(), 32) != 0) {
+        ecies_log()->debug("decrypt: MAC mismatch");
+        return AuthError::kEciesDecryptFailed;
+    }
+
+    return aes128_ctr(ciphertext, keys.enc_key, iv);
 }
 
 size_t EciesCipher::estimate_encrypted_size(size_t plaintext_size) noexcept {
-    return 65 + 16 + plaintext_size + 32; // pubkey + iv + ciphertext + mac
+    return kUncompressedPubKeySize + kAesBlockSize + plaintext_size + 32;
 }
 
 AuthResult<SharedSecret> EciesCipher::compute_shared_secret(
     gsl::span<const uint8_t, kPublicKeySize> public_key,
     gsl::span<const uint8_t, kPrivateKeySize> private_key
 ) noexcept {
-    // Use the existing ECDH implementation
     auto result = rlpx::crypto::Ecdh::compute_shared_secret(public_key, private_key);
-    if (!result) {
-        // Convert CryptoError to AuthError
-        return AuthError::kSharedSecretFailed;
-    }
+    if (!result) { return AuthError::kSharedSecretFailed; }
     return result.value();
 }
 
-AesKey EciesCipher::derive_aes_key(ByteView shared_secret) noexcept {
-    // NIST SP 800-56 Concatenation KDF for AES key
-    AesKey key{};
-    
-    // Simple KDF: SHA256(0x00000001 || shared_secret)
-    ByteBuffer input;
-    input.reserve(4 + shared_secret.size());
-    input.push_back(0x00);
-    input.push_back(0x00);
-    input.push_back(0x00);
-    input.push_back(0x01);
-    input.insert(input.end(), shared_secret.begin(), shared_secret.end());
-    
-    unsigned char hash[32];
-    EVP_Digest(input.data(), input.size(), hash, nullptr, EVP_sha256(), nullptr);
-    
-    std::memcpy(key.data(), hash, kAesKeySize);
-    return key;
+AesKey EciesCipher::derive_aes_key(ByteView /*shared_secret*/) noexcept {
+    return AesKey{};  // Not used — derive_keys() handles both keys together
 }
 
-MacKey EciesCipher::derive_mac_key(ByteView shared_secret) noexcept {
-    // NIST SP 800-56 Concatenation KDF for MAC key
-    MacKey key{};
-    
-    // Simple KDF: SHA256(0x00000002 || shared_secret)
-    ByteBuffer input;
-    input.reserve(4 + shared_secret.size());
-    input.push_back(0x00);
-    input.push_back(0x00);
-    input.push_back(0x00);
-    input.push_back(0x02);
-    input.insert(input.end(), shared_secret.begin(), shared_secret.end());
-    
-    unsigned char hash[32];
-    EVP_Digest(input.data(), input.size(), hash, nullptr, EVP_sha256(), nullptr);
-    
-    std::memcpy(key.data(), hash, kMacKeySize);
-    return key;
+MacKey EciesCipher::derive_mac_key(ByteView /*shared_secret*/) noexcept {
+    return MacKey{};  // Not used — derive_keys() handles both keys together
 }
 
 } // namespace rlpx::auth

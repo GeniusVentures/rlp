@@ -103,6 +103,20 @@ target_include_directories(rlpx_socket_lifecycle_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# Handshake key derivation vectors test (go-ethereum compatible)
+add_executable(rlpx_handshake_vectors_tests
+    ${CMAKE_CURRENT_LIST_DIR}/handshake_vectors_test.cpp
+)
+
+target_link_libraries(rlpx_handshake_vectors_tests PRIVATE
+    rlpx
+    GTest::gtest_main
+)
+
+target_include_directories(rlpx_handshake_vectors_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # Add tests to CTest
 include(GoogleTest)
 gtest_discover_tests(rlpx_crypto_tests)
@@ -112,3 +126,4 @@ gtest_discover_tests(rlpx_session_tests)
 gtest_discover_tests(rlpx_state_tests)
 gtest_discover_tests(rlpx_message_routing_tests)
 gtest_discover_tests(rlpx_socket_lifecycle_tests)
+gtest_discover_tests(rlpx_handshake_vectors_tests)

@@ -14,6 +14,8 @@ target_link_libraries(eth_watch
     PRIVATE
     rlpx
     rlp
+    discv4
+    logger
     Boost::boost
     Boost::json
 )

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <rlpx/crypto/ecdh.hpp>
+#include <base/logger.hpp>
 #include <secp256k1.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
@@ -17,6 +18,11 @@ namespace {
         );
         return ctx;
     }
+
+    rlp::base::Logger& ecdh_log() {
+        static auto log = rlp::base::createLogger("rlpx.ecdh");
+        return log;
+    }
 }
 
 CryptoResult<SharedSecret> Ecdh::compute_shared_secret(
@@ -30,57 +36,42 @@ CryptoResult<SharedSecret> Ecdh::compute_shared_secret(
 
     // Verify private key is valid
     if ( !secp256k1_ec_seckey_verify(ctx, private_key.data()) ) {
+        ecdh_log()->debug("compute_shared_secret: secp256k1_ec_seckey_verify failed");
         return CryptoError::kInvalidPrivateKey;
     }
 
-    // Parse public key (uncompressed format: 0x04 + 64 bytes)
+    // Parse public key (uncompressed format: 0x04 prefix + 64 bytes = kUncompressedPubKeySize)
     secp256k1_pubkey parsed_pubkey;
     
-    // Add 0x04 prefix for uncompressed format
-    std::array<uint8_t, 65> pubkey_with_prefix;
-    pubkey_with_prefix[0] = 0x04;
-    std::memcpy(pubkey_with_prefix.data() + 1, public_key.data(), kPublicKeySize);
-    
-    if ( !secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey_with_prefix.data(), 65) ) {
+    std::array<uint8_t, kUncompressedPubKeySize> pubkey_with_prefix;
+    pubkey_with_prefix[0] = kUncompressedPubKeyPrefix;
+    std::memcpy(pubkey_with_prefix.data() + kUncompressedPubKeyPrefixSize, public_key.data(), kPublicKeySize);
+
+    if ( !secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey_with_prefix.data(), kUncompressedPubKeySize) ) {
+        ecdh_log()->debug("compute_shared_secret: secp256k1_ec_pubkey_parse failed");
         return CryptoError::kInvalidPublicKey;
     }
 
     // Compute ECDH shared point
     SharedSecret shared_secret;
     
-    // Custom hash function that returns the x-coordinate directly
-    auto ecdh_hash_function = [](
-        unsigned char* output,
-        const unsigned char* x32,
-        const unsigned char* y32,
-        void* data
-    ) -> int {
-        (void)y32;  // Unused
-        (void)data; // Unused
-        // Return x-coordinate as shared secret
-        std::memcpy(output, x32, 32);
-        return 1;
-    };
-
-    // secp256k1_ecdh is not available in all builds, compute manually:
-    // shared_secret = SHA256(pubkey_point * private_key)
-    // The ecdh_hash_function above extracts the x-coordinate
-    
     // Compute pubkey * privkey using secp256k1_ec_pubkey_tweak_mul equivalent
     secp256k1_pubkey result_pubkey = parsed_pubkey;
     if ( !secp256k1_ec_pubkey_tweak_mul(ctx, &result_pubkey, private_key.data()) ) {
+        ecdh_log()->debug("compute_shared_secret: secp256k1_ec_pubkey_tweak_mul failed");
         return CryptoError::kEcdhFailed;
     }
     
-    // Serialize the result (uncompressed format: 04 || x || y)
-    unsigned char serialized[65];
-    size_t output_len = 65;
+    // Serialize the result (uncompressed format: 0x04 || x || y = kUncompressedPubKeySize bytes)
+    unsigned char serialized[kUncompressedPubKeySize];
+    size_t output_len = kUncompressedPubKeySize;
     if ( !secp256k1_ec_pubkey_serialize(ctx, serialized, &output_len, &result_pubkey, SECP256K1_EC_UNCOMPRESSED) ) {
+        ecdh_log()->debug("compute_shared_secret: secp256k1_ec_pubkey_serialize failed");
         return CryptoError::kEcdhFailed;
     }
     
-    // Extract x-coordinate (bytes 1-32, skipping the 0x04 prefix)
-    std::memcpy(shared_secret.data(), serialized + 1, 32);
+    // Extract x-coordinate (bytes after 0x04 prefix, skipping kUncompressedPubKeyPrefixSize byte)
+    std::memcpy(shared_secret.data(), serialized + kUncompressedPubKeyPrefixSize, kSharedSecretSize);
 
     return shared_secret;
 }
@@ -112,9 +103,9 @@ CryptoResult<Ecdh::KeyPair> Ecdh::generate_ephemeral_keypair() noexcept {
         return CryptoError::kSecp256k1Error;
     }
 
-    // Serialize public key in uncompressed format
-    std::array<uint8_t, 65> serialized;
-    size_t output_len = 65;
+    // Serialize public key in uncompressed format (kUncompressedPubKeySize bytes)
+    std::array<uint8_t, kUncompressedPubKeySize> serialized;
+    size_t output_len = kUncompressedPubKeySize;
     if ( !secp256k1_ec_pubkey_serialize(
             ctx,
             serialized.data(),
@@ -125,8 +116,8 @@ CryptoResult<Ecdh::KeyPair> Ecdh::generate_ephemeral_keypair() noexcept {
         return CryptoError::kSecp256k1Error;
     }
 
-    // Copy public key (skip 0x04 prefix)
-    std::memcpy(keypair.public_key.data(), serialized.data() + 1, kPublicKeySize);
+    // Copy public key (skip 0x04 prefix byte)
+    std::memcpy(keypair.public_key.data(), serialized.data() + kUncompressedPubKeyPrefixSize, kPublicKeySize);
 
     return keypair;
 }
@@ -138,12 +129,12 @@ bool Ecdh::verify_public_key(gsl::span<const uint8_t, kPublicKeySize> public_key
     }
 
     // Add 0x04 prefix for uncompressed format
-    std::array<uint8_t, 65> pubkey_with_prefix;
-    pubkey_with_prefix[0] = 0x04;
-    std::memcpy(pubkey_with_prefix.data() + 1, public_key.data(), kPublicKeySize);
+    std::array<uint8_t, kUncompressedPubKeySize> pubkey_with_prefix;
+    pubkey_with_prefix[0] = kUncompressedPubKeyPrefix;
+    std::memcpy(pubkey_with_prefix.data() + kUncompressedPubKeyPrefixSize, public_key.data(), kPublicKeySize);
 
     secp256k1_pubkey parsed_pubkey;
-    return secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey_with_prefix.data(), 65) == 1;
+    return secp256k1_ec_pubkey_parse(ctx, &parsed_pubkey, pubkey_with_prefix.data(), kUncompressedPubKeySize) == 1;
 }
 
 } // namespace rlpx::crypto

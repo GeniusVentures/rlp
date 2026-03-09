@@ -3,6 +3,7 @@
 #define RLP_PEERDISCOVERY_discv4_PING_HPP
 
 #include "discv4/discv4_packet.hpp"
+#include "discv4/discv4_constants.hpp"
 #include "rlp/rlp_encoder.hpp"
 
 namespace discv4 {
@@ -60,10 +61,10 @@ private:
 public:
     discv4_ping( const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
                 const std::string& toIp, uint16_t tUdp, uint16_t tTcp )
-        : discv4_packet( 0x01, 0x04, "Ping" ),
+        : discv4_packet( kPacketTypePing, kProtocolVersion, "Ping" ),
           fromEp( fromIp, fUdp, fTcp ), toEp( toIp, tUdp, tTcp )
     {
-        expires = static_cast<uint32_t>( std::time( nullptr ) ) + 60;
+        expires = static_cast<uint32_t>( std::time( nullptr ) ) + kPacketExpirySeconds;
     }
 
     // Implement base methods

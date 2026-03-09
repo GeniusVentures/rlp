@@ -18,6 +18,7 @@ target_include_directories(discv4 PUBLIC
 target_link_libraries(discv4 PUBLIC
         Boost::boost
         libsecp256k1::secp256k1
+        logger
 )
 
 # Ensure C++17 standard

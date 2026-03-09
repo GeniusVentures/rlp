@@ -21,21 +21,23 @@ CryptoResult<ByteBuffer> Kdf::derive(
     ByteBuffer output;
     output.reserve(key_data_len);
 
-    // Counter starts at 1 (big-endian 32-bit)
+    // Counter starts at 1 (big-endian 32-bit = 4 bytes)
+    static constexpr size_t   kCounterSize    = sizeof(uint32_t);
+    static constexpr uint32_t kMaxIterations  = 1000U; ///< Prevents infinite loop on pathological inputs
     uint32_t counter = 1;
     size_t hash_len = SHA256_DIGEST_LENGTH;
     
     while ( output.size() < key_data_len ) {
         // Create hash input: counter || shared_secret || shared_info
         ByteBuffer hash_input;
-        hash_input.reserve(4 + shared_secret.size() + shared_info.size());
-        
+        hash_input.reserve(kCounterSize + shared_secret.size() + shared_info.size());
+
         // Add counter (big-endian)
-        hash_input.push_back(static_cast<uint8_t>((counter >> 24) & 0xFF));
-        hash_input.push_back(static_cast<uint8_t>((counter >> 16) & 0xFF));
-        hash_input.push_back(static_cast<uint8_t>((counter >> 8) & 0xFF));
-        hash_input.push_back(static_cast<uint8_t>(counter & 0xFF));
-        
+        hash_input.push_back(static_cast<uint8_t>((counter >> 24U) & 0xFFU));
+        hash_input.push_back(static_cast<uint8_t>((counter >> 16U) & 0xFFU));
+        hash_input.push_back(static_cast<uint8_t>((counter >>  8U) & 0xFFU));
+        hash_input.push_back(static_cast<uint8_t>( counter         & 0xFFU));
+
         // Add shared secret
         hash_input.insert(hash_input.end(), shared_secret.begin(), shared_secret.end());
         
@@ -56,8 +58,8 @@ CryptoResult<ByteBuffer> Kdf::derive(
         
         counter++;
         
-        // Prevent infinite loop
-        if ( counter > 1000 ) {
+        // Prevent infinite loop on pathological inputs
+        if ( counter > kMaxIterations ) {
             return CryptoError::kKdfFailed;
         }
     }

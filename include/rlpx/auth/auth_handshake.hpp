@@ -6,6 +6,7 @@
 #include "../rlpx_types.hpp"
 #include "../rlpx_error.hpp"
 #include "auth_keys.hpp"
+#include "../socket/socket_transport.hpp"
 #include <boost/asio/awaitable.hpp>
 
 namespace rlpx::auth {
@@ -14,12 +15,19 @@ namespace rlpx::auth {
 template<typename T>
 using Awaitable = boost::asio::awaitable<T>;
 
+/// Plain RLPx v4 fixed wire sizes (ECIES overhead + plaintext)
+/// auth plaintext  = sig(65) + eph_hash(32) + pubkey(64) + nonce(32) + ver(1) = 194
+/// ECIES overhead  = pubkey(65) + iv(16) + mac(32) = 113
+static constexpr size_t kAuthSize = 307; ///< ECIES( 194-byte auth body )
+/// ack plaintext   = eph_pubkey(64) + nonce(32) + ver(1) = 97
+static constexpr size_t kAckSize  = 210; ///< ECIES( 97-byte ack body )
+
 // Handshake configuration parameters
 struct HandshakeConfig {
-    gsl::span<const uint8_t, kPublicKeySize> local_public_key;
-    gsl::span<const uint8_t, kPrivateKeySize> local_private_key;
-    std::string_view client_id;
-    uint16_t listen_port;
+    PublicKey        local_public_key{};
+    PrivateKey       local_private_key{};
+    std::string      client_id;
+    uint16_t         listen_port = 0;
     // Optional for initiator (outbound), empty for recipient (inbound)
     std::optional<PublicKey> peer_public_key;
 };
@@ -30,7 +38,8 @@ struct HandshakeResult {
     FrameSecrets frame_secrets;
     std::string peer_client_id;
     uint16_t peer_listen_port;
-    
+    std::optional<socket::SocketTransport> transport; ///< Socket to hand off to MessageStream after handshake
+
     // Grouped access to crypto material
     [[nodiscard]] const AuthKeyMaterial& keys() const noexcept { 
         return key_material; 
@@ -44,7 +53,11 @@ struct HandshakeResult {
 // Authentication handshake coordinator
 class AuthHandshake {
 public:
-    explicit AuthHandshake(const HandshakeConfig& config) noexcept;
+    /// @brief Construct handshake with config and an already-connected transport.
+    /// @param config   Crypto config (keys, peer pubkey, client id).
+    /// @param transport  Connected TCP socket — ownership transferred in.
+    explicit AuthHandshake(const HandshakeConfig& config,
+                           socket::SocketTransport transport) noexcept;
 
     // Execute full handshake (auth + hello exchange)
     // Socket operations handled via internal abstraction
@@ -56,6 +69,13 @@ public:
         return config_.peer_public_key.has_value(); 
     }
 
+    /// @brief Derive RLPx frame secrets from authenticated handshake key material.
+    /// @param keys         All ECDH, nonce, and wire bytes collected during the handshake.
+    /// @param is_initiator True for the connection initiator, false for the responder.
+    /// @return FrameSecrets containing AES/MAC keys and MAC seed byte strings.
+    [[nodiscard]] static FrameSecrets
+    derive_frame_secrets(const AuthKeyMaterial& keys, bool is_initiator) noexcept;
+
 private:
     // Internal auth phase (sends/receives auth messages)
     [[nodiscard]] Awaitable<AuthResult<AuthKeyMaterial>>
@@ -65,12 +85,18 @@ private:
     [[nodiscard]] Awaitable<Result<void>>
     exchange_hello(ByteView aes_key, ByteView mac_key) noexcept;
 
-    // Derive frame secrets from auth keys
-    [[nodiscard]] static FrameSecrets
-    derive_frame_secrets(const AuthKeyMaterial& keys, bool is_initiator) noexcept;
 
     HandshakeConfig config_;
-    // Socket abstraction injected via executor context
+    socket::SocketTransport transport_;
+    // Socket abstraction injected via constructor
 };
+
+/// @brief Derive RLPx frame secrets from authenticated handshake key material.
+/// @details Exposed as a free function for unit testing against go-ethereum test vectors.
+/// @param keys         All ECDH, nonce, and wire bytes collected during the handshake.
+/// @param is_initiator True for the connection initiator (dialer), false for the responder.
+/// @return FrameSecrets containing AES/MAC keys and MAC seed byte strings.
+[[nodiscard]] FrameSecrets
+derive_frame_secrets(const AuthKeyMaterial& keys, bool is_initiator) noexcept;
 
 } // namespace rlpx::auth

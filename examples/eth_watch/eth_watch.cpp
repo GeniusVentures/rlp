@@ -17,15 +17,18 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include <eth/messages.hpp>
 #include <eth/eth_watch_service.hpp>
 #include <eth/eth_watch_cli.hpp>
 #include <discv4/bootnodes.hpp>
 #include <discv4/bootnodes_test.hpp>
+#include <discv4/discv4_client.hpp>
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/rlpx_error.hpp>
 #include <rlpx/rlpx_session.hpp>
+#include <base/logger.hpp>
 
 namespace {
 
@@ -35,6 +38,11 @@ struct Config {
     std::string peer_pubkey_hex;
     uint8_t eth_offset = 0x10;
     std::vector<eth::cli::WatchSpec> watch_specs;
+    // ETH Status fields — must match the target chain
+    uint64_t network_id = 1;
+    eth::Hash256 genesis_hash{};
+    // Discovery — set when --chain is used; empty when explicit host/port/pubkey given
+    std::vector<std::string> bootnode_enodes;
 };
 
 std::optional<uint8_t> hex_to_nibble(char c) {
@@ -125,85 +133,71 @@ std::optional<Config> parse_enode(std::string_view enode) {
     return cfg;
 }
 
-std::optional<Config> load_bootnode_for_chain(std::string_view chain) {
-    // Ethereum Mainnet
-    if (chain == "mainnet") {
-        if (ETHEREUM_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_MAINNET_BOOTNODES.front());
-    }
+// ---------------------------------------------------------------------------
+// Chain registry — all per-chain constants in one place.
+// Adding a new chain requires only one new entry in the map inside
+// load_chain_config below.
+// ---------------------------------------------------------------------------
 
-    // Ethereum Sepolia Testnet
-    if (chain == "sepolia") {
-        if (ETHEREUM_SEPOLIA_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_SEPOLIA_BOOTNODES.front());
+/// @brief Decode a 64-char hex literal into a Hash256.
+static eth::Hash256 hash_from_hex(const char* hex)
+{
+    eth::Hash256 out{};
+    for (size_t i = 0; i < 32; ++i)
+    {
+        const auto hi = hex_to_nibble(hex[(i * 2)]).value_or(0);
+        const auto lo = hex_to_nibble(hex[(i * 2) + 1]).value_or(0);
+        out.at(i) = static_cast<uint8_t>((hi << 4) | lo);
     }
-
-    // Ethereum Holesky Testnet
-    if (chain == "holesky") {
-        if (ETHEREUM_HOLESKY_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(ETHEREUM_HOLESKY_BOOTNODES.front());
-    }
-
-    // Polygon PoS Mainnet
-    if (chain == "polygon") {
-        if (POLYGON_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(POLYGON_MAINNET_BOOTNODES.front());
-    }
-
-    // Polygon Amoy Testnet
-    if (chain == "polygon-amoy") {
-        if (POLYGON_AMOY_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(POLYGON_AMOY_BOOTNODES.front());
-    }
-
-    // BSC Mainnet (Note: uses port 30311)
-    if (chain == "bsc" || chain == "bsc-mainnet") {
-        if (BSC_MAINNET_BOOTNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(BSC_MAINNET_BOOTNODES.front());
-    }
-
-    // BSC Testnet (Note: uses port 30311)
-    if (chain == "bsc-testnet") {
-        if (BSC_TESTNET_STATICNODES.empty()) {
-            return std::nullopt;
-        }
-        return parse_enode(BSC_TESTNET_STATICNODES.front());
-    }
-
-    // Base Mainnet
-    if (chain == "base") {
-        if (BASE_MAINNET_BOOTNODES.empty()) {
-            std::cout << "Base mainnet bootnodes not yet configured.\n"
-                      << "Base uses OP Stack discovery - see https://docs.base.org/base-chain/node-operators/run-a-base-node\n";
-            return std::nullopt;
-        }
-        return parse_enode(BASE_MAINNET_BOOTNODES.front());
-    }
-
-    // Base Sepolia Testnet
-    if (chain == "base-sepolia") {
-        if (BASE_SEPOLIA_BOOTNODES.empty()) {
-            std::cout << "Base Sepolia bootnodes not yet configured.\n"
-                      << "Base uses OP Stack discovery - see https://docs.base.org/base-chain/node-operators/run-a-base-node\n";
-            return std::nullopt;
-        }
-        return parse_enode(BASE_SEPOLIA_BOOTNODES.front());
-    }
-
-    return std::nullopt;
+    return out;
 }
+
+struct ChainEntry
+{
+    const std::vector<std::string>* bootnodes;
+    uint64_t                        network_id;
+    const char*                     genesis_hex;
+};
+
+/// @brief Look up chain config by name
+std::optional<Config> load_chain_config(std::string_view chain_name)
+{
+    static const std::unordered_map<std::string, ChainEntry> kChains = {
+        { "mainnet",      ChainEntry{ &ETHEREUM_MAINNET_BOOTNODES, 1,        "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" } },
+        { "sepolia",      ChainEntry{ &ETHEREUM_SEPOLIA_BOOTNODES, 11155111, "25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9" } },
+        { "holesky",      ChainEntry{ &ETHEREUM_HOLESKY_BOOTNODES, 17000,    "b5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4" } },
+        { "polygon",      ChainEntry{ &POLYGON_MAINNET_BOOTNODES,  137,      "a9c28ce2141b56c474f1dc504bee9b01eb1bd7d1a507580d5519d4437a97de1b" } },
+        { "polygon-amoy", ChainEntry{ &POLYGON_AMOY_BOOTNODES,     80002,    "0000000000000000000000000000000000000000000000000000000000000000" } },
+        { "bsc",          ChainEntry{ &BSC_MAINNET_BOOTNODES,      56,       "0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b" } },
+        { "bsc-testnet",  ChainEntry{ &BSC_TESTNET_STATICNODES,    97,       "6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe10" } },
+        { "base",         ChainEntry{ &BASE_MAINNET_BOOTNODES,     8453,     "f712aa9241cc24369b143cf6dce85f0902a9731e70d66818a3a5845b296c73dd" } },
+        { "base-sepolia", ChainEntry{ &BASE_SEPOLIA_BOOTNODES,     84532,    "0dcc9e089e30b90ddfc55be9a37dd15bc551aeee999d2e2b51414c54eaf934e4" } },
+    };
+
+    const auto it = kChains.find(std::string(chain_name));
+    if (it == kChains.end())
+    {
+        return std::nullopt;
+    }
+
+    const auto& entry = it->second;
+    if (entry.bootnodes->empty())
+    {
+        std::cout << "No bootnodes configured for chain: " << chain_name << "\n";
+        return std::nullopt;
+    }
+
+    Config cfg;
+    cfg.network_id   = entry.network_id;
+    cfg.genesis_hash = hash_from_hex(entry.genesis_hex);
+    // Store all bootnodes for discv4 — host/port/pubkey filled in after discovery
+    for (const auto& bn : *entry.bootnodes)
+    {
+        cfg.bootnode_enodes.push_back(bn);
+    }
+    return cfg;
+}
+
 
 void print_usage(const char* exe) {
     std::cout << "Usage:\n"
@@ -219,7 +213,7 @@ void print_usage(const char* exe) {
               << "\nAvailable chains:\n"
               << "  Ethereum: mainnet, sepolia, holesky\n"
               << "  Polygon:  polygon, polygon-amoy\n"
-              << "  BSC:      bsc (or bsc-mainnet), bsc-testnet\n"
+              << "  BSC:      bsc, bsc-testnet\n"
               << "  Base:     base, base-sepolia\n";
 }
 
@@ -227,6 +221,8 @@ boost::asio::awaitable<void> run_watch(std::string host,
                                        uint16_t port,
                                        rlpx::PublicKey peer_pubkey,
                                        uint8_t eth_offset,
+                                       uint64_t network_id,
+                                       eth::Hash256 genesis_hash,
                                        std::vector<eth::cli::WatchSpec> watch_specs)
 {
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
@@ -288,13 +284,13 @@ boost::asio::awaitable<void> run_watch(std::string host,
             contract = *addr;
         }
 
-        const auto params = eth::cli::infer_params(spec.event_signature);
+        const auto abi_params = eth::cli::infer_params(spec.event_signature);
         const std::string sig_copy = spec.event_signature;
 
         watch_svc->watch_event(
             contract,
             spec.event_signature,
-            params,
+            abi_params,
             [sig_copy](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
             {
                 std::cout << sig_copy << " at block " << ev.block_number << "\n";
@@ -346,22 +342,22 @@ boost::asio::awaitable<void> run_watch(std::string host,
         }
     });
 
-    session->set_hello_handler([session](const rlpx::protocol::HelloMessage& msg) {
+    session->set_hello_handler([session, network_id, genesis_hash, eth_offset](const rlpx::protocol::HelloMessage& msg) {
         std::cout << "HELLO from peer: " << msg.client_id << "\n";
 
         eth::StatusMessage status{
             .protocol_version = 68,
-            .network_id = 1,
+            .network_id = network_id,
             .total_difficulty = intx::uint256(0),
-            .best_hash = {},
-            .genesis_hash = {},
+            .best_hash = genesis_hash,
+            .genesis_hash = genesis_hash,
             .fork_id = {}
         };
 
         auto encoded = eth::protocol::encode_status(status);
         if (encoded) {
             const auto post_result = session->post_message(rlpx::framing::Message{
-                .id = 0x00,
+                .id = static_cast<uint8_t>(eth_offset + eth::protocol::kStatusMessageId),
                 .payload = std::move(encoded.value())
             });
             if (!post_result) {
@@ -450,6 +446,26 @@ int main(int argc, char** argv) {
             return 1;
         }
 
+        // Parse --log-level first so it takes effect before any loggers are created
+        for (int i = 1; i < argc - 1; ++i)
+        {
+            if (std::string_view(argv[i]) == "--log-level")
+            {
+                const std::string_view level_str(argv[i + 1]);
+                spdlog::level::level_enum lvl = spdlog::level::info;
+                if      (level_str == "trace")    { lvl = spdlog::level::trace; }
+                else if (level_str == "debug")    { lvl = spdlog::level::debug; }
+                else if (level_str == "info")     { lvl = spdlog::level::info; }
+                else if (level_str == "warn")     { lvl = spdlog::level::warn; }
+                else if (level_str == "error")    { lvl = spdlog::level::err; }
+                else if (level_str == "critical") { lvl = spdlog::level::critical; }
+                else if (level_str == "off")      { lvl = spdlog::level::off; }
+                spdlog::set_level(lvl);
+                spdlog::apply_all([lvl](std::shared_ptr<spdlog::logger> l) { l->set_level(lvl); });
+                break;
+            }
+        }
+
         std::optional<Config> config;
         int next_arg = 1;
 
@@ -459,9 +475,10 @@ int main(int argc, char** argv) {
                 return 1;
             }
             const std::string chain_name = argv[next_arg + 1];
-            config = load_bootnode_for_chain(chain_name);
+            config = load_chain_config(chain_name);
             if (!config) {
-                std::cout << "Failed to load bootnode for chain: " << chain_name << "\n";
+                std::cout << "Unknown or unconfigured chain: " << chain_name << "\n"
+                          << "Available: mainnet, sepolia, holesky, polygon, polygon-amoy, bsc, bsc-testnet, base, base-sepolia\n";
                 return 1;
             }
             next_arg += 2;
@@ -516,17 +533,30 @@ int main(int argc, char** argv) {
                 config->watch_specs.push_back(std::move(spec));
                 pending_contract.clear();
                 next_arg += 2;
+            } else if (arg == "--log-level") {
+                if (next_arg + 1 >= argc) {
+                    std::cout << "--log-level requires a level argument (trace, debug, info, warn, error, critical, off).\n";
+                    return 1;
+                }
+                const std::string_view level_str(argv[next_arg + 1]);
+                if (level_str == "trace")         { spdlog::set_level(spdlog::level::trace); }
+                else if (level_str == "debug")    { spdlog::set_level(spdlog::level::debug); }
+                else if (level_str == "info")     { spdlog::set_level(spdlog::level::info); }
+                else if (level_str == "warn")     { spdlog::set_level(spdlog::level::warn); }
+                else if (level_str == "error")    { spdlog::set_level(spdlog::level::err); }
+                else if (level_str == "critical") { spdlog::set_level(spdlog::level::critical); }
+                else if (level_str == "off")      { spdlog::set_level(spdlog::level::off); }
+                else
+                {
+                    std::cout << "Unknown log level: " << level_str << "\n";
+                    return 1;
+                }
+                next_arg += 2;
             } else {
                 std::cout << "Unknown argument: " << arg << "\n";
                 print_usage(argv[0]);
                 return 1;
             }
-        }
-
-        rlpx::PublicKey peer_pubkey{};
-        if (!parse_hex_array(config->peer_pubkey_hex, peer_pubkey)) {
-            std::cout << "Invalid peer public key hex (expected 128 hex chars).\n";
-            return 1;
         }
 
         boost::asio::io_context io;
@@ -535,10 +565,123 @@ int main(int argc, char** argv) {
             io.stop();
         });
 
-        boost::asio::co_spawn(io,
-                              run_watch(config->host, config->port, peer_pubkey,
-                                        config->eth_offset, std::move(config->watch_specs)),
-                              boost::asio::detached);
+        if (!config->bootnode_enodes.empty())
+        {
+            // --chain mode: use discv4 to find a real full node, then connect via RLPx
+            auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
+            if (!keypair_result)
+            {
+                std::cout << "Failed to generate keypair for discv4.\n";
+                return 1;
+            }
+            const auto& keypair = keypair_result.value();
+
+            discv4::discv4Config dv4_cfg;
+            dv4_cfg.bind_port = 0; // OS-assigned ephemeral port
+            std::copy(keypair.private_key.begin(), keypair.private_key.end(),
+                      dv4_cfg.private_key.begin());
+            std::copy(keypair.public_key.begin(), keypair.public_key.end(),
+                      dv4_cfg.public_key.begin());
+
+            auto dv4 = std::make_shared<discv4::discv4_client>(io, dv4_cfg);
+
+            // Capture config values needed in the callback
+            const uint64_t   network_id   = config->network_id;
+            const auto       genesis_hash = config->genesis_hash;
+            const uint8_t    eth_offset   = config->eth_offset;
+            const auto       watch_specs  = config->watch_specs;
+            auto connected = std::make_shared<std::atomic<bool>>(false);
+
+            dv4->set_peer_discovered_callback(
+                [&io, dv4, network_id, genesis_hash, eth_offset, watch_specs, connected]
+                (const discv4::DiscoveredPeer& peer)
+                {
+                    // Validate public key before attempting connection
+                    rlpx::PublicKey pubkey{};
+                    std::copy(peer.node_id.begin(), peer.node_id.end(), pubkey.begin());
+                    if (!rlpx::crypto::Ecdh::verify_public_key(pubkey))
+                    {
+                        return;  // Skip peers with invalid pubkeys
+                    }
+
+                    // Only attempt one successful connection at a time
+                    if (connected->exchange(true))
+                    {
+                        return;
+                    }
+
+                    std::cout << "Discovered peer: " << peer.ip
+                              << ":" << peer.tcp_port << " — connecting...\n";
+
+                    dv4->stop();
+
+                    boost::asio::co_spawn(io,
+                        [&io, pubkey, peer, eth_offset, network_id, genesis_hash,
+                         watch_specs, connected]() -> boost::asio::awaitable<void>
+                        {
+                            co_await run_watch(peer.ip, peer.tcp_port, pubkey,
+                                               eth_offset, network_id, genesis_hash,
+                                               watch_specs);
+                            // Allow retry if this connection failed immediately
+                            connected->store(false);
+                        },
+                        boost::asio::detached);
+                });
+
+            dv4->set_error_callback([](const std::string& err) {
+                std::cout << "discv4 error: " << err << "\n";
+            });
+
+            // Ping all bootnodes to seed discovery — wrap in void coroutine
+            // because ping() returns Result<pong> which has a deleted default ctor
+            for (const auto& enode : config->bootnode_enodes)
+            {
+                const auto bn = parse_enode(enode);
+                if (!bn)
+                {
+                    continue;
+                }
+                discv4::NodeId bn_id{};
+                if (!parse_hex_array(bn->peer_pubkey_hex, bn_id))
+                {
+                    continue;
+                }
+                boost::asio::co_spawn(io,
+                    [dv4, host = bn->host, port = bn->port, bn_id]()
+                        -> boost::asio::awaitable<void>
+                    {
+                        auto result = co_await dv4->ping(host, port, bn_id);
+                        (void)result;
+                    },
+                    boost::asio::detached);
+            }
+
+            const auto start_result = dv4->start();
+            if (!start_result)
+            {
+                std::cout << "Failed to start discv4.\n";
+                return 1;
+            }
+            std::cout << "Running discv4 peer discovery...\n";
+        }
+        else
+        {
+            // Explicit host/port/pubkey mode — connect directly
+            rlpx::PublicKey peer_pubkey{};
+            if (!parse_hex_array(config->peer_pubkey_hex, peer_pubkey))
+            {
+                std::cout << "Invalid peer public key hex (expected 128 hex chars).\n";
+                return 1;
+            }
+
+            boost::asio::co_spawn(io,
+                run_watch(config->host, config->port, peer_pubkey,
+                          config->eth_offset,
+                          config->network_id,
+                          config->genesis_hash,
+                          std::move(config->watch_specs)),
+                boost::asio::detached);
+        }
 
         io.run();
         return 0;

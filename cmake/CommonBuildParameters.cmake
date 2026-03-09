@@ -83,6 +83,15 @@ endif()
 find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options json)
 include_directories(${Boost_INCLUDE_DIRS})
 
+# fmt
+set(fmt_DIR "${_THIRDPARTY_BUILD_DIR}/fmt/lib/cmake/fmt")
+find_package(fmt CONFIG REQUIRED)
+
+# spdlog v1.4.2
+set(spdlog_DIR "${_THIRDPARTY_BUILD_DIR}/spdlog/lib/cmake/spdlog")
+find_package(spdlog CONFIG REQUIRED)
+add_compile_definitions("SPDLOG_FMT_EXTERNAL")
+
 # for discv4 we need
 set(libsecp256k1_DIR "${_THIRDPARTY_BUILD_DIR}/libsecp256k1/lib/cmake/libsecp256k1")
 find_package(libsecp256k1 CONFIG REQUIRED)

@@ -10,6 +10,7 @@
 
 // SuperGenius RLP
 #include <rlp/rlp_decoder.hpp>
+#include <discv4/discv4_constants.hpp>
 
 // Boost.Asio
 namespace asio = boost::asio;
@@ -43,8 +44,8 @@ public:
     // Static helper: validate packet hash (used to verify incoming packets)
     static bool ValidateHash( const std::vector<uint8_t>& payload, const uint8_t* hash );
 
-    // Static helper: get Keccak-256 digest
-    static std::array<uint8_t, 32> Keccak256( const std::vector<uint8_t>& payload );
+    /// @brief Compute the Keccak-256 digest of @p payload.
+    static std::array<uint8_t, kWireHashSize> Keccak256( const std::vector<uint8_t>& payload );
 
 protected:
     discv4_packet( uint8_t packetType, uint8_t version, std::string name );

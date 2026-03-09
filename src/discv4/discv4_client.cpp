@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "discv4/discv4_client.hpp"
+#include "discv4/discv4_constants.hpp"
 #include "discv4/discv4_error.hpp"
 #include "discv4/discv4_ping.hpp"
 #include "discv4/discv4_pong.hpp"
+#include "base/logger.hpp"
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/redirect_error.hpp>
@@ -12,9 +14,17 @@
 #include <secp256k1_recovery.h>
 #include <nil/crypto3/hash/algorithm/hash.hpp>
 #include <nil/crypto3/hash/keccak.hpp>
-#include <iostream>
 
 namespace discv4 {
+
+// All wire-protocol constants live in discv4_constants.hpp.
+// The following are implementation-only aliases for local brevity.
+static constexpr size_t  kHashSize           = kWireHashSize;
+static constexpr size_t  kSigSize            = kWireSigSize;
+static constexpr size_t  kPacketTypeSize     = kWirePacketTypeSize;
+static constexpr size_t  kPacketHeaderSize   = kWireHeaderSize;
+static constexpr size_t  kPacketTypeOffset   = kWirePacketTypeOffset;
+static constexpr size_t  kUncompressedPubKey = kUncompressedPubKeySize;
 
 discv4_client::discv4_client(asio::io_context& io_context, const discv4Config& config)
     : io_context_(io_context)
@@ -44,7 +54,7 @@ void discv4_client::stop() {
 }
 
 boost::asio::awaitable<void> discv4_client::receive_loop() {
-    std::array<uint8_t, 2048> buffer;
+    std::array<uint8_t, kUdpBufferSize> buffer{};
 
     while (running_) {
         udp::endpoint sender_endpoint;
@@ -73,24 +83,23 @@ boost::asio::awaitable<void> discv4_client::receive_loop() {
 }
 
 void discv4_client::handle_packet(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    if (length < 98) {  // Minimum packet size: 32 (hash) + 65 (signature) + 1 (type)
+    if (length < kPacketHeaderSize) {
         return;
     }
 
-    // Packet format: hash(32) || signature(65) || packet-type(1) || packet-data
-    const uint8_t packet_type = data[97];
+    const uint8_t packet_type = data[kPacketTypeOffset];
 
     switch (packet_type) {
-        case 0x01:  // PING
+        case kPacketTypePing:
             handle_ping(data, length, sender);
             break;
-        case 0x02:  // PONG
+        case kPacketTypePong:
             handle_pong(data, length, sender);
             break;
-        case 0x03:  // FIND_NODE
+        case kPacketTypeFindNode:
             handle_find_node(data, length, sender);
             break;
-        case 0x04:  // NEIGHBOURS
+        case kPacketTypeNeighbours:
             handle_neighbours(data, length, sender);
             break;
         default:
@@ -102,23 +111,77 @@ void discv4_client::handle_packet(const uint8_t* data, size_t length, const udp:
 }
 
 void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    // TODO: Implement PING handling
-    // For now, just log that we received it
-    (void)data;
-    (void)length;
-    (void)sender;
-}
-
-void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    // Parse PONG packet
-    // Skip hash(32) + signature(65) + type(1) = 98 bytes
-    if (length < 98) {
+    if (length < kPacketHeaderSize) {
         return;
     }
 
-    rlp::ByteView payload(data + 98, length - 98);
-    auto pong_result = discv4_pong::Parse(payload);
+    // The ping_hash field in PONG = the first kHashSize bytes of the incoming PING wire packet
+    std::array<uint8_t, kHashSize> ping_hash{};
+    std::copy(data, data + kHashSize, ping_hash.begin());
+    logger_->debug("PING from {}:{} — sending PONG", sender.address().to_string(), sender.port());
 
+    // Build PONG payload: packet-type(kPacketTypePong) || RLP([to_endpoint, ping_hash, expiration])
+    // to_endpoint = [sender_ip(4), udp_port, tcp_port]
+    rlp::RlpEncoder encoder;
+    if (!encoder.BeginList()) { return; }
+
+    // to_endpoint sub-list
+    if (!encoder.BeginList()) { return; }
+    const auto addr     = sender.address().to_v4().to_bytes();
+    const rlp::ByteView ip_bv(addr.data(), addr.size());
+    if (!encoder.add(ip_bv))                      { return; }
+    if (!encoder.add(sender.port()))               { return; }
+    if (!encoder.add(config_.tcp_port))            { return; }
+    if (!encoder.EndList())                        { return; }
+
+    // ping_hash
+    if (!encoder.add(rlp::ByteView(ping_hash.data(), ping_hash.size()))) { return; }
+
+    // expiration = now + 60s
+    const uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + kPacketExpirySeconds;
+    if (!encoder.add(expiration)) { return; }
+
+    if (!encoder.EndList()) { return; }
+
+    auto bytes_result = encoder.MoveBytes();
+    if (!bytes_result) { return; }
+
+    // Prepend packet-type byte
+    std::vector<uint8_t> payload;
+    payload.reserve(kPacketTypeSize + bytes_result.value().size());
+    payload.push_back(kPacketTypePong);
+    payload.insert(payload.end(), bytes_result.value().begin(), bytes_result.value().end());
+
+    auto signed_packet = sign_packet(payload);
+    if (!signed_packet) { return; }
+
+    const std::string ip   = sender.address().to_string();
+    const uint16_t    port = sender.port();
+    asio::co_spawn(io_context_,
+        [this, ip, port, pkt = std::move(signed_packet.value())]()
+            -> boost::asio::awaitable<void>
+        {
+            const udp::endpoint dest(asio::ip::make_address(ip), port);
+            auto send_result = co_await send_packet(pkt, dest);
+            (void)send_result;
+
+            // Bond is now complete — send FIND_NODE asking for peers
+            // closest to our own node ID
+            logger_->debug("Bond complete with {}:{} — sending FIND_NODE", ip, port);
+            auto find_result = co_await find_node(ip, port, config_.public_key);
+            (void)find_result;
+        },
+        asio::detached);
+}
+
+void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::endpoint& sender) {
+    if (length < kPacketHeaderSize) {
+        return;
+    }
+
+    // discv4_pong::Parse expects the full wire packet (hash || sig || type || rlp)
+    const rlp::ByteView full_packet(data, length);
+    auto pong_result = discv4_pong::Parse(full_packet);
     if (!pong_result) {
         if (error_callback_) {
             error_callback_("Failed to parse PONG packet");
@@ -126,55 +189,126 @@ void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::e
         return;
     }
 
-    const auto& pong = pong_result.value();
-
-    // Extract node ID from signature
-    auto node_id_result = verify_packet(data, length);
-    if (!node_id_result) {
-        return;
-    }
-
-    // Update peer table
-    {
-        std::lock_guard<std::mutex> lock(peers_mutex_);
-
-        DiscoveredPeer peer;
-        peer.node_id = node_id_result.value();
-        peer.ip = sender.address().to_string();
-        peer.udp_port = sender.port();
-        peer.tcp_port = pong.toEndpoint.tcpPort;
-        peer.last_seen = std::chrono::steady_clock::now();
-
-        // Convert node_id to hex string for map key
-        std::string key;
-        key.reserve(128);
-        for (uint8_t byte : peer.node_id) {
-            const char* hex = "0123456789abcdef";
-            key += hex[byte >> 4];
-            key += hex[byte & 0x0f];
-        }
-
-        peers_[key] = peer;
-
-        if (peer_callback_) {
-            peer_callback_(peer);
-        }
-    }
+    // PONG received — bond will complete when we respond to the bootnode's
+    // return PING.  FIND_NODE is sent from handle_ping after our PONG is sent.
+    logger_->debug("PONG from {}:{}", sender.address().to_string(), sender.port());
 }
 
 void discv4_client::handle_find_node(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    // TODO: Implement FIND_NODE handling
+    // TODO: Implement FIND_NODE handling — respond with NEIGHBOURS
     (void)data;
     (void)length;
     (void)sender;
 }
 
 void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    // TODO: Implement NEIGHBOURS handling
-    (void)data;
-    (void)length;
     (void)sender;
+
+    if (length < kPacketHeaderSize) {
+        return;
+    }
+
+    const rlp::ByteView raw(data + kPacketHeaderSize, length - kPacketHeaderSize);
+    rlp::RlpDecoder decoder(raw);
+
+    // Outer list header
+    auto outer_len_result = decoder.ReadListHeaderBytes();
+    if (!outer_len_result) {
+        return;
+    }
+
+    // Nodes list header
+    auto nodes_len_result = decoder.ReadListHeaderBytes();
+    if (!nodes_len_result) {
+        return;
+    }
+
+    const rlp::ByteView after_nodes_start = decoder.Remaining();
+    const size_t        nodes_byte_len    = nodes_len_result.value();
+
+    while (!decoder.IsFinished())
+    {
+        const size_t consumed = after_nodes_start.size() - decoder.Remaining().size();
+        if (consumed >= nodes_byte_len) {
+            break;
+        }
+
+        // Each node is a flat list: [ ip(4), udp, tcp, pubkey(64) ]
+        // (go-ethereum RpcNode — no endpoint sub-list wrapper)
+        auto node_len_result = decoder.ReadListHeaderBytes();
+        if (!node_len_result) {
+            break;
+        }
+        const rlp::ByteView node_start = decoder.Remaining();
+        const size_t        node_len   = node_len_result.value();
+
+        rlp::Bytes ip_bytes;
+        if (!decoder.read(ip_bytes) || ip_bytes.size() != kIPv4Size) {
+            break;
+        }
+
+        uint16_t udp_port = 0;
+        if (!decoder.read(udp_port)) {
+            break;
+        }
+
+        uint16_t tcp_port = 0;
+        if (!decoder.read(tcp_port)) {
+            break;
+        }
+
+        rlp::Bytes pubkey_bytes;
+        if (!decoder.read(pubkey_bytes) || pubkey_bytes.size() != kNodeIdSize) {
+            break;
+        }
+
+        // Skip any remaining fields in this node (e.g. per-node expiry)
+        const size_t node_consumed = node_start.size() - decoder.Remaining().size();
+        if (node_consumed < node_len) {
+            const size_t        remaining_in_node = node_len - node_consumed;
+            const rlp::ByteView skip_view         = decoder.Remaining().substr(0, remaining_in_node);
+            rlp::RlpDecoder     skip_decoder(skip_view);
+            while (!skip_decoder.IsFinished()) {
+                if (!skip_decoder.SkipItem()) { break; }
+            }
+            const size_t        actually_skipped = skip_view.size() - skip_decoder.Remaining().size();
+            const rlp::ByteView after_node       = decoder.Remaining().substr(actually_skipped);
+            decoder = rlp::RlpDecoder(after_node);
+        }
+
+        if (tcp_port == 0) {
+            continue;
+        }
+
+        DiscoveredPeer peer;
+        std::copy(pubkey_bytes.begin(), pubkey_bytes.end(), peer.node_id.begin());
+        peer.ip = std::to_string(ip_bytes[0]) + "." +
+                  std::to_string(ip_bytes[1]) + "." +
+                  std::to_string(ip_bytes[2]) + "." +
+                  std::to_string(ip_bytes[3]);
+        peer.udp_port  = udp_port;
+        peer.tcp_port  = tcp_port;
+        peer.last_seen = std::chrono::steady_clock::now();
+
+        {
+            const std::lock_guard<std::mutex> lock(peers_mutex_);
+            std::string key;
+            key.reserve(kNodeIdHexSize);
+            for (const uint8_t byte : peer.node_id) {
+                const char* hex_chars = "0123456789abcdef";
+                key += hex_chars[byte >> 4];
+                key += hex_chars[byte & 0x0fu];
+            }
+            peers_[key] = peer;
+        }
+
+        if (peer_callback_) {
+            logger_->debug("Neighbour peer: {}:{}", peer.ip, peer.tcp_port);
+            peer_callback_(peer);
+        }
+    }
 }
+
 
 boost::asio::awaitable<discv4::Result<discv4_pong>> discv4_client::ping(
     const std::string& ip,
@@ -215,10 +349,43 @@ boost::asio::awaitable<rlpx::VoidResult> discv4_client::find_node(
     uint16_t port,
     const NodeId& target_id
 ) {
-    // TODO: Implement FIND_NODE
-    (void)ip;
-    (void)port;
-    (void)target_id;
+    // FIND_NODE payload: packet-type(0x03) || RLP([target(64), expiration])
+    rlp::RlpEncoder encoder;
+    if (!encoder.BeginList()) {
+        co_return rlp::outcome::success();
+    }
+    if (!encoder.add(rlp::ByteView(target_id.data(), target_id.size()))) {
+        co_return rlp::outcome::success();
+    }
+    const uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + kPacketExpirySeconds;
+    if (!encoder.add(expiration)) {
+        co_return rlp::outcome::success();
+    }
+    if (!encoder.EndList()) {
+        co_return rlp::outcome::success();
+    }
+
+    auto bytes_result = encoder.MoveBytes();
+    if (!bytes_result) {
+        co_return rlp::outcome::success();
+    }
+
+    // Prepend packet type byte
+    std::vector<uint8_t> payload;
+    payload.reserve(kWirePacketTypeSize + bytes_result.value().size());
+    payload.push_back(kPacketTypeFindNode);
+    payload.insert(payload.end(),
+                   bytes_result.value().begin(),
+                   bytes_result.value().end());
+
+    auto signed_packet = sign_packet(payload);
+    if (!signed_packet) {
+        co_return rlp::outcome::success();
+    }
+
+    const udp::endpoint destination(asio::ip::make_address(ip), port);
+    auto send_result = co_await send_packet(signed_packet.value(), destination);
+    (void)send_result;
     co_return rlp::outcome::success();
 }
 
@@ -245,105 +412,106 @@ boost::asio::awaitable<discv4::Result<void>> discv4_client::send_packet(
 }
 
 discv4::Result<std::vector<uint8_t>> discv4_client::sign_packet(const std::vector<uint8_t>& payload) {
-    // Packet format: hash(32) || signature(65) || packet-type(1) || packet-data
+    // payload = packet-type(1) || RLP(packet-data)
+    //
+    // Correct discv4 packet construction (EIP-8 / go-ethereum discv4):
+    //   sig  = sign( keccak256( packet-type || packet-data ) )   [65 bytes, recoverable]
+    //   hash = keccak256( sig || packet-type || packet-data )    [32 bytes]
+    //   wire = hash || sig || packet-type || packet-data
 
-    // Compute hash of signature || packet-type || packet-data
-    std::vector<uint8_t> to_hash;
-    to_hash.reserve(65 + payload.size());
-    to_hash.resize(65);  // Placeholder for signature
-    to_hash.insert(to_hash.end(), payload.begin(), payload.end());
+    // Step 1: sign keccak256(payload)
+    const auto msg_hash = discv4_packet::Keccak256(payload);
 
-    // Compute keccak256 hash
-    auto hash_array = discv4_packet::Keccak256(to_hash);
-
-    // Sign the hash with secp256k1
     secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     if (!ctx) {
         return discv4Error::kContextCreationFailed;
     }
 
     secp256k1_ecdsa_recoverable_signature sig;
-    if (!secp256k1_ecdsa_sign_recoverable(ctx, &sig, hash_array.data(),
+    if (!secp256k1_ecdsa_sign_recoverable(ctx, &sig, msg_hash.data(),
                                           config_.private_key.data(), nullptr, nullptr)) {
         secp256k1_context_destroy(ctx);
         return discv4Error::kSigningFailed;
     }
 
-    // Serialize signature
-    std::array<uint8_t, 65> signature_bytes;
-    int recid;
+    std::array<uint8_t, kSigSize> sig_bytes{};
+    int recid = 0;
     secp256k1_ecdsa_recoverable_signature_serialize_compact(
-        ctx, signature_bytes.data(), &recid, &sig
-    );
-    signature_bytes[64] = static_cast<uint8_t>(recid);
+        ctx, sig_bytes.data(), &recid, &sig);
+    sig_bytes[kSigSize - 1] = static_cast<uint8_t>(recid);
 
     secp256k1_context_destroy(ctx);
 
-    // Build final packet: hash || signature || payload
+    // Step 2: outer hash = keccak256( sig || payload )
+    std::vector<uint8_t> to_outer_hash;
+    to_outer_hash.reserve(kSigSize + payload.size());
+    to_outer_hash.insert(to_outer_hash.end(), sig_bytes.begin(), sig_bytes.end());
+    to_outer_hash.insert(to_outer_hash.end(), payload.begin(), payload.end());
+    const auto outer_hash = discv4_packet::Keccak256(to_outer_hash);
+
+    // Step 3: assemble wire packet
     std::vector<uint8_t> packet;
-    packet.reserve(32 + 65 + payload.size());
-    packet.insert(packet.end(), hash_array.begin(), hash_array.end());
-    packet.insert(packet.end(), signature_bytes.begin(), signature_bytes.end());
+    packet.reserve(kHashSize + kSigSize + payload.size());
+    packet.insert(packet.end(), outer_hash.begin(), outer_hash.end());
+    packet.insert(packet.end(), sig_bytes.begin(), sig_bytes.end());
     packet.insert(packet.end(), payload.begin(), payload.end());
 
     return packet;
 }
 
 discv4::Result<NodeId> discv4_client::verify_packet(const uint8_t* data, size_t length) {
-    if (length < 98) {
+    if (length < kPacketHeaderSize) {
         return discv4Error::kPacketTooSmall;
     }
 
-    // Extract signature (bytes 32-96)
-    const uint8_t* signature_data = data + 32;
+    // Wire layout: hash(kHashSize) || sig(kSigSize) || type(1) || packet-data
+    const uint8_t* hash_data      = data;
+    const uint8_t* sig_data       = data + kHashSize;
+    const uint8_t* payload_data   = data + kHashSize + kSigSize;
+    const size_t   payload_length = length - kHashSize - kSigSize;
 
-    // Extract payload (bytes 97+)
-    const uint8_t* payload_data = data + 97;
-    size_t payload_length = length - 97;
+    // Verify outer hash = keccak256( sig || payload )
+    std::vector<uint8_t> to_outer_hash;
+    to_outer_hash.reserve(kSigSize + payload_length);
+    to_outer_hash.insert(to_outer_hash.end(), sig_data,     sig_data + kSigSize);
+    to_outer_hash.insert(to_outer_hash.end(), payload_data, payload_data + payload_length);
+    const auto computed_hash = discv4_packet::Keccak256(to_outer_hash);
 
-    // Compute hash of signature || payload
-    std::vector<uint8_t> to_hash;
-    to_hash.insert(to_hash.end(), signature_data, signature_data + 65);
-    to_hash.insert(to_hash.end(), payload_data, payload_data + payload_length);
-
-    auto computed_hash = discv4_packet::Keccak256(to_hash);
-
-    // Verify hash matches
-    if (std::memcmp(data, computed_hash.data(), 32) != 0) {
+    if (std::memcmp(hash_data, computed_hash.data(), kHashSize) != 0) {
         return discv4Error::kHashMismatch;
     }
 
-    // Recover public key from signature
+    // Recover public key: sig was made over keccak256( payload )
+    const std::vector<uint8_t> payload_vec(payload_data, payload_data + payload_length);
+    const auto msg_hash = discv4_packet::Keccak256(payload_vec);
+
     secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
     if (!ctx) {
         return discv4Error::kContextCreationFailed;
     }
 
     secp256k1_ecdsa_recoverable_signature sig;
-    int recid = signature_data[64];
-    if (!secp256k1_ecdsa_recoverable_signature_parse_compact(
-            ctx, &sig, signature_data, recid)) {
+    const int recid = static_cast<int>(sig_data[kSigSize - 1]);
+    if (!secp256k1_ecdsa_recoverable_signature_parse_compact(ctx, &sig, sig_data, recid)) {
         secp256k1_context_destroy(ctx);
         return discv4Error::kSignatureParseFailed;
     }
 
     secp256k1_pubkey pubkey;
-    if (!secp256k1_ecdsa_recover(ctx, &pubkey, &sig, computed_hash.data())) {
+    if (!secp256k1_ecdsa_recover(ctx, &pubkey, &sig, msg_hash.data())) {
         secp256k1_context_destroy(ctx);
         return discv4Error::kSignatureRecoveryFailed;
     }
 
-    // Serialize public key (uncompressed, 65 bytes)
-    std::array<uint8_t, 65> pubkey_bytes;
-    size_t pubkey_len = 65;
-    secp256k1_ec_pubkey_serialize(ctx, pubkey_bytes.data(), &pubkey_len, &pubkey, SECP256K1_EC_UNCOMPRESSED);
-
+    std::array<uint8_t, kUncompressedPubKey> pubkey_bytes{};
+    size_t pubkey_len = kUncompressedPubKey;
+    secp256k1_ec_pubkey_serialize(ctx, pubkey_bytes.data(), &pubkey_len,
+                                  &pubkey, SECP256K1_EC_UNCOMPRESSED);
     secp256k1_context_destroy(ctx);
 
-    // Convert to NodeId (skip first byte which is 0x04 for uncompressed)
+    // Skip the 0x04 uncompressed-point prefix byte
     NodeId node_id;
-    std::copy(pubkey_bytes.begin() + 1, pubkey_bytes.end(), node_id.begin());
-
+    std::copy(pubkey_bytes.begin() + kPacketTypeSize, pubkey_bytes.end(), node_id.begin());
     return node_id;
 }
 

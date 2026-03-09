@@ -1,6 +1,7 @@
 // discv4_ping.cpp
 
 #include "discv4/discv4_ping.hpp"
+#include "discv4/discv4_constants.hpp"
 
 namespace discv4 {
 
@@ -27,8 +28,8 @@ std::vector<uint8_t> discv4_ping::RlpPayload()
     if (auto res = encoder.AddRaw( to_encoded.value() ); !res) {
         return std::vector<uint8_t>();
     }
-    uint32_t now = static_cast<std::uint32_t>( std::time( nullptr ) );
-    uint32_t expire_in_1_minute = now + 60;
+    uint32_t now              = static_cast<std::uint32_t>( std::time( nullptr ) );
+    uint32_t expire_in_1_minute = now + kPacketExpirySeconds;
     if (auto res = encoder.add( expire_in_1_minute ); !res) {
         return std::vector<uint8_t>();
     }

@@ -16,6 +16,12 @@ inline constexpr uint8_t kShortListOffset{0xC0};
 inline constexpr uint8_t kLongListOffset{0xF7}; // 0xC0 + 55 + 1
 inline constexpr uint8_t kRlpSingleByteThreshold{0x80};  // Values below this are encoded as a single byte
 
+/// Size of the single prefix byte prepended before the big-endian length field in long strings/lists.
+inline constexpr size_t kLongPrefixByteSize{1};
+
+/// Minimum encoded size of a single-byte RLP string (prefix byte + payload byte).
+inline constexpr size_t kSingleByteStringSize{2};
+
 // RLP header structure (internal use)
 struct Header {
     bool list{false};

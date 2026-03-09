@@ -1,29 +1,23 @@
 // discv4_pong.cpp
 #include "discv4/discv4_pong.hpp"
-#include <iostream>
-
-inline constexpr uint8_t kHashSize{32};
-inline constexpr uint8_t kSignSize{65};
-inline constexpr uint8_t kHeaderSize{kHashSize+kSignSize};
-
-inline constexpr uint8_t kPacketTypePong{2};
+#include "discv4/discv4_constants.hpp"
 
 namespace discv4 {
 
 rlp::Result<discv4_pong> discv4_pong::Parse(rlp::ByteView raw) {
-    // Skipping hash (32 bytes), sign (65 bytes), packet type (1 byte)
-    if ( raw.size() <= kHeaderSize )
+    // Skipping hash (kWireHashSize bytes), sig (kWireSigSize bytes), packet type (kWirePacketTypeSize byte)
+    if ( raw.size() <= kWireHeaderSize - kWirePacketTypeSize )
     {
         return rlp::DecodingError::kUnexpectedString;
     }
 
-    if ( raw.at(kHeaderSize) != kPacketTypePong )
+    if ( raw.at(kWirePacketTypeOffset) != kPacketTypePong )
     {
         return rlp::DecodingError::kUnexpectedString;
     }
 
-    // Ommitting header and packet type byte as it is not RLP data
-    rlp::ByteView pong_payload(raw.data() + kHeaderSize + 1, raw.size() - kHeaderSize - 1);
+    // Omitting header and packet type byte as it is not RLP data
+    rlp::ByteView pong_payload(raw.data() + kWireHeaderSize, raw.size() - kWireHeaderSize);
     rlp::RlpDecoder decoder(pong_payload);
 
     discv4_pong pong;
@@ -45,32 +39,28 @@ rlp::Result<discv4_pong> discv4_pong::Parse(rlp::ByteView raw) {
     BOOST_OUTCOME_TRY( decoder.read( pong.pingHash ) );
     rlp::ByteView hashBv( pong.pingHash.data(), pong.pingHash.size() );
 
-    // Parse expiration (third element - uint32)
-    // TODO Fix decoder.read function
-    std::array<uint8_t, 4> expiration;
+    // Parse expiration (third element - big-endian uint32)
+    std::array<uint8_t, sizeof(uint32_t)> expiration;
     BOOST_OUTCOME_TRY( decoder.read( expiration ) );
-    rlp::ByteView hexpBv( expiration.data(), expiration.size() );
-    pong.expiration = 0;
-    pong.expiration |= expiration[0] << 24;
-    pong.expiration |= expiration[1] << 16;
-    pong.expiration |= expiration[2] << 8;
-    pong.expiration |= expiration[3] << 0;
-    
-    // Verify we consumed all the data
-    if ( !decoder.IsFinished() ) 
-    {
-        // Parse expiration (forth optional element - uint32)
-        // TODO Fix decoder.read function
-        std::array<uint8_t, 6> ersErqArray;
-        BOOST_OUTCOME_TRY( decoder.read( ersErqArray ) );
-        pong.ersErq |= (uint64_t)ersErqArray[0] << 40;
-        pong.ersErq |= (uint64_t)ersErqArray[1] << 32;
-        pong.ersErq |= ersErqArray[2] << 24;
-        pong.ersErq |= ersErqArray[3] << 16;
-        pong.ersErq |= ersErqArray[4] << 8;
-        pong.ersErq |= ersErqArray[5] << 0;
+    pong.expiration  = static_cast<uint32_t>(expiration[0]) << 24U;
+    pong.expiration |= static_cast<uint32_t>(expiration[1]) << 16U;
+    pong.expiration |= static_cast<uint32_t>(expiration[2]) <<  8U;
+    pong.expiration |= static_cast<uint32_t>(expiration[3]);
 
-        if ( !decoder.IsFinished() ) 
+    // Verify we consumed all the data
+    if ( !decoder.IsFinished() )
+    {
+        // Optional ENR sequence number (kEnrSeqSize-byte big-endian uint48)
+        std::array<uint8_t, kEnrSeqSize> ersErqArray;
+        BOOST_OUTCOME_TRY( decoder.read( ersErqArray ) );
+        pong.ersErq  = static_cast<uint64_t>(ersErqArray[0]) << 40U;
+        pong.ersErq |= static_cast<uint64_t>(ersErqArray[1]) << 32U;
+        pong.ersErq |= static_cast<uint64_t>(ersErqArray[2]) << 24U;
+        pong.ersErq |= static_cast<uint64_t>(ersErqArray[3]) << 16U;
+        pong.ersErq |= static_cast<uint64_t>(ersErqArray[4]) <<  8U;
+        pong.ersErq |= static_cast<uint64_t>(ersErqArray[5]);
+
+        if ( !decoder.IsFinished() )
         {
             return rlp::DecodingError::kInputTooLong;
         }
@@ -94,17 +84,17 @@ rlp::DecodingResult discv4_pong::ParseEndpoint( rlp::RlpDecoder& decoder, discv4
     // Parse IP address (4 bytes)
     BOOST_OUTCOME_TRY( decoder.read( endpoint.ip ) );
     
-    // Parse UDP port
-    std::array<uint8_t, 2> port;
+    // Parse UDP port (big-endian uint16)
+    std::array<uint8_t, sizeof(uint16_t)> port;
     BOOST_OUTCOME_TRY( decoder.read( port ) );
-    endpoint.udpPort = port[0] << 8;
-    endpoint.udpPort |= port[1];
-    
-    // Parse TCP port  
+    endpoint.udpPort  = static_cast<uint16_t>(port[0]) << 8U;
+    endpoint.udpPort |= static_cast<uint16_t>(port[1]);
+
+    // Parse TCP port (big-endian uint16)
     BOOST_OUTCOME_TRY( decoder.read( port ) );
-    endpoint.tcpPort = port[0] << 8;
-    endpoint.tcpPort |= port[1];
-    
+    endpoint.tcpPort  = static_cast<uint16_t>(port[0]) << 8U;
+    endpoint.tcpPort |= static_cast<uint16_t>(port[1]);
+
     return rlp::outcome::success();
 }
 }

@@ -1,266 +1,298 @@
 // Copyright 2025 GeniusVentures
 // SPDX-License-Identifier: Apache-2.0
+//
+// go-ethereum rlpx frame cipher — exact port of sessionState / hashMAC.
+// Reference: go-ethereum/p2p/rlpx/rlpx.go
 
 #include <rlpx/framing/frame_cipher.hpp>
-#include <rlpx/crypto/aes.hpp>
-#include <rlpx/crypto/hmac.hpp>
-#include <openssl/sha.h>
+#include <base/logger.hpp>
+#include <nil/crypto3/hash/algorithm/hash.hpp>
+#include <nil/crypto3/hash/keccak.hpp>
+#include <nil/crypto3/hash/accumulators/hash.hpp>
+#include <openssl/evp.h>
 #include <openssl/crypto.h>
 #include <cstring>
 
 namespace rlpx::framing {
 
+namespace {
+
+    rlp::base::Logger& fc_log()
+    {
+        static auto log = rlp::base::createLogger("rlpx.frame");
+        return log;
+    }
+
+    /// Legacy Keccak-256 (not SHA3-256) over a contiguous byte range.
+    std::array<uint8_t, 32> keccak256(const uint8_t* data, size_t len) noexcept
+    {
+        using Hasher = nil::crypto3::hashes::keccak_1600<256>;
+        nil::crypto3::accumulator_set<Hasher> acc;
+        nil::crypto3::hash<Hasher>(data, data + len, acc);
+        auto digest = nil::crypto3::accumulators::extract::hash<Hasher>(acc);
+        std::array<uint8_t, 32> result{};
+        std::copy(digest.begin(), digest.end(), result.begin());
+        return result;
+    }
+
+    /// AES-256-ECB single-block encrypt — used by hashMAC.compute().
+    void aes_ecb_encrypt_block(const uint8_t* key32, const uint8_t* in16,
+                                uint8_t* out16) noexcept
+    {
+        EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+        EVP_EncryptInit_ex(ctx, EVP_aes_256_ecb(), nullptr, key32, nullptr);
+        EVP_CIPHER_CTX_set_padding(ctx, 0);
+        int outl = 0;
+        EVP_EncryptUpdate(ctx, out16, &outl, in16, 16);
+        EVP_CIPHER_CTX_free(ctx);
+    }
+
+    /// go-ethereum hashMAC — exact port.
+    ///
+    /// go-ethereum keeps a live keccak.NewLegacyKeccak256() accumulator.
+    /// We replicate this by keeping ALL bytes written to the hash in a buffer
+    /// and recomputing keccak256(buffer) on demand as hash.Sum().
+    /// This is equivalent because Keccak is deterministic and we always
+    /// hash from the beginning.
+    struct HashMAC
+    {
+        std::array<uint8_t, 32> mac_key{};  ///< = sec.MAC (32-byte mac_secret)
+        ByteBuffer              written{};  ///< Accumulates all bytes written to hash
+
+        /// Seed the MAC: go-ethereum does
+        ///   mac.Write(xor(MAC, nonce)); mac.Write(auth_or_ack_wire)
+        /// We receive the pre-computed digest of that sequence as seed_digest,
+        /// AND the original bytes that produced it, so we can replay.
+        /// Simpler: we store the seed bytes directly.
+        void write(const uint8_t* data, size_t len)
+        {
+            written.insert(written.end(), data, data + len);
+        }
+
+        /// hash.Sum() — keccak256 of everything written so far.
+        std::array<uint8_t, 32> sum() const noexcept
+        {
+            return keccak256(written.data(), written.size());
+        }
+
+        /// go-ethereum hashMAC.computeHeader:
+        ///   sum1 = hash.Sum(nil)
+        ///   return compute(sum1, header[:16])
+        std::array<uint8_t, 16> compute_header(const uint8_t* header_ct16) noexcept
+        {
+            auto sum1 = sum();
+            return compute(sum1, header_ct16);
+        }
+
+        /// go-ethereum hashMAC.computeFrame:
+        ///   hash.Write(framedata)
+        ///   seed = hash.Sum(nil)
+        ///   return compute(seed, seed[:16])
+        std::array<uint8_t, 16> compute_frame(const uint8_t* framedata,
+                                               size_t len) noexcept
+        {
+            write(framedata, len);
+            auto seed = sum();
+            return compute(seed, seed.data());
+        }
+
+        /// go-ethereum hashMAC.compute(sum1, seed16):
+        ///   aesBuffer = AES(mac_key, sum1[:16])
+        ///   aesBuffer ^= seed16
+        ///   hash.Write(aesBuffer)
+        ///   sum2 = hash.Sum(nil)
+        ///   return sum2[:16]
+        std::array<uint8_t, 16> compute(const std::array<uint8_t, 32>& sum1,
+                                         const uint8_t* seed16) noexcept
+        {
+            std::array<uint8_t, 16> aes_buf{};
+            aes_ecb_encrypt_block(mac_key.data(), sum1.data(), aes_buf.data());
+            for (size_t i = 0; i < 16; ++i)
+            {
+                aes_buf[i] ^= seed16[i];
+            }
+            write(aes_buf.data(), 16);
+            auto sum2 = sum();
+            std::array<uint8_t, 16> result{};
+            std::memcpy(result.data(), sum2.data(), 16);
+            return result;
+        }
+    };
+
+    /// AES-256-CTR streaming cipher — go-ethereum cipher.NewCTR with all-zero IV.
+    struct AesCtrState
+    {
+        EVP_CIPHER_CTX* ctx = nullptr;
+
+        void init(const uint8_t* key32) noexcept
+        {
+            ctx = EVP_CIPHER_CTX_new();
+            uint8_t iv[16]{};
+            EVP_EncryptInit_ex(ctx, EVP_aes_256_ctr(), nullptr, key32, iv);
+        }
+
+        ~AesCtrState()
+        {
+            if (ctx) { EVP_CIPHER_CTX_free(ctx); }
+        }
+
+        /// CTR is its own inverse — same call for encrypt and decrypt.
+        void process(const uint8_t* in, uint8_t* out, size_t len) noexcept
+        {
+            int outl = 0;
+            EVP_EncryptUpdate(ctx, out, &outl, in,
+                              static_cast<int>(len));
+        }
+    };
+
+} // anonymous namespace
+
+// ── FrameCipher pimpl definition ─────────────────────────────────────────────
+
+struct FrameCipher::FrameCipherImpl
+{
+    AesCtrState enc;
+    AesCtrState dec;
+    HashMAC     egress_mac;
+    HashMAC     ingress_mac;
+};
+
+// ── FrameCipher constructor / destructor ──────────────────────────────────────
+
 FrameCipher::FrameCipher(const auth::FrameSecrets& secrets) noexcept
     : secrets_(secrets)
-    , egress_mac_state_(secrets.egress_mac_seed)
-    , ingress_mac_state_(secrets.ingress_mac_seed) {
+    , impl_(std::make_unique<FrameCipherImpl>())
+{
+    impl_->enc.init(secrets.aes_secret.data());
+    impl_->dec.init(secrets.aes_secret.data());
+
+    impl_->egress_mac.mac_key  = secrets.mac_secret;
+    impl_->ingress_mac.mac_key = secrets.mac_secret;
+    // Seed written buffers: go-ethereum writes xor(MAC,nonce) then auth/ack wire.
+    // derive_frame_secrets stores those exact raw bytes in egress/ingress_mac_seed.
+    impl_->egress_mac.write(secrets.egress_mac_seed.data(),
+                             secrets.egress_mac_seed.size());
+    impl_->ingress_mac.write(secrets.ingress_mac_seed.data(),
+                              secrets.ingress_mac_seed.size());
+    fc_log()->debug("FrameCipher: egress_seed_len={} ingress_seed_len={}",
+                    secrets.egress_mac_seed.size(), secrets.ingress_mac_seed.size());
 }
 
-FramingResult<ByteBuffer> FrameCipher::encrypt_frame(const FrameEncryptParams& params) noexcept {
-    if ( params.frame_data.empty() ) {
+FrameCipher::~FrameCipher() = default;
+
+// ── encrypt_frame ─────────────────────────────────────────────────────────────
+
+FramingResult<ByteBuffer> FrameCipher::encrypt_frame(
+    const FrameEncryptParams& params) noexcept
+{
+    if (params.frame_data.empty() || params.frame_data.size() > kMaxFrameSize)
+    {
         return FramingError::kInvalidFrameSize;
     }
 
-    if ( params.frame_data.size() > kMaxFrameSize ) {
-        return FramingError::kInvalidFrameSize;
-    }
+    const size_t fsize   = params.frame_data.size();
+    const size_t padding = (fsize % 16 != 0) ? (16 - fsize % 16) : 0;
+    const size_t rsize   = fsize + padding;
 
-    // Frame structure: [header(16) || header-mac(16) || frame-data || frame-mac(16)]
-    // Header: [frame-size(3) || header-data(13)]
-    
-    // Create header: 3-byte frame size (big-endian) + 13 bytes padding (zeros for now)
+    // Header: 3-byte frame length + [0xC2, 0x80, 0x80] + 10 zero bytes
+    static constexpr uint8_t kZeroHeader[3] = { 0xC2, 0x80, 0x80 };
     std::array<uint8_t, kFrameHeaderSize> header{};
-    uint32_t frame_size = static_cast<uint32_t>(params.frame_data.size());
-    header[0] = static_cast<uint8_t>((frame_size >> 16) & 0xFF);
-    header[1] = static_cast<uint8_t>((frame_size >> 8) & 0xFF);
-    header[2] = static_cast<uint8_t>(frame_size & 0xFF);
-    // Remaining 13 bytes are protocol-specific header data (zeros for now)
+    header[0] = static_cast<uint8_t>((fsize >> 16U) & 0xFFU);
+    header[1] = static_cast<uint8_t>((fsize >>  8U) & 0xFFU);
+    header[2] = static_cast<uint8_t>( fsize         & 0xFFU);
+    std::memcpy(header.data() + 3, kZeroHeader, 3);
 
-    // Encrypt header with AES-CTR using zero IV (simplified for testing)
-    std::array<uint8_t, kAesBlockSize> iv{};
-    iv.fill(0);  // Use zero IV for simplicity
+    std::array<uint8_t, kFrameHeaderSize> header_ct{};
+    impl_->enc.process(header.data(), header_ct.data(), kFrameHeaderSize);
 
-    ByteBuffer header_ciphertext(kFrameHeaderSize);
-    std::memcpy(header_ciphertext.data(), header.data(), kFrameHeaderSize);
-    
-    auto encrypt_result = crypto::Aes::encrypt_ctr_inplace(
-        secrets_.aes_secret,
-        iv,
-        MutableByteView(header_ciphertext.data(), header_ciphertext.size())
-    );
+    auto header_mac = impl_->egress_mac.compute_header(header_ct.data());
 
-    if ( !encrypt_result ) {
-        return FramingError::kEncryptionFailed;
-    }
+    ByteBuffer frame_padded(rsize, 0);
+    std::memcpy(frame_padded.data(), params.frame_data.data(), fsize);
 
-    // Update egress MAC with header ciphertext
-    update_egress_mac(header_ciphertext);
-    MacDigest header_mac = compute_header_mac(header_ciphertext);
+    ByteBuffer frame_ct(rsize);
+    impl_->enc.process(frame_padded.data(), frame_ct.data(), rsize);
 
-    // Encrypt frame data
-    ByteBuffer frame_ciphertext(params.frame_data.size());
-    std::memcpy(frame_ciphertext.data(), params.frame_data.data(), params.frame_data.size());
+    auto frame_mac = impl_->egress_mac.compute_frame(frame_ct.data(), rsize);
 
-    // Use zero IV for frame encryption (simplified)
-    iv.fill(0);
-
-    auto encrypt_frame_result = crypto::Aes::encrypt_ctr_inplace(
-        secrets_.aes_secret,
-        iv,
-        MutableByteView(frame_ciphertext.data(), frame_ciphertext.size())
-    );
-
-    if ( !encrypt_frame_result ) {
-        return FramingError::kEncryptionFailed;
-    }
-
-    // Update egress MAC with frame ciphertext
-    update_egress_mac(frame_ciphertext);
-    MacDigest frame_mac = compute_frame_mac(frame_ciphertext);
-
-    // Assemble complete frame: header || header_mac || frame || frame_mac
-    ByteBuffer complete_frame;
-    complete_frame.reserve(kFrameHeaderSize + kMacSize + frame_ciphertext.size() + kMacSize);
-    
-    complete_frame.insert(complete_frame.end(), header_ciphertext.begin(), header_ciphertext.end());
-    complete_frame.insert(complete_frame.end(), header_mac.begin(), header_mac.end());
-    complete_frame.insert(complete_frame.end(), frame_ciphertext.begin(), frame_ciphertext.end());
-    complete_frame.insert(complete_frame.end(), frame_mac.begin(), frame_mac.end());
-
-    return complete_frame;
+    ByteBuffer out;
+    out.reserve(kFrameHeaderSize + kMacSize + rsize + kMacSize);
+    out.insert(out.end(), header_ct.begin(),  header_ct.end());
+    out.insert(out.end(), header_mac.begin(), header_mac.end());
+    out.insert(out.end(), frame_ct.begin(),   frame_ct.end());
+    out.insert(out.end(), frame_mac.begin(),  frame_mac.end());
+    return out;
 }
+
+// ── decrypt_header ────────────────────────────────────────────────────────────
 
 FramingResult<size_t> FrameCipher::decrypt_header(
-    gsl::span<const uint8_t, kFrameHeaderSize> header_ciphertext,
-    gsl::span<const uint8_t, kMacSize> header_mac
-) noexcept {
-    // Update MAC state first (matching encrypt order)
-    update_ingress_mac(header_ciphertext);
-
-    // Compute expected MAC (after state update)
-    MacDigest expected_mac = compute_header_mac(header_ciphertext);
-
-    // Constant-time comparison
-    if ( CRYPTO_memcmp(header_mac.data(), expected_mac.data(), kMacSize) != 0 ) {
+    gsl::span<const uint8_t, kFrameHeaderSize> header_ct,
+    gsl::span<const uint8_t, kMacSize>         header_mac_wire) noexcept
+{
+    auto expected_mac = impl_->ingress_mac.compute_header(header_ct.data());
+    if (CRYPTO_memcmp(header_mac_wire.data(), expected_mac.data(), kMacSize) != 0)
+    {
+        fc_log()->debug("decrypt_header: MAC mismatch — expected={:02x}{:02x}{:02x}{:02x} got={:02x}{:02x}{:02x}{:02x} seed_len={}",
+                        expected_mac[0], expected_mac[1], expected_mac[2], expected_mac[3],
+                        header_mac_wire[0], header_mac_wire[1], header_mac_wire[2], header_mac_wire[3],
+                        impl_->ingress_mac.written.size());
         return FramingError::kMacMismatch;
     }
 
-    // Decrypt header using zero IV (simplified)
-    std::array<uint8_t, kAesBlockSize> iv{};
-    iv.fill(0);
+    std::array<uint8_t, kFrameHeaderSize> header_pt{};
+    impl_->dec.process(header_ct.data(), header_pt.data(), kFrameHeaderSize);
 
-    ByteBuffer header_plaintext(kFrameHeaderSize);
-    std::memcpy(header_plaintext.data(), header_ciphertext.data(), kFrameHeaderSize);
-
-    auto decrypt_result = crypto::Aes::decrypt_ctr_inplace(
-        secrets_.aes_secret,
-        iv,
-        MutableByteView(header_plaintext.data(), header_plaintext.size())
-    );
-
-    if ( !decrypt_result ) {
-        return FramingError::kDecryptionFailed;
+    const size_t fsize = (static_cast<size_t>(header_pt[0]) << 16U)
+                       | (static_cast<size_t>(header_pt[1]) <<  8U)
+                       |  static_cast<size_t>(header_pt[2]);
+    if (fsize == 0 || fsize > kMaxFrameSize)
+    {
+        return FramingError::kInvalidFrameSize;
     }
+    return fsize;
+}
 
-    // Extract frame size (first 3 bytes, big-endian)
-    size_t frame_size = (static_cast<size_t>(header_plaintext[0]) << 16) |
-                       (static_cast<size_t>(header_plaintext[1]) << 8) |
-                       static_cast<size_t>(header_plaintext[2]);
+// ── decrypt_frame ─────────────────────────────────────────────────────────────
 
-    if ( frame_size == 0 || frame_size > kMaxFrameSize ) {
+FramingResult<ByteBuffer> FrameCipher::decrypt_frame(
+    const FrameDecryptParams& params) noexcept
+{
+    gsl::span<const uint8_t, kFrameHeaderSize> hct(
+        params.header_ciphertext.data(), kFrameHeaderSize);
+    gsl::span<const uint8_t, kMacSize> hm(
+        params.header_mac.data(), kMacSize);
+
+    auto fsize_result = decrypt_header(hct, hm);
+    if (!fsize_result) { return fsize_result.error(); }
+    const size_t fsize = fsize_result.value();
+
+    if (params.frame_ciphertext.size() < fsize)
+    {
         return FramingError::kInvalidFrameSize;
     }
 
-    return frame_size;
-}
-
-FramingResult<ByteBuffer> FrameCipher::decrypt_frame(const FrameDecryptParams& params) noexcept {
-    // Manually decrypt header without calling decrypt_header to avoid double MAC update
-    // Step 1: Update MAC state with header ciphertext (matching encrypt order)
-    update_ingress_mac(params.header_ciphertext);
-
-    // Step 2: Compute and verify header MAC (after state update)
-    MacDigest expected_header_mac = compute_header_mac(params.header_ciphertext);
-    if ( CRYPTO_memcmp(params.header_mac.data(), expected_header_mac.data(), kMacSize) != 0 ) {
+    const size_t rsize = params.frame_ciphertext.size();
+    auto frame_mac_expected = impl_->ingress_mac.compute_frame(
+        params.frame_ciphertext.data(), rsize);
+    if (CRYPTO_memcmp(params.frame_mac.data(), frame_mac_expected.data(),
+                      kMacSize) != 0)
+    {
+        fc_log()->debug("decrypt_frame: frame MAC mismatch");
         return FramingError::kMacMismatch;
     }
 
-    // Step 3: Decrypt header to get frame size (using zero IV)
-    std::array<uint8_t, kAesBlockSize> iv{};
-    iv.fill(0);
-
-    ByteBuffer header_plaintext(kFrameHeaderSize);
-    std::memcpy(header_plaintext.data(), params.header_ciphertext.data(), kFrameHeaderSize);
-
-    auto decrypt_header_result = crypto::Aes::decrypt_ctr_inplace(
-        secrets_.aes_secret,
-        iv,
-        MutableByteView(header_plaintext.data(), header_plaintext.size())
-    );
-
-    if ( !decrypt_header_result ) {
-        return FramingError::kDecryptionFailed;
-    }
-
-    // Extract frame size (first 3 bytes, big-endian)
-    size_t frame_size = (static_cast<size_t>(header_plaintext[0]) << 16) |
-                       (static_cast<size_t>(header_plaintext[1]) << 8) |
-                       static_cast<size_t>(header_plaintext[2]);
-
-    if ( frame_size == 0 || frame_size > kMaxFrameSize ) {
-        return FramingError::kInvalidFrameSize;
-    }
-
-    // Verify frame size matches provided data
-    if ( params.frame_ciphertext.size() != frame_size ) {
-        return FramingError::kInvalidFrameSize;
-    }
-
-    // Step 4: Update MAC state with frame ciphertext (matching encrypt order)
-    update_ingress_mac(params.frame_ciphertext);
-
-    // Step 5: Compute and verify frame MAC (after state update)
-    MacDigest expected_frame_mac = compute_frame_mac(params.frame_ciphertext);
-
-    if ( CRYPTO_memcmp(params.frame_mac.data(), expected_frame_mac.data(), kMacSize) != 0 ) {
-        return FramingError::kMacMismatch;
-    }
-
-    // Decrypt frame data using zero IV
-    iv.fill(0);
-
-    ByteBuffer frame_plaintext(params.frame_ciphertext.size());
-    std::memcpy(frame_plaintext.data(), params.frame_ciphertext.data(), params.frame_ciphertext.size());
-
-    auto decrypt_result = crypto::Aes::decrypt_ctr_inplace(
-        secrets_.aes_secret,
-        iv,
-        MutableByteView(frame_plaintext.data(), frame_plaintext.size())
-    );
-
-    if ( !decrypt_result ) {
-        return FramingError::kDecryptionFailed;
-    }
-
-    return frame_plaintext;
+    ByteBuffer frame_pt(rsize);
+    impl_->dec.process(params.frame_ciphertext.data(), frame_pt.data(), rsize);
+    frame_pt.resize(fsize);
+    return frame_pt;
 }
 
-void FrameCipher::update_egress_mac(ByteView data) noexcept {
-    // Update MAC state with data
-    // RLPx uses a rolling MAC based on SHA3-256
-    // For simplicity, we use HMAC-SHA256 here (should be SHA3-256 in production)
-    
-    ByteBuffer mac_input;
-    mac_input.reserve(egress_mac_state_.size() + data.size());
-    mac_input.insert(mac_input.end(), egress_mac_state_.begin(), egress_mac_state_.end());
-    mac_input.insert(mac_input.end(), data.begin(), data.end());
+// ── legacy stubs ─────────────────────────────────────────────────────────────
 
-    std::array<uint8_t, 32> new_mac;
-    SHA256(mac_input.data(), mac_input.size(), new_mac.data());
-
-    // Update state (use first 16 bytes)
-    std::memcpy(egress_mac_state_.data(), new_mac.data(), kMacSize);
-}
-
-void FrameCipher::update_ingress_mac(ByteView data) noexcept {
-    // Update MAC state with data
-    ByteBuffer mac_input;
-    mac_input.reserve(ingress_mac_state_.size() + data.size());
-    mac_input.insert(mac_input.end(), ingress_mac_state_.begin(), ingress_mac_state_.end());
-    mac_input.insert(mac_input.end(), data.begin(), data.end());
-
-    std::array<uint8_t, 32> new_mac;
-    SHA256(mac_input.data(), mac_input.size(), new_mac.data());
-
-    // Update state (use first 16 bytes)
-    std::memcpy(ingress_mac_state_.data(), new_mac.data(), kMacSize);
-}
-
-MacDigest FrameCipher::compute_header_mac(ByteView header_ct) noexcept {
-    // Compute MAC for header
-    // In RLPx: mac-secret encrypted with egress-mac XORed with header-ciphertext
-    // Simplified version using HMAC
-    
-    auto mac_result = crypto::Hmac::compute_mac(secrets_.mac_secret, header_ct);
-    if ( mac_result ) {
-        return mac_result.value();
-    }
-    
-    // Return zero MAC on error
-    MacDigest zero_mac{};
-    return zero_mac;
-}
-
-MacDigest FrameCipher::compute_frame_mac(ByteView frame_ct) noexcept {
-    // Compute MAC for frame
-    auto mac_result = crypto::Hmac::compute_mac(secrets_.mac_secret, frame_ct);
-    if ( mac_result ) {
-        return mac_result.value();
-    }
-    
-    // Return zero MAC on error
-    MacDigest zero_mac{};
-    return zero_mac;
-}
+void FrameCipher::update_egress_mac(ByteView /*data*/) noexcept {}
+void FrameCipher::update_ingress_mac(ByteView /*data*/) noexcept {}
+MacDigest FrameCipher::compute_header_mac(ByteView /*hct*/) noexcept { return {}; }
+MacDigest FrameCipher::compute_frame_mac(ByteView /*fct*/) noexcept  { return {}; }
 
 } // namespace rlpx::framing
