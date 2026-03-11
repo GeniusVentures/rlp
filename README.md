@@ -40,39 +40,49 @@ This project uses Ninja as the build system, with CMake for configuration. Build
 
 ### Build Instructions
 
-For each platform, follow these steps. Example shown for macOS (`OSX`):
+Builds are always run from inside the `build/<Platform>/<BuildType>/` directory.
+`cmake ..` points to `build/<Platform>/` which contains the platform CMakeLists.
+**Never run cmake from the repo root or `build/<Platform>/` directly.**
 
 #### Debug Build
 ```bash
 cd build/OSX
-mkdir -p Debug
-cd Debug
-cmake .. -DCMAKE_BUILD_TYPE=Debug -G "Ninja" -DSANITIZE_ADDRESS=code
+mkdir -p Debug && cd Debug
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
 ninja
 ```
 
 #### Release Build
 ```bash
 cd build/OSX
-mkdir -p Release
-cd Release
-cmake .. -DCMAKE_BUILD_TYPE=Release -G "Ninja"
+mkdir -p Release && cd Release
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Release
 ninja
 ```
 
 #### Release with Debug Info
 ```bash
 cd build/OSX
-mkdir -p RelWithDebInfo
-cd RelWithDebInfo
-cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -G "Ninja" -DSANITIZE_ADDRESS=code
+mkdir -p RelWithDebInfo && cd RelWithDebInfo
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ninja
 ```
 
-The ```-DSANITIZE_ADDRESS=code``` is optional for finding memory leaks and other memory issues
+The optional `-DSANITIZE_ADDRESS=code` flag enables AddressSanitizer for memory leak detection.
 
-- **Output**: Built files (e.g., test executable `rlp_test`) are in `build/OSX/Debug/`, `build/OSX/Release/`, etc.
-- **Platforms**: Replace `OSX` with `Linux`, `Windows`, `Android`, or `iOS` as needed. Adjust CMake flags for cross-compilation if targeting Android or iOS.
+> **If the build directory is ever deleted or CMakeCache.txt goes stale:**
+> ```bash
+> cd build/OSX
+> rm -rf Debug          # or Release / RelWithDebInfo
+> mkdir Debug && cd Debug
+> cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=Debug
+> ninja
+> ```
+> Do **not** delete the cache and re-run cmake in-place with a different source path —
+> always recreate the directory and let `cmake ..` resolve everything from `build/<Platform>/`.
+
+- **Output**: Built files are in `build/OSX/Debug/`, `build/OSX/Release/`, etc.
+- **Platforms**: Replace `OSX` with `Linux`, `Windows`, `Android`, or `iOS` as needed.
 
 ### Running Tests
 After building, run the test executable:
@@ -159,12 +169,115 @@ events without centralized RPC endpoints.
 
 ## Testing
 
-The project includes comprehensive unit tests in `test/rlp_test.cpp`, covering:
-- Encoding/decoding of basic types.
-- Nested lists and vectors.
-- Error cases (e.g., leading zeros, overflow, non-canonical sizes).
+### Unit Tests
 
-Run tests after building to verify functionality.
+The project includes comprehensive unit tests covering RLP encoding/decoding, RLPx
+crypto, ETH message handling, discv4 discovery, and more (499 tests total).
+
+```bash
+cd build/OSX/Debug
+ctest --no-pager
+```
+
+---
+
+### Live eth_watch Integration Testing
+
+`eth_watch` connects directly to Ethereum P2P networks via discv4 + RLPx — no RPC
+required. The test scripts below watch for GNUS.AI contract events across multiple
+chains and can send test transactions to verify end-to-end detection.
+
+#### Prerequisites
+
+Install [Foundry](https://github.com/foundry-rs/foundry) for the `cast` tool (used to
+sign and send transactions):
+
+```bash
+brew install foundry
+```
+
+#### 1. Generate a test wallet
+
+Run once to create a dedicated test wallet and save it to a local `.env` file.
+**`.env` is git-ignored — never commit it.**
+
+```bash
+cast wallet new --json | \
+  node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); \
+  console.log('# Test wallet — DO NOT COMMIT\nPRIVATE_KEY='+d[0].private_key+'\nTEST_ADDRESS='+d[0].address);" \
+  > .env && cat .env
+```
+
+#### 2. Fund the test wallet
+
+Send a small amount of GNUS to `TEST_ADDRESS` (shown in `.env`) on each chain you
+want to test, from your own wallet. GNUS contract addresses:
+
+| Chain | Address |
+|-------|---------|
+| Ethereum | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+| Polygon | `0x127E47abA094a9a87D084a3a93732909Ff031419` |
+| BSC | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+| Base | `0x614577036F0a024DBC1C88BA616b394DD65d105a` |
+| Ethereum Sepolia | `0x9af8050220D8C355CA3c6dC00a78B474cd3e3c70` |
+| Polygon Amoy | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+| BSC Testnet | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+| Base Sepolia | `0xeC20bDf2f9f77dc37Ee8313f719A3cbCFA0CD1eB` |
+
+> Source: [docs.gnus.ai/resources/contracts](https://docs.gnus.ai/resources/contracts/)
+
+#### 3. Start watching all chains
+
+In one terminal, start the watcher before sending transactions so events are caught
+live:
+
+```bash
+# All 4 mainnets
+./test_eth_watch.sh
+
+# All 4 testnets
+./test_eth_watch.sh gnus-all-testnets
+
+# Single chain
+./test_eth_watch.sh polygon
+```
+
+#### 4. Send test transactions
+
+In a second terminal, send a GNUS Transfer from the test wallet:
+
+```bash
+# Testnets
+source .env && ./send_test_transactions.sh testnets
+
+# Mainnets
+source .env && ./send_test_transactions.sh
+
+# Specific chains
+source .env && ./send_test_transactions.sh sepolia polygon-amoy
+```
+
+Optional env var overrides:
+
+```bash
+# Send to a different address
+TO_ADDRESS=0x... source .env && ./send_test_transactions.sh testnets
+
+# Use your own RPC endpoint
+RPC_SEPOLIA=https://my-node.example.com source .env && ./send_test_transactions.sh sepolia
+
+# Extend the watch window (default 60s)
+WATCH_TIMEOUT=120 ./test_eth_watch.sh gnus-all-testnets
+```
+
+#### What a successful run looks like
+
+```
+[Sepolia    ] HELLO from peer: Geth/v1.16.7-stable/linux-amd64/go1.25.1
+[Sepolia    ] ETH STATUS: network_id=11155111
+[Sepolia    ] NewBlockHashes: 1 hashes
+[Sepolia    ] Transfer(0xYourAddress → 0xTestAddress, 1) at block 7654321
+```
 
 ## Contributing
 

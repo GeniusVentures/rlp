@@ -133,3 +133,24 @@ If they differ, either qualify every use (`discv4::kWireHashSize`) or add a scop
 
 Live network testing cannot distinguish between "our crypto is wrong" and "the peer is offline/incompatible/behind a firewall". A deterministic test vector can.
 
+### M017 — Using plain `//` comments for declarations in header files
+**What happened**: New function declarations were added to header files with plain `// comment` style instead of Doxygen `///` or `/** */` blocks.  
+**Root cause**: Writing the first obvious thing without checking the documentation rule in `CLAUDE.md`.  
+**Rule**: Every function declaration (and struct/class member) in a header file **must** use Doxygen-style comments:
+- `@brief` / `@param` / `@return` / `@note` tags, or the triple-slash `///` shorthand.
+- Plain `//` comments are only acceptable inside `.cpp` implementation files for inline clarifications.
+- When adding a new declaration, always look at the surrounding declarations in the same header and match their Doxygen style exactly.
+- Never silently omit `@param` or `@return` for non-trivial declarations.
+
+### M018 — Using `std::cout` / `std::cerr` for debug output instead of spdlog
+**What happened**: When a debug print was needed, `std::cerr` was inserted directly into source code, requiring an `#include <iostream>` and a build cycle to observe behaviour.  
+**Root cause**: Reaching for the obvious C++ I/O stream instead of using the project's established logging system.  
+**Rule**: **Never use `std::cout` or `std::cerr` for debug output.** Use the project spdlog system exclusively:
+1. In each `.cpp` file that needs logging, declare a function-local static logger at the top of the relevant function (matching the pattern used everywhere else):
+   ```cpp
+   static auto log = rlp::base::createLogger("subsystem.component");
+   ```
+2. Use `SPDLOG_LOGGER_DEBUG(log, "msg {}", val)`, `SPDLOG_LOGGER_INFO(...)`, `SPDLOG_LOGGER_WARN(...)`, `SPDLOG_LOGGER_ERROR(...)`.
+3. The global spdlog level is already controlled by the `--log-level` CLI flag in `eth_watch` (and similar entry points). Setting `--log-level debug` will show all `DEBUG` output with zero code changes.
+4. `std::cout` is only acceptable for **user-facing program output** (e.g., final results printed to the terminal by design). It is never acceptable for diagnostic or debug output.
+

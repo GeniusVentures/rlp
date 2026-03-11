@@ -4,9 +4,24 @@
 - Do not commit changes without explicit user permission
 
 ## Build Commands
-- Build project: `build.bat`
-- Release build: `build.bat`
-- Enable testing: Add `-DTESTING=ON` to cmake arguments
+
+> **See `README.md` → "Building the Project" for the full authoritative build instructions.**
+> Always read README.md before attempting to build or fix build issues.
+
+The build pattern for every platform and build type is:
+
+```bash
+cd build/<Platform>/<BuildType>   # e.g. build/OSX/Debug
+cmake .. -G "Ninja" -DCMAKE_BUILD_TYPE=<BuildType>
+ninja
+```
+
+- `cmake ..` points to `build/<Platform>/` — **never** run cmake from the repo root
+- If `CMakeCache.txt` is stale or the build directory is broken, **delete and recreate the directory**, then run cmake fresh
+- The user manages thirdparty builds separately — do not attempt to build thirdparty
+- Do not pass `-DTHIRDPARTY_BUILD_DIR` or other cache variables; `cmake ..` resolves everything automatically
+- Build types: `Debug`, `Release`, `RelWithDebInfo`
+- Platforms: `OSX`, `Linux`, `Windows`, `Android`, `iOS`
 
 ## Code Style
 - Style: Based on Microsoft with modifications (see .clang-format)
