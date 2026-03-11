@@ -6,6 +6,7 @@
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/socket/socket_transport.hpp>
+#include <base/logger.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/use_awaitable.hpp>
@@ -190,17 +191,51 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
         co_return recv_result.error();
     }
     auto& peer_msg = recv_result.value();
+    {
+        static auto log = rlp::base::createLogger("rlpx.session");
+        SPDLOG_LOGGER_DEBUG(log, "connect: first message from peer, id=0x{:02x} payload_size={}", peer_msg.id, peer_msg.payload.size());
+    }
     if (peer_msg.id == kHelloMessageId) {
         auto peer_hello = protocol::HelloMessage::decode(
             ByteView(peer_msg.payload.data(), peer_msg.payload.size()));
         if (peer_hello) {
             session->peer_info_.client_id     = peer_hello.value().client_id;
             session->peer_info_.listen_port   = peer_hello.value().listen_port;
+            static auto log = rlp::base::createLogger("rlpx.session");
+            SPDLOG_LOGGER_DEBUG(log, "connect: peer HELLO ok, client='{}' port={} caps={}",
+                peer_hello.value().client_id,
+                peer_hello.value().listen_port,
+                peer_hello.value().capabilities.size());
+
+            // RLPx spec: enable Snappy compression if both sides advertise p2p version >= 5.
+            // We always send version 5; if the peer does too, all post-HELLO messages are compressed.
+            if (peer_hello.value().protocol_version >= kProtocolVersion) {
+                session->stream_->enable_compression();
+                SPDLOG_LOGGER_DEBUG(log, "connect: Snappy compression enabled (peer p2p v{})",
+                    peer_hello.value().protocol_version);
+            }
+
             // Fire handler if already registered (unlikely here, but safe)
             if (session->hello_handler_) {
                 session->hello_handler_(peer_hello.value());
             }
+        } else {
+            static auto log = rlp::base::createLogger("rlpx.session");
+            SPDLOG_LOGGER_WARN(log, "connect: peer HELLO decode failed, payload_size={}", peer_msg.payload.size());
         }
+    } else if (peer_msg.id == kDisconnectMessageId) {
+        static auto log = rlp::base::createLogger("rlpx.session");
+        auto disc = protocol::DisconnectMessage::decode(peer_msg.payload);
+        if (disc) {
+            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO, reason={}",
+                static_cast<int>(disc.value().reason));
+        } else {
+            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO (reason undecodable)");
+        }
+        co_return SessionError::kHandshakeFailed;
+    } else {
+        static auto log = rlp::base::createLogger("rlpx.session");
+        SPDLOG_LOGGER_WARN(log, "connect: expected HELLO (0x00) but got id=0x{:02x}", peer_msg.id);
     }
 
     // Step 7: Activate session and start I/O loops
@@ -346,11 +381,11 @@ Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
             continue;
         }
         
-        // Send message through stream
+        // Compress if stream compression is enabled (set after HELLO negotiation)
         framing::MessageSendParams send_params{
             .message_id = msg->id,
             .payload = msg->payload,
-            .compress = false  // TODO: Enable compression based on capabilities
+            .compress = stream_->is_compression_enabled()
         };
         
         auto send_result = co_await stream_->send_message(send_params);
@@ -367,6 +402,7 @@ Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
 
 // Internal receive loop
 Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
+    static auto log = rlp::base::createLogger("rlpx.session");
     // Continuously receive messages while session is active
     while (state() == SessionState::kActive) {
         // Receive message from network stream
@@ -374,11 +410,13 @@ Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
         
         if (!msg_result) {
             // Network error or connection closed
+            SPDLOG_LOGGER_DEBUG(log, "receive_loop: stream error, closing session");
             force_error_state();
             co_return msg_result.error();
         }
         
         auto& msg = msg_result.value();
+        SPDLOG_LOGGER_DEBUG(log, "receive_loop: msg id=0x{:02x} payload_size={}", msg.id, msg.payload.size());
         
         // Convert framing::Message to protocol::Message for routing
         protocol::Message proto_msg{
@@ -402,6 +440,7 @@ Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
 
 // Message routing
 void RlpxSession::route_message(const protocol::Message& msg) noexcept {
+    static auto log = rlp::base::createLogger("rlpx.session");
     // Route based on message ID
     switch (msg.id) {
         case kHelloMessageId:
@@ -413,16 +452,21 @@ void RlpxSession::route_message(const protocol::Message& msg) noexcept {
             }
             break;
 
-        case kDisconnectMessageId:
-            if (disconnect_handler_) {
-                auto disconnect_result = protocol::DisconnectMessage::decode(msg.payload);
-                if (disconnect_result.has_value()) {
+        case kDisconnectMessageId: {
+            auto disconnect_result = protocol::DisconnectMessage::decode(msg.payload);
+            if (disconnect_result.has_value()) {
+                SPDLOG_LOGGER_DEBUG(log, "route: peer sent Disconnect reason={}", static_cast<int>(disconnect_result.value().reason));
+                if (disconnect_handler_) {
                     disconnect_handler_(disconnect_result.value());
                 }
+            } else {
+                SPDLOG_LOGGER_DEBUG(log, "route: peer sent Disconnect (decode failed)");
             }
             break;
+        }
 
         case kPingMessageId:
+            SPDLOG_LOGGER_DEBUG(log, "route: Ping received");
             if (ping_handler_) {
                 auto ping_result = protocol::PingMessage::decode(msg.payload);
                 if (ping_result.has_value()) {
@@ -432,6 +476,7 @@ void RlpxSession::route_message(const protocol::Message& msg) noexcept {
             break;
 
         case kPongMessageId:
+            SPDLOG_LOGGER_DEBUG(log, "route: Pong received");
             if (pong_handler_) {
                 auto pong_result = protocol::PongMessage::decode(msg.payload);
                 if (pong_result.has_value()) {

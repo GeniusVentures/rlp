@@ -43,9 +43,24 @@ public:
         gsl::span<const uint8_t, kMacSize> header_mac
     ) noexcept;
 
-    // Decrypt frame body
+    /// @brief Decrypt a complete frame (header + body) in one call.
+    /// @param params  Bundled header ciphertext, header MAC, frame ciphertext, and frame MAC.
+    /// @return Decrypted plaintext payload, or a FramingError on MAC mismatch / invalid size.
     [[nodiscard]] FramingResult<ByteBuffer>
     decrypt_frame(const FrameDecryptParams& params) noexcept;
+
+    /// @brief Decrypt the frame body only, after @ref decrypt_header has already been called.
+    ///
+    /// Use this when the header has been decrypted separately (e.g. in @ref MessageStream)
+    /// to avoid advancing the MAC accumulator twice.
+    /// @param fsize           Plaintext byte count as decoded from the header.
+    /// @param frame_ct_padded Frame ciphertext padded to a 16-byte boundary.
+    /// @param frame_mac       16-byte frame MAC from the wire.
+    /// @return Decrypted plaintext (truncated to @p fsize), or a FramingError on MAC mismatch.
+    [[nodiscard]] FramingResult<ByteBuffer>
+    decrypt_frame_body(size_t fsize,
+                       ByteView frame_ct_padded,
+                       ByteView frame_mac) noexcept;
 
     // Return const reference to secrets (grouped values)
     [[nodiscard]] const auth::FrameSecrets& secrets() const noexcept {
