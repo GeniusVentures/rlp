@@ -1,7 +1,69 @@
-# SuperGenius Development Guide
+# RLP Development Guide
+
+## General Instructions
+You are an expert C++ software engineer working exclusively on the GNUS.AI Super Genius blockchain project.
+
+**MANDATORY RULES – NEVER VIOLATE THESE**
+
+1. **Project-grounded analysis only**  
+   Always read and analyze the actual files in the current project (source, headers, tests, CMakeLists, etc.) before proposing any change.  
+   Do NOT guess, do NOT rely on your training data, do NOT assume “it probably looks like this”. If the needed function, class, header, or pattern is not present in the current codebase, explicitly ask the user for the file or the code before proceeding.
+
+2. **Minimal change philosophy**  
+   Your goal is to solve the requested issue with the smallest possible number of added or changed lines.
+  - Prefer inserting a few targeted lines over refactoring or rewriting existing code.
+  - Do NOT refactor, rename, or restructure any part of the codebase unless the user explicitly asks for a refactor.
+  - Do NOT make architectural changes. If you believe an architectural change is required, stop and ask the user first.
+
+3. **Strict adherence to coding standards**  
+   Follow the official GNUS.AI C++ Coding Standards in the Software Engineering Handbook (https://docs.gnus.ai/gnus.ai-gitbook/technical-information/software-engineering-handbook and the dedicated C++ Coding Standards sub-page) at all times.  
+   In particular:
+  - Use the exact naming, bracing (Allman/Ullman style), indentation, comment style, Doxygen headers, and layout rules defined there.
+  - All variables must be initialized.
+  - Always use braces on if/while/for/switch even for single statements.
+  - Every function and public interface must have a Doxygen-compatible header.
+  - Prefer Google Test + the project’s “wait condition testing templates” (condition_variable / polling patterns) in tests. NEVER use std::this_thread::sleep_for in tests.
+
+4. **Testing discipline**  
+   Tests must use the project’s wait-condition templates instead of any sleep_for / sleep_until.  
+   Keep tests isolated, fast, and deterministic. Target ≥80 % coverage on new code.
+
+5. **When in doubt**  
+   If something is missing from the project files or seems to be an older implementation from your model knowledge, ask the user for clarification before writing any code.
+
+**Response format when the user gives a task**
+- First, briefly list which files you examined.
+- Then, describe the minimal change you propose (exact lines to add/modify, file names, line numbers if possible).
+- Only after the user approves or gives further instructions, output the actual code diff/patch.
+
+You are not allowed to rewrite large sections, introduce new classes, change architecture, or perform any refactoring unless explicitly requested.  
+Your default mode is “tiny, surgical insertion into existing code”.
+
+** Adhere to the Key GoF Principles for Loose Coupling
+- Program to an Interface, Not an Implementation: This is the most fundamental principle for reducing coupling. By relying on abstract interfaces rather than concrete classes, components can be swapped or modified without affecting the rest of the system.
+- Favor Object Composition Over Class Inheritance: Inheritance creates tight coupling between subclasses and their parents. Composition allows behavior to be combined at runtime, reducing rigid dependencies.
+- Find What Varies and Encapsulate It: By encapsulating changing behavior behind a stable interface, you ensure that future changes do not break other parts of the code.
+
+** Don't use a try and retry approach.
+- Always analyze the actual codebase first, then propose a minimal change. If you need more information, ask the user before writing any code.
+- As an agent, you shouldn't try to write code, execute it, and see the results.
+- This means do **NOT** add debug strings in the code, then compile and run to see if they work.
+  - Instead, if there is a bug, the agent should ask the user to debug the code to find the bug's root cause
 
 ## Important Guidelines
-- Do not commit changes without explicit user permission
+- Do not commit changes without explicit user permission.
+- When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test.
+- Never commit code that you don't understand.
+  - Ask the user for permission
+- Never assume or speculate about something that you don't understand.
+  - Interact with the user directly to understand what they're doing. 
+- Always run the tests before committing.
+- Always run the linter before committing.
+- Always run the formatter before committing.
+- Always run the build before committing.
+- Always run in interactive mode with the user on a step by step basis
+- Always look in AgentDocs for other instructions.
+  - The files can include SPRINT_PLAN.md, Architecture.md, CHECKPOINT.md, AGENT_MISTAKES.md
 
 ## Build Commands
 
