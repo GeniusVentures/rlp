@@ -8,6 +8,101 @@
 using namespace rlpx;
 using namespace rlpx::protocol;
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static std::vector<uint8_t> from_hex(std::string_view hex) {
+    std::vector<uint8_t> out;
+    out.reserve(hex.size() / 2);
+    for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+        auto byte = static_cast<uint8_t>(std::stoul(std::string(hex.substr(i, 2)), nullptr, 16));
+        out.push_back(byte);
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// go-ethereum wire-format vector tests
+//
+// These bytes were computed from go-ethereum's RLP encoding of protoHandshake:
+//   type protoHandshake struct {
+//       Version    uint64
+//       Name       string
+//       Caps       []Cap         // each Cap is [name string, version uint64]
+//       ListenPort uint64
+//       ID         []byte        // 64-byte uncompressed pubkey WITHOUT 0x04 prefix
+//   }
+//
+// Vector: Version=5, Name="test-client", Caps=[["eth",68]], Port=30303, ID=64×0x00
+// Computed with Python rlp_encode, verified against go-ethereum rlp package.
+// ---------------------------------------------------------------------------
+
+// The exact wire bytes for the vector above (91 bytes).
+// f8 59              — outer list, 89-byte payload
+//   05               — version = 5
+//   8b 746573742d636c69656e74  — "test-client"
+//   c6 c5 83 657468 44  — caps list: [["eth", 68]]
+//   82 765f           — port = 30303
+//   b8 40 00…00       — ID: 64 zero bytes as RLP byte string
+static constexpr std::string_view kHelloWireHex =
+    "f859"
+    "05"
+    "8b746573742d636c69656e74"
+    "c6c58365746844"
+    "82765f"
+    "b840"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000";
+
+TEST(ProtocolMessagesGoEthVectors, HelloEncodeMatchesWireFormat) {
+    HelloMessage msg;
+    msg.protocol_version = 5;
+    msg.client_id = "test-client";
+    msg.capabilities = { {"eth", 68} };
+    msg.listen_port = 30303;
+    msg.node_id.fill(0x00);
+
+    auto result = msg.encode();
+    ASSERT_TRUE(result.has_value()) << "encode() failed";
+
+    auto expected = from_hex(kHelloWireHex);
+    EXPECT_EQ(result.value(), expected)
+        << "Encoded bytes do not match go-ethereum wire format.\n"
+        << "  got " << result.value().size() << " bytes, expected " << expected.size();
+}
+
+TEST(ProtocolMessagesGoEthVectors, HelloDecodeFromWireBytes) {
+    auto wire = from_hex(kHelloWireHex);
+    auto result = HelloMessage::decode(ByteView(wire.data(), wire.size()));
+    ASSERT_TRUE(result.has_value()) << "decode() failed on go-ethereum wire bytes";
+
+    EXPECT_EQ(result.value().protocol_version, 5u);
+    EXPECT_EQ(result.value().client_id, "test-client");
+    ASSERT_EQ(result.value().capabilities.size(), 1u);
+    EXPECT_EQ(result.value().capabilities[0].name, "eth");
+    EXPECT_EQ(result.value().capabilities[0].version, 68u);
+    EXPECT_EQ(result.value().listen_port, 30303u);
+    PublicKey zero_id;
+    zero_id.fill(0x00);
+    EXPECT_EQ(result.value().node_id, zero_id);
+}
+
+TEST(ProtocolMessagesGoEthVectors, HelloRoundTripPreservesWireFormat) {
+    // Decode from wire → re-encode → must produce identical bytes
+    auto wire = from_hex(kHelloWireHex);
+    auto decoded = HelloMessage::decode(ByteView(wire.data(), wire.size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    auto reencoded = decoded.value().encode();
+    ASSERT_TRUE(reencoded.has_value());
+    EXPECT_EQ(reencoded.value(), wire);
+}
+
+// ---------------------------------------------------------------------------
+// Original round-trip tests (preserved)
+// ---------------------------------------------------------------------------
+
 TEST(ProtocolMessagesTest, HelloEncodeBasic) {
     HelloMessage msg;
     msg.protocol_version = 5;
@@ -253,3 +348,4 @@ TEST(ProtocolMessagesTest, HelloManyCapabilities) {
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(decoded.value().capabilities.size(), 10);
 }
+

@@ -86,13 +86,14 @@ TEST_F(EthProtocolTest, StatusMessageRoundtrip) {
     eth::StatusMessage original{
         .protocol_version = 68,
         .network_id = 1,  // Mainnet
-        .total_difficulty = intx::uint256(0x1000),
-        .best_hash = make_filled<eth::Hash256>(0xaa),
         .genesis_hash = make_filled<eth::Hash256>(0xbb),
         .fork_id = {
             .fork_hash = make_filled<std::array<uint8_t, 4>>(0xcc),
             .next_fork = 20000000
-        }
+        },
+        .earliest_block = 0,
+        .latest_block = 1000,
+        .latest_block_hash = make_filled<eth::Hash256>(0xaa),
     };
 
     std::cout << "  → Encoding Status message (protocol=" << (int)original.protocol_version
@@ -115,11 +116,12 @@ TEST_F(EthProtocolTest, StatusMessageRoundtrip) {
     const auto& result = decoded.value();
     EXPECT_EQ(result.protocol_version, original.protocol_version);
     EXPECT_EQ(result.network_id, original.network_id);
-    EXPECT_EQ(result.total_difficulty, original.total_difficulty);
-    EXPECT_EQ(result.best_hash, original.best_hash);
     EXPECT_EQ(result.genesis_hash, original.genesis_hash);
     EXPECT_EQ(result.fork_id.fork_hash, original.fork_id.fork_hash);
     EXPECT_EQ(result.fork_id.next_fork, original.fork_id.next_fork);
+    EXPECT_EQ(result.earliest_block, original.earliest_block);
+    EXPECT_EQ(result.latest_block, original.latest_block);
+    EXPECT_EQ(result.latest_block_hash, original.latest_block_hash);
 
     std::cout << "  ✓ All fields match after roundtrip\n";
 }
@@ -147,10 +149,11 @@ TEST_F(EthProtocolTest, StatusMessageMultipleNetworks) {
         eth::StatusMessage msg{
             .protocol_version = 68,
             .network_id = network.network_id,
-            .total_difficulty = intx::uint256(0),
-            .best_hash = {},
             .genesis_hash = {},
-            .fork_id = {}
+            .fork_id = {},
+            .earliest_block = 0,
+            .latest_block = 0,
+            .latest_block_hash = {},
         };
 
         auto encoded = eth::protocol::encode_status(msg);

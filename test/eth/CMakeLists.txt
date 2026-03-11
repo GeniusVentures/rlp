@@ -7,6 +7,12 @@ add_executable(eth_messages_test
 )
 target_link_libraries(eth_messages_test PRIVATE rlp GTest::gtest_main)
 
+# ETH handshake tests — mirrors go-ethereum's eth/protocols/eth/handshake_test.go
+add_executable(eth_handshake_test
+    eth_handshake_test.cpp
+)
+target_link_libraries(eth_handshake_test PRIVATE rlp GTest::gtest_main)
+
 # ETH objects tests
 add_executable(eth_objects_test
     eth_objects_test.cpp
@@ -64,6 +70,7 @@ target_link_libraries(gnus_contracts_test PRIVATE rlp GTest::gtest_main)
 # Register tests with CTest
 include(GoogleTest)
 gtest_discover_tests(eth_messages_test)
+gtest_discover_tests(eth_handshake_test)
 gtest_discover_tests(eth_objects_test)
 gtest_discover_tests(eth_watch_integration_test)
 gtest_discover_tests(eth_transactions_test)
