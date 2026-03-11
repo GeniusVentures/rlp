@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <array>
+#include <iomanip>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
 #include <boost/asio/io_context.hpp>
@@ -328,31 +329,44 @@ boost::asio::awaitable<void> run_watch(std::string host,
             contract,
             spec.event_signature,
             abi_params,
-            [sig_copy](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
+            [sig_copy, abi_params](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
             {
-                std::cout << sig_copy << " at block " << ev.block_number << "\n";
+                std::cout << sig_copy << " at block " << ev.block_number;
+                if (ev.tx_hash != eth::codec::Hash256{})
+                {
+                    std::cout << "  tx: 0x";
+                    for (const auto b : ev.tx_hash) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
+                    std::cout << std::dec;
+                }
+                std::cout << "\n";
+
                 for (size_t i = 0; i < vals.size(); ++i)
                 {
-                    std::cout << "  [" << i << "] ";
+                    // Use the registered field name if available, else fall back to index
+                    const std::string label = (i < abi_params.size() && !abi_params[i].name.empty())
+                        ? abi_params[i].name
+                        : std::to_string(i);
+                    std::cout << "  [" << label << "] ";
+
                     if (const auto* addr = std::get_if<eth::codec::Address>(&vals[i]))
                     {
-                        std::cout << "address: 0x";
-                        for (const auto b : *addr) { std::cout << std::hex << static_cast<int>(b); }
+                        std::cout << "0x";
+                        for (const auto b : *addr) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
                         std::cout << std::dec;
                     }
                     else if (const auto* u256 = std::get_if<intx::uint256>(&vals[i]))
                     {
-                        std::cout << "uint256: " << intx::to_string(*u256);
+                        std::cout << intx::to_string(*u256);
                     }
                     else if (const auto* b32 = std::get_if<eth::codec::Hash256>(&vals[i]))
                     {
-                        std::cout << "bytes32: 0x";
-                        for (const auto b : *b32) { std::cout << std::hex << static_cast<int>(b); }
+                        std::cout << "0x";
+                        for (const auto b : *b32) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
                         std::cout << std::dec;
                     }
                     else if (const auto* bval = std::get_if<bool>(&vals[i]))
                     {
-                        std::cout << "bool: " << (*bval ? "true" : "false");
+                        std::cout << (*bval ? "true" : "false");
                     }
                     std::cout << "\n";
                 }
@@ -380,17 +394,22 @@ boost::asio::awaitable<void> run_watch(std::string host,
         }
     });
 
-    // Create the lifetime timer as a shared_ptr so the disconnect handler
-    // (which fires from the receive loop, not this coroutine) can cancel it,
-    // waking run_watch so it exits and clears `connected` — re-entering discovery.
+    // Create timers and handshake state.
+    // status_timeout: fires in kStatusHandshakeTimeout if peer never sends ETH Status.
+    //   Mirrors go-ethereum's waitForHandshake() with handshakeTimeout = 5s.
+    // lifetime: cancelled by the disconnect handler to tear down the session.
     auto executor = co_await boost::asio::this_coro::executor;
-    auto lifetime = std::make_shared<boost::asio::steady_timer>(executor);
+    auto status_received  = std::make_shared<std::atomic<bool>>(false);
+    auto status_timeout   = std::make_shared<boost::asio::steady_timer>(executor);
+    auto lifetime         = std::make_shared<boost::asio::steady_timer>(executor);
+    status_timeout->expires_after(eth::protocol::kStatusHandshakeTimeout);
     lifetime->expires_after(std::chrono::hours(24 * 365));
 
-    session->set_disconnect_handler([session, lifetime](const rlpx::protocol::DisconnectMessage& msg) {
+    session->set_disconnect_handler([session, lifetime, status_timeout](const rlpx::protocol::DisconnectMessage& msg) {
         (void)session;
         std::cout << "Disconnected: reason=" << static_cast<int>(msg.reason) << "\n";
         lifetime->cancel();
+        status_timeout->cancel(); // wake handshake wait if Status not yet received
     });
 
     session->set_ping_handler([session](const rlpx::protocol::PingMessage&) {
@@ -404,7 +423,8 @@ boost::asio::awaitable<void> run_watch(std::string host,
         if (!post_result) { return; }
     });
 
-    session->set_generic_handler([session, eth_offset, network_id, genesis_hash, watch_svc](const rlpx::protocol::Message& msg) {
+    session->set_generic_handler([session, eth_offset, network_id, genesis_hash, watch_svc,
+                                   status_received, status_timeout](const rlpx::protocol::Message& msg) {
         (void)session;
         static auto gh_log = rlp::base::createLogger("eth_watch");
         if (msg.id < eth_offset) {
@@ -420,6 +440,8 @@ boost::asio::awaitable<void> run_watch(std::string host,
             if (!decoded) {
                 SPDLOG_LOGGER_WARN(gh_log, "generic_handler: ETH Status decode failed, payload_size={}, error={}",
                                    msg.payload.size(), static_cast<int>(decoded.error()));
+                status_timeout->cancel(); // validation failed — stop waiting
+                (void)session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
                 return;
             }
             const auto& status = decoded.value();
@@ -455,13 +477,28 @@ boost::asio::awaitable<void> run_watch(std::string host,
                                        status.earliest_block, status.latest_block);
                     break;
                 }
-                session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
+                status_timeout->cancel(); // validation failed — stop waiting
+                (void)session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
                 return;
             }
+            // Handshake successful — signal the awaiting coroutine.
             SPDLOG_LOGGER_INFO(gh_log, "ETH Status: network_id={} protocol={} latest_block={}",
                                status.network_id,
                                static_cast<int>(status.protocol_version),
                                status.latest_block);
+            status_received->store(true);
+            status_timeout->cancel(); // wake the co_await below
+            std::cout << "Connected. Watching for events...\n";
+            return;
+        }
+
+        // Received a non-Status ETH message before the handshake completed.
+        // Per go-ethereum (readStatusMsg): the first ETH message MUST be Status.
+        if (!status_received->load()) {
+            SPDLOG_LOGGER_WARN(gh_log, "generic_handler: non-Status ETH message (id=0x{:02x}) received before handshake",
+                               eth_id);
+            status_timeout->cancel();
+            (void)session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
             return;
         }
 
@@ -481,12 +518,35 @@ boost::asio::awaitable<void> run_watch(std::string host,
         watch_svc->process_message(eth_id, payload);
     });
 
-    std::cout << "Connected. Watching for events...\n";
+    // ── ETH Status handshake wait (mirrors go-ethereum's waitForHandshake) ────
+    // Await the status_timeout timer.  The generic_handler cancels it (with
+    // operation_aborted) as soon as it receives a valid peer Status, or on any
+    // validation/decode failure.  If it fires naturally the peer is silent
+    // (e.g. a Polygon bor node connecting on the Ethereum P2P network).
+    {
+        boost::system::error_code hs_ec;
+        co_await status_timeout->async_wait(
+            boost::asio::redirect_error(boost::asio::use_awaitable, hs_ec));
+
+        if (!status_received->load()) {
+            if (hs_ec != boost::asio::error::operation_aborted) {
+                // Timer expired naturally — peer never sent ETH Status.
+                SPDLOG_LOGGER_WARN(log, "run_watch: ETH Status handshake timeout ({}:{}) — "
+                                   "peer is likely on a different chain", host, port);
+                std::cout << "Handshake timeout: " << host << ":" << port
+                          << " — peer never sent ETH Status (wrong chain?)\n";
+                (void)session->disconnect(rlpx::DisconnectReason::kTimeout);
+            }
+            // else: validation failure — session->disconnect() already called in handler.
+            connected->store(false);
+            co_return;
+        }
+    }
+    // status_received == true: handshake complete, now watch until disconnected.
 
     boost::system::error_code ec;
     co_await lifetime->async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
     // ec == operation_aborted means the disconnect handler cancelled the timer.
-    // Either way, clear connected so the discovery callback can try the next peer.
     (void)session;
     connected->store(false);
     co_return;
