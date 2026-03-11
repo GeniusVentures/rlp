@@ -96,6 +96,10 @@ add_compile_definitions("SPDLOG_FMT_EXTERNAL")
 set(libsecp256k1_DIR "${_THIRDPARTY_BUILD_DIR}/libsecp256k1/lib/cmake/libsecp256k1")
 find_package(libsecp256k1 CONFIG REQUIRED)
 
+# for compression, we need snappy
+set(Snappy_DIR "${_THIRDPARTY_BUILD_DIR}/snappy/lib/cmake/Snappy")
+find_package(Snappy CONFIG REQUIRED)
+
 # --------------------------------------------------------
 # set config for crypto3
 option(BUILD_TESTS "Build tests" ON)
