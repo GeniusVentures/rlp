@@ -47,8 +47,8 @@ Result<ByteBuffer> HelloMessage::encode() const noexcept {
     // Listen port
     if (!encoder.add(listen_port)) return SessionError::kInvalidMessage;
     
-    // Node ID (64 bytes)
-    if (!encoder.AddRaw(detail::to_rlp_view(ByteView(node_id.data(), node_id.size())))) 
+    // Node ID (64 bytes) — encoded as RLP byte string to match go-ethereum's []byte encoding
+    if (!encoder.add(detail::to_rlp_view(ByteView(node_id.data(), node_id.size())))) 
         return SessionError::kInvalidMessage;
     
     if (!encoder.EndList()) return SessionError::kInvalidMessage;
@@ -140,12 +140,12 @@ Result<HelloMessage> HelloMessage::decode(ByteView rlp_data) noexcept {
     }
     msg.listen_port = port;
     
-    // Read node ID (64 bytes) - added with AddRaw so it's just the remaining bytes
-    auto remaining = decoder.Remaining();
-    if ( remaining.size() != kPublicKeySize ) {
+    // Read node ID (64 bytes) — go-ethereum encodes ID []byte as an RLP byte string
+    rlp::Bytes id_bytes;
+    if ( !decoder.read(id_bytes) || id_bytes.size() != kPublicKeySize ) {
         return SessionError::kInvalidMessage;
     }
-    std::memcpy(msg.node_id.data(), remaining.data(), kPublicKeySize);
+    std::memcpy(msg.node_id.data(), id_bytes.data(), kPublicKeySize);
     
     return msg;
 }

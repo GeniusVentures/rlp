@@ -6,11 +6,18 @@
 #include "eth_types.hpp"
 #include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
+#include <chrono>
 #include <vector>
 
 namespace eth::protocol {
 
 inline constexpr uint8_t kStatusMessageId = 0x00;
+
+/// @brief Maximum time to wait for a peer's ETH Status after sending ours.
+/// Matches go-ethereum's handshakeTimeout (eth/protocols/eth/handshake.go).
+/// If the peer does not reply within this window it is dropped as malicious
+/// or mismatched (e.g. a Polygon bor node on the Ethereum P2P network).
+inline constexpr std::chrono::seconds kStatusHandshakeTimeout{5};
 inline constexpr uint8_t kNewBlockHashesMessageId = 0x01;
 inline constexpr uint8_t kTransactionsMessageId = 0x02;
 inline constexpr uint8_t kGetBlockHeadersMessageId = 0x03;

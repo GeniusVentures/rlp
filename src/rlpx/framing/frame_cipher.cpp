@@ -288,6 +288,33 @@ FramingResult<ByteBuffer> FrameCipher::decrypt_frame(
     return frame_pt;
 }
 
+// ── decrypt_frame_body ────────────────────────────────────────────────────────
+
+FramingResult<ByteBuffer> FrameCipher::decrypt_frame_body(
+    size_t   fsize,
+    ByteView frame_ct_padded,
+    ByteView frame_mac) noexcept
+{
+    const size_t rsize = frame_ct_padded.size();
+    if (rsize < fsize || frame_mac.size() < kMacSize)
+    {
+        return FramingError::kInvalidFrameSize;
+    }
+
+    auto frame_mac_expected = impl_->ingress_mac.compute_frame(
+        frame_ct_padded.data(), rsize);
+    if (CRYPTO_memcmp(frame_mac.data(), frame_mac_expected.data(), kMacSize) != 0)
+    {
+        fc_log()->debug("decrypt_frame_body: frame MAC mismatch");
+        return FramingError::kMacMismatch;
+    }
+
+    ByteBuffer frame_pt(rsize);
+    impl_->dec.process(frame_ct_padded.data(), frame_pt.data(), rsize);
+    frame_pt.resize(fsize);
+    return frame_pt;
+}
+
 // ── legacy stubs ─────────────────────────────────────────────────────────────
 
 void FrameCipher::update_egress_mac(ByteView /*data*/) noexcept {}

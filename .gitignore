@@ -1,0 +1,17 @@
+# Local environment / secrets — never commit
+.env
+.env.*
+!.env.example
+examples/.env
+examples/.env.*
+!examples/.env.example
+
+# Build outputs
+build/
+
+# macOS
+.DS_Store
+
+# Test log files
+/tmp/eth_watch_*.log
+examples/*.log
