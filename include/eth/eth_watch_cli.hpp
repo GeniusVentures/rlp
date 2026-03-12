@@ -49,7 +49,7 @@ template <size_t N>
 /// @return Parsed address or nullopt if the format is invalid.
 [[nodiscard]] inline std::optional<codec::Address> parse_address(std::string_view hex) noexcept
 {
-    if (hex.starts_with("0x") || hex.starts_with("0X"))
+    if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X'))
     {
         hex = hex.substr(2);
     }

@@ -10,10 +10,8 @@
 
 #include <arpa/inet.h>
 #include <atomic>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <chrono>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -126,11 +124,10 @@ TEST(DiscoveryClientLifetimeTest, ClientAlive_PacketReachesListener)
 
     discv4::NodeId dummy_id{};  // zeroed — ping() doesn't validate the node_id
 
-    boost::asio::co_spawn(io,
-        [dv4, port = listener.port(), &dummy_id]() -> boost::asio::awaitable<void> {
-            [[maybe_unused]] auto r = co_await dv4->ping("127.0.0.1", port, dummy_id);
-        },
-        boost::asio::detached);
+    boost::asio::spawn(io,
+        [dv4, port = listener.port(), dummy_id](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r = dv4->ping("127.0.0.1", port, dummy_id, yield);
+        });
 
     io.run_for(std::chrono::milliseconds(500));
 
@@ -162,17 +159,15 @@ TEST(DiscoveryClientLifetimeTest, ClientOuterScope_MultiPingReachesListeners)
     // dv4 still alive here — inner scope only held the config.
 
     // Simulate two discovery callbacks firing (two different peers found).
-    boost::asio::co_spawn(io,
-        [dv4, p1 = listener1.port(), &dummy_id]() -> boost::asio::awaitable<void> {
-            [[maybe_unused]] auto r = co_await dv4->ping("127.0.0.1", p1, dummy_id);
-        },
-        boost::asio::detached);
+    boost::asio::spawn(io,
+        [dv4, p1 = listener1.port(), dummy_id](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r = dv4->ping("127.0.0.1", p1, dummy_id, yield);
+        });
 
-    boost::asio::co_spawn(io,
-        [dv4, p2 = listener2.port(), &dummy_id]() -> boost::asio::awaitable<void> {
-            [[maybe_unused]] auto r = co_await dv4->ping("127.0.0.1", p2, dummy_id);
-        },
-        boost::asio::detached);
+    boost::asio::spawn(io,
+        [dv4, p2 = listener2.port(), dummy_id](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r = dv4->ping("127.0.0.1", p2, dummy_id, yield);
+        });
 
     io.run_for(std::chrono::milliseconds(500));
 

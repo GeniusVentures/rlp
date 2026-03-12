@@ -142,7 +142,19 @@ Live network testing cannot distinguish between "our crypto is wrong" and "the p
 - When adding a new declaration, always look at the surrounding declarations in the same header and match their Doxygen style exactly.
 - Never silently omit `@param` or `@return` for non-trivial declarations.
 
-### M018 — Using `std::cout` / `std::cerr` for debug output instead of spdlog
+### M019 — Using C++20 `boost::asio::awaitable` in code that must build on C++17 targets
+**What happened**: Async network functions were written using C++20 native coroutines (`boost::asio::awaitable<T>`, `co_await`, `co_return`, `boost::asio::this_coro::executor`). This fails to compile on Debian 11 Bullseye with older Clang/GCC that only support C++17 (e.g. Clang 11/12 shipped with Bullseye).  
+**Root cause**: Wrote the first convenient async pattern without checking the minimum compiler/standard requirement for all build targets.  
+**Rule**: The project must compile under C++17 (Debian 11 Bullseye is a supported target). **Never use C++20 coroutine keywords** (`co_await`, `co_return`, `co_yield`) or `boost::asio::awaitable<T>` / `boost::asio::this_coro::executor`. Use the C++17-compatible **Boost stackful coroutine** API instead:
+- Replace `boost::asio::awaitable<T>` return types with `T` (returning directly).
+- Add `boost::asio::yield_context yield` as the last parameter to every async function.
+- Replace `co_await op(asio::use_awaitable)` → `op(yield)`.
+- Replace `co_return value` → `return value`.
+- Replace `boost::asio::co_spawn(exec, coro, token)` → `boost::asio::spawn(exec, [](yield_context yield){...})`.
+- Replace `co_await boost::asio::this_coro::executor` → `yield.get_executor()`.
+- Link `Boost::coroutine` and `Boost::context` in CMake target_link_libraries.
+
+
 **What happened**: When a debug print was needed, `std::cerr` was inserted directly into source code, requiring an `#include <iostream>` and a build cycle to observe behaviour.  
 **Root cause**: Reaching for the obvious C++ I/O stream instead of using the project's established logging system.  
 **Rule**: **Never use `std::cout` or `std::cerr` for debug output.** Use the project spdlog system exclusively:

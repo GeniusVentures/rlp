@@ -17,6 +17,8 @@ target_include_directories(discv4 PUBLIC
 # Link public dependencies
 target_link_libraries(discv4 PUBLIC
         Boost::boost
+        Boost::context
+        Boost::coroutine
         libsecp256k1::secp256k1
         logger
 )

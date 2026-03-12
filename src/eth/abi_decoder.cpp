@@ -5,7 +5,6 @@
 #include <eth/eth_constants.hpp>
 #include <rlp/errors.hpp>
 #include <algorithm>
-#include <cstring>
 
 #include <nil/crypto3/hash/algorithm/hash.hpp>
 #include <nil/crypto3/hash/keccak.hpp>

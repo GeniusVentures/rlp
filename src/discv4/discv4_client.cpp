@@ -7,8 +7,7 @@
 #include "discv4/discv4_ping.hpp"
 #include "discv4/discv4_pong.hpp"
 #include "base/logger.hpp"
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
@@ -42,7 +41,9 @@ rlpx::VoidResult discv4_client::start() {
     }
 
     // Start receive loop
-    asio::co_spawn(io_context_, receive_loop(), asio::detached);
+    asio::spawn(io_context_, [this](asio::yield_context yield) {
+        receive_loop(yield);
+    });
 
     return rlp::outcome::success();
 }
@@ -53,17 +54,17 @@ void discv4_client::stop() {
     socket_.close(ec);
 }
 
-boost::asio::awaitable<void> discv4_client::receive_loop() {
+void discv4_client::receive_loop(asio::yield_context yield) {
     std::array<uint8_t, kUdpBufferSize> buffer{};
 
     while (running_) {
         udp::endpoint sender_endpoint;
         boost::system::error_code ec;
 
-        size_t bytes_received = co_await socket_.async_receive_from(
+        size_t bytes_received = socket_.async_receive_from(
             asio::buffer(buffer),
             sender_endpoint,
-            asio::redirect_error(asio::use_awaitable, ec)
+            asio::redirect_error(yield, ec)
         );
 
         if (ec) {
@@ -157,21 +158,19 @@ void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::e
 
     const std::string ip   = sender.address().to_string();
     const uint16_t    port = sender.port();
-    asio::co_spawn(io_context_,
-        [this, ip, port, pkt = std::move(signed_packet.value())]()
-            -> boost::asio::awaitable<void>
+    asio::spawn(io_context_,
+        [this, ip, port, pkt = std::move(signed_packet.value())](asio::yield_context yield)
         {
             const udp::endpoint dest(asio::ip::make_address(ip), port);
-            auto send_result = co_await send_packet(pkt, dest);
+            auto send_result = send_packet(pkt, dest, yield);
             (void)send_result;
 
             // Bond is now complete — send FIND_NODE asking for peers
             // closest to our own node ID
             logger_->debug("Bond complete with {}:{} — sending FIND_NODE", ip, port);
-            auto find_result = co_await find_node(ip, port, config_.public_key);
+            auto find_result = find_node(ip, port, config_.public_key, yield);
             (void)find_result;
-        },
-        asio::detached);
+        });
 }
 
 void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::endpoint& sender) {
@@ -310,10 +309,11 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
 }
 
 
-boost::asio::awaitable<discv4::Result<discv4_pong>> discv4_client::ping(
+discv4::Result<discv4_pong> discv4_client::ping(
     const std::string& ip,
     uint16_t port,
-    const NodeId& node_id
+    const NodeId& /*node_id*/,
+    asio::yield_context yield
 ) {
     // Create PING packet
     discv4_ping ping_packet(
@@ -323,51 +323,52 @@ boost::asio::awaitable<discv4::Result<discv4_pong>> discv4_client::ping(
 
     auto payload = ping_packet.RlpPayload();
     if (payload.empty()) {
-        co_return discv4Error::kRlpPayloadEmpty;
+        return discv4Error::kRlpPayloadEmpty;
     }
 
     // Sign the packet
     auto signed_packet = sign_packet(payload);
     if (!signed_packet) {
-        co_return discv4Error::kSigningFailed;
+        return discv4Error::kSigningFailed;
     }
 
     // Send packet
     udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = co_await send_packet(signed_packet.value(), destination);
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
     if (!send_result) {
-        co_return discv4Error::kNetworkSendFailed;
+        return discv4Error::kNetworkSendFailed;
     }
 
     // Wait for PONG response (simplified - in production use proper async waiting)
     // For now, return success - PONG will be handled in receive_loop
-    co_return discv4Error::kPongTimeout;  // Placeholder
+    return discv4Error::kPongTimeout;  // Placeholder
 }
 
-boost::asio::awaitable<rlpx::VoidResult> discv4_client::find_node(
+rlpx::VoidResult discv4_client::find_node(
     const std::string& ip,
     uint16_t port,
-    const NodeId& target_id
+    const NodeId& target_id,
+    asio::yield_context yield
 ) {
     // FIND_NODE payload: packet-type(0x03) || RLP([target(64), expiration])
     rlp::RlpEncoder encoder;
     if (!encoder.BeginList()) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
     if (!encoder.add(rlp::ByteView(target_id.data(), target_id.size()))) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
     const uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + kPacketExpirySeconds;
     if (!encoder.add(expiration)) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
     if (!encoder.EndList()) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
 
     auto bytes_result = encoder.MoveBytes();
     if (!bytes_result) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
 
     // Prepend packet type byte
@@ -380,35 +381,36 @@ boost::asio::awaitable<rlpx::VoidResult> discv4_client::find_node(
 
     auto signed_packet = sign_packet(payload);
     if (!signed_packet) {
-        co_return rlp::outcome::success();
+        return rlp::outcome::success();
     }
 
     const udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = co_await send_packet(signed_packet.value(), destination);
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
     (void)send_result;
-    co_return rlp::outcome::success();
+    return rlp::outcome::success();
 }
 
-boost::asio::awaitable<discv4::Result<void>> discv4_client::send_packet(
+discv4::Result<void> discv4_client::send_packet(
     const std::vector<uint8_t>& packet,
-    const udp::endpoint& destination
+    const udp::endpoint& destination,
+    asio::yield_context yield
 ) {
     boost::system::error_code ec;
 
-    co_await socket_.async_send_to(
+    socket_.async_send_to(
         asio::buffer(packet),
         destination,
-        asio::redirect_error(asio::use_awaitable, ec)
+        asio::redirect_error(yield, ec)
     );
 
     if (ec) {
         if (error_callback_) {
             error_callback_("Send error: " + ec.message());
         }
-        co_return discv4Error::kNetworkSendFailed;
+        return discv4Error::kNetworkSendFailed;
     }
 
-    co_return rlp::outcome::success();
+    return rlp::outcome::success();
 }
 
 discv4::Result<std::vector<uint8_t>> discv4_client::sign_packet(const std::vector<uint8_t>& payload) {

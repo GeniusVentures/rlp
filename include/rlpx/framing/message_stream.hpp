@@ -7,14 +7,10 @@
 #include "../rlpx_error.hpp"
 #include "frame_cipher.hpp"
 #include "../socket/socket_transport.hpp"
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <memory>
 
 namespace rlpx::framing {
-
-// Hide Boost types (Law of Demeter)
-template<typename T>
-using Awaitable = boost::asio::awaitable<T>;
 
 // Protocol message structure
 struct Message {
@@ -29,42 +25,47 @@ struct MessageSendParams {
     bool compress;
 };
 
-// Message stream handles framing, encryption, and compression
+/// Message stream handles framing, encryption, and compression.
 class MessageStream {
 public:
-    // Takes ownership of cipher and socket transport
+    /// Takes ownership of cipher and socket transport.
     MessageStream(
         std::unique_ptr<FrameCipher> cipher,
         socket::SocketTransport transport
     ) noexcept;
 
-    // Send message (encodes, compresses if enabled, frames, encrypts)
-    [[nodiscard]] Awaitable<VoidResult>
-    send_message(const MessageSendParams& params) noexcept;
+    /// @brief Send message (encodes, compresses if enabled, frames, encrypts).
+    /// @param params Message send parameters.
+    /// @param yield  Boost.Asio stackful coroutine context.
+    /// @return Success or SessionError on failure.
+    [[nodiscard]] VoidResult
+    send_message(const MessageSendParams& params, boost::asio::yield_context yield) noexcept;
 
-    // Receive message (decrypts, deframes, decompresses, decodes)
-    [[nodiscard]] Awaitable<Result<Message>>
-    receive_message() noexcept;
+    /// @brief Receive message (decrypts, deframes, decompresses, decodes).
+    /// @param yield Boost.Asio stackful coroutine context.
+    /// @return Decoded Message on success, SessionError on failure.
+    [[nodiscard]] Result<Message>
+    receive_message(boost::asio::yield_context yield) noexcept;
 
-    // Enable compression after hello exchange
+    /// Enable compression after hello exchange.
     void enable_compression() noexcept { compression_enabled_ = true; }
 
-    // Query state
+    /// Query state.
     [[nodiscard]] bool is_compression_enabled() const noexcept { 
         return compression_enabled_; 
     }
 
-    // Access cipher secrets (grouped values)
+    /// Access cipher secrets (grouped values).
     [[nodiscard]] const auth::FrameSecrets& cipher_secrets() const noexcept {
         return cipher_->secrets();
     }
 
 private:
-    [[nodiscard]] Awaitable<FramingResult<void>>
-    send_frame(ByteView frame_data) noexcept;
+    [[nodiscard]] FramingResult<void>
+    send_frame(ByteView frame_data, boost::asio::yield_context yield) noexcept;
 
-    [[nodiscard]] Awaitable<FramingResult<ByteBuffer>>
-    receive_frame() noexcept;
+    [[nodiscard]] FramingResult<ByteBuffer>
+    receive_frame(boost::asio::yield_context yield) noexcept;
 
     std::unique_ptr<FrameCipher> cipher_;
     socket::SocketTransport transport_;

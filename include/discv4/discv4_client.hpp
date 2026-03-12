@@ -4,7 +4,7 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include "discv4/discv4_pong.hpp"
 #include "discv4/discv4_error.hpp"
 #include <rlp/result.hpp>
@@ -76,18 +76,28 @@ public:
     // Stop discovery
     void stop();
 
-    // Send PING to a specific node
-    boost::asio::awaitable<discv4::Result<discv4_pong>> ping(
+    /// @brief Send PING to a specific node.
+    /// @param ip      Target node IP address.
+    /// @param port    Target node UDP port.
+    /// @param node_id Target node identifier.
+    /// @param yield   Boost.Asio stackful coroutine context.
+    discv4::Result<discv4_pong> ping(
         const std::string& ip,
         uint16_t port,
-        const NodeId& node_id
+        const NodeId& node_id,
+        boost::asio::yield_context yield
     );
 
-    // Send FIND_NODE to discover peers near a target
-    boost::asio::awaitable<rlpx::VoidResult> find_node(
+    /// @brief Send FIND_NODE to discover peers near a target.
+    /// @param ip        Target node IP address.
+    /// @param port      Target node UDP port.
+    /// @param target_id Target node identifier to search near.
+    /// @param yield     Boost.Asio stackful coroutine context.
+    rlpx::VoidResult find_node(
         const std::string& ip,
         uint16_t port,
-        const NodeId& target_id
+        const NodeId& target_id,
+        boost::asio::yield_context yield
     );
 
     // Get list of discovered peers
@@ -104,7 +114,7 @@ public:
 
 private:
     // Receive loop
-    boost::asio::awaitable<void> receive_loop();
+    void receive_loop(boost::asio::yield_context yield);
 
     // Handle incoming packet
     void handle_packet(const uint8_t* data, size_t length, const udp::endpoint& sender);
@@ -116,9 +126,10 @@ private:
     void handle_neighbours(const uint8_t* data, size_t length, const udp::endpoint& sender);
 
     // Send packet
-    boost::asio::awaitable<discv4::Result<void>> send_packet(
+    discv4::Result<void> send_packet(
         const std::vector<uint8_t>& packet,
-        const udp::endpoint& destination
+        const udp::endpoint& destination,
+        boost::asio::yield_context yield
     );
 
     // Sign packet with ECDSA
