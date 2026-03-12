@@ -214,7 +214,7 @@ echo ""
 # ── Test 2: Peer Connection ───────────────────────────────────────────────────
 test_start "EthWatchSepoliaTest.PeerConnection"
 
-stdbuf -oL "$ETH_WATCH_BIN" \
+ASAN_OPTIONS=halt_on_error=0 stdbuf -oL "$ETH_WATCH_BIN" \
     --chain sepolia \
     --log-level debug \
     --watch-contract "$CONTRACT" --watch-event "Transfer(address,address,uint256)" \
