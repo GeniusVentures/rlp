@@ -362,7 +362,3 @@ jobs:
       - name: Build rlp
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
         run: cmake --build . --config ${{ matrix.build-type }} -j
-      
-      - name: Install rlp
-        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
-        run: cmake --install . --config ${{ matrix.build-type }}
