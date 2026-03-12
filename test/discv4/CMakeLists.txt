@@ -65,7 +65,9 @@ target_include_directories(discv4_client_test PRIVATE
 
 # Add tests to CTest
 include(GoogleTest)
-gtest_discover_tests(discv4_discovery_tests)
-gtest_discover_tests(discv4_protocol_test)
-gtest_discover_tests(discv4_dial_history_test)
-gtest_discover_tests(discv4_client_test)
+if(NOT CMAKE_CROSSCOMPILING)
+    gtest_discover_tests(discv4_discovery_tests)
+    gtest_discover_tests(discv4_protocol_test)
+    gtest_discover_tests(discv4_dial_history_test)
+    gtest_discover_tests(discv4_client_test)
+endif()
