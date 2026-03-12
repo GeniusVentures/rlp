@@ -79,7 +79,8 @@ if(NOT CMAKE_CROSSCOMPILING)
     gtest_discover_tests(abi_decoder_test)
     gtest_discover_tests(eth_watch_service_test)
     gtest_discover_tests(eth_watch_cli_test)
+    gtest_discover_tests(chain_tracker_test)
+    gtest_discover_tests(gnus_contracts_test)
 endif()
-gtest_discover_tests(chain_tracker_test)
-gtest_discover_tests(gnus_contracts_test)
+
 
