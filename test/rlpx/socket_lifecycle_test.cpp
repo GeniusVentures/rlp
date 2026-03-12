@@ -5,9 +5,7 @@
 #include <rlpx/socket/socket_transport.hpp>
 #include <rlpx/rlpx_session.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
-#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <chrono>
 #include <queue>
 

@@ -3,12 +3,10 @@
 
 #include <array>
 #include <iomanip>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <charconv>
 #include <chrono>
@@ -98,7 +96,7 @@ std::optional<uint8_t> parse_uint8(std::string_view value) {
 
 std::optional<Config> parse_enode(std::string_view enode) {
     constexpr std::string_view kPrefix = "enode://";
-    if (!enode.starts_with(kPrefix)) {
+    if (enode.size() < kPrefix.size() || enode.substr(0, kPrefix.size()) != kPrefix) {
         return std::nullopt;
     }
 
@@ -225,14 +223,15 @@ void print_usage(const char* exe) {
 ///        a timer that the disconnect handler cancels, matching go-ethereum's
 ///        pattern of re-entering discovery after any disconnection.
 /// @param connected  Shared atomic flag — cleared before this coroutine returns.
-boost::asio::awaitable<void> run_watch(std::string host,
-                                       uint16_t port,
-                                       rlpx::PublicKey peer_pubkey,
-                                       uint8_t eth_offset,
-                                       uint64_t network_id,
-                                       eth::Hash256 genesis_hash,
-                                       std::vector<eth::cli::WatchSpec> watch_specs,
-                                       std::shared_ptr<std::atomic<bool>> connected)
+void run_watch(std::string host,
+               uint16_t port,
+               rlpx::PublicKey peer_pubkey,
+               uint8_t eth_offset,
+               uint64_t network_id,
+               eth::Hash256 genesis_hash,
+               std::vector<eth::cli::WatchSpec> watch_specs,
+               std::shared_ptr<std::atomic<bool>> connected,
+               boost::asio::yield_context yield)
 {
     static auto log = rlp::base::createLogger("eth_watch");
 
@@ -240,7 +239,7 @@ boost::asio::awaitable<void> run_watch(std::string host,
     if (!keypair_result) {
         SPDLOG_LOGGER_ERROR(log, "run_watch: failed to generate local keypair");
         connected->store(false);
-        co_return;
+        return;
     }
 
     const auto& keypair = keypair_result.value();
@@ -256,13 +255,13 @@ boost::asio::awaitable<void> run_watch(std::string host,
     };
 
     SPDLOG_LOGGER_DEBUG(log, "run_watch: connecting to {}:{}", host, port);
-    auto session_result = co_await rlpx::RlpxSession::connect(params);
+    auto session_result = rlpx::RlpxSession::connect(params, yield);
     if (!session_result) {
         auto err = session_result.error();
         std::cout << "Failed to connect to " << host << ":" << port
                   << " (error " << static_cast<int>(err) << ": " << rlpx::to_string(err) << ")\n";
         connected->store(false);
-        co_return;
+        return;
     }
 
     auto session_unique = std::move(session_result.value());
@@ -317,7 +316,7 @@ boost::asio::awaitable<void> run_watch(std::string host,
             {
                 std::cout << "Invalid contract address: " << spec.contract_hex << "\n";
                 connected->store(false);
-                co_return;
+                return;
             }
             contract = *addr;
         }
@@ -398,7 +397,7 @@ boost::asio::awaitable<void> run_watch(std::string host,
     // status_timeout: fires in kStatusHandshakeTimeout if peer never sends ETH Status.
     //   Mirrors go-ethereum's waitForHandshake() with handshakeTimeout = 5s.
     // lifetime: cancelled by the disconnect handler to tear down the session.
-    auto executor = co_await boost::asio::this_coro::executor;
+    auto executor = yield.get_executor();
     auto status_received  = std::make_shared<std::atomic<bool>>(false);
     auto status_timeout   = std::make_shared<boost::asio::steady_timer>(executor);
     auto lifetime         = std::make_shared<boost::asio::steady_timer>(executor);
@@ -525,8 +524,8 @@ boost::asio::awaitable<void> run_watch(std::string host,
     // (e.g. a Polygon bor node connecting on the Ethereum P2P network).
     {
         boost::system::error_code hs_ec;
-        co_await status_timeout->async_wait(
-            boost::asio::redirect_error(boost::asio::use_awaitable, hs_ec));
+        status_timeout->async_wait(
+            boost::asio::redirect_error(yield, hs_ec));
 
         if (!status_received->load()) {
             if (hs_ec != boost::asio::error::operation_aborted) {
@@ -539,17 +538,15 @@ boost::asio::awaitable<void> run_watch(std::string host,
             }
             // else: validation failure — session->disconnect() already called in handler.
             connected->store(false);
-            co_return;
+            return;
         }
     }
     // status_received == true: handshake complete, now watch until disconnected.
 
     boost::system::error_code ec;
-    co_await lifetime->async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
-    // ec == operation_aborted means the disconnect handler cancelled the timer.
+    lifetime->async_wait(boost::asio::redirect_error(yield, ec));
     (void)session;
     connected->store(false);
-    co_return;
 }
 
 } // namespace
@@ -747,15 +744,14 @@ int main(int argc, char** argv) {
                     std::cout << "Discovered peer: " << peer.ip
                               << ":" << peer.tcp_port << " — connecting...\n";
 
-                    boost::asio::co_spawn(io,
+                    boost::asio::spawn(io,
                         [pubkey, peer, eth_offset, network_id, genesis_hash,
-                         watch_specs, connected]() -> boost::asio::awaitable<void>
+                         watch_specs, connected](boost::asio::yield_context yc)
                         {
-                            co_await run_watch(peer.ip, peer.tcp_port, pubkey,
-                                               eth_offset, network_id, genesis_hash,
-                                               watch_specs, connected);
-                        },
-                        boost::asio::detached);
+                            run_watch(peer.ip, peer.tcp_port, pubkey,
+                                      eth_offset, network_id, genesis_hash,
+                                      watch_specs, connected, yc);
+                        });
                 });
 
             dv4->set_error_callback([](const std::string& err) {
@@ -776,14 +772,12 @@ int main(int argc, char** argv) {
                 {
                     continue;
                 }
-                boost::asio::co_spawn(io,
-                    [dv4, host = bn->host, port = bn->port, bn_id]()
-                        -> boost::asio::awaitable<void>
+                boost::asio::spawn(io,
+                    [dv4, host = bn->host, port = bn->port, bn_id](boost::asio::yield_context yc)
                     {
-                        auto result = co_await dv4->ping(host, port, bn_id);
+                        auto result = dv4->ping(host, port, bn_id, yc);
                         (void)result;
-                    },
-                    boost::asio::detached);
+                    });
             }
 
             const auto start_result = dv4->start();
@@ -804,14 +798,18 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            boost::asio::co_spawn(io,
-                run_watch(config->host, config->port, peer_pubkey,
-                          config->eth_offset,
-                          config->network_id,
-                          config->genesis_hash,
-                          std::move(config->watch_specs),
-                          std::make_shared<std::atomic<bool>>(true)),
-                boost::asio::detached);
+            boost::asio::spawn(io,
+                [host = config->host, port = config->port, peer_pubkey,
+                 eth_offset = config->eth_offset,
+                 network_id = config->network_id,
+                 genesis_hash = config->genesis_hash,
+                 watch_specs = std::move(config->watch_specs)](boost::asio::yield_context yc)
+                {
+                    run_watch(host, port, peer_pubkey,
+                              eth_offset, network_id, genesis_hash,
+                              watch_specs,
+                              std::make_shared<std::atomic<bool>>(true), yc);
+                });
         }
 
         io.run();

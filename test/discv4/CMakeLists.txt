@@ -70,4 +70,9 @@ if(NOT CMAKE_CROSSCOMPILING)
     gtest_discover_tests(discv4_protocol_test)
     gtest_discover_tests(discv4_dial_history_test)
     gtest_discover_tests(discv4_client_test)
+        # boost::coroutines triggers a known ASan false-positive on macOS (stack-buffer-underflow
+        # in standard_stack_allocator). ASan itself prints "False positive error reports may follow".
+        # halt_on_error=0 lets the process continue past the false positive so the test can pass.
+        # See https://github.com/google/sanitizers/issues/189
+        PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"
 endif()

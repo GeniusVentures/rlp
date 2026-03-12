@@ -9,6 +9,8 @@
 
 namespace rlpx::framing {
 
+namespace asio = boost::asio;
+
 MessageStream::MessageStream(
     std::unique_ptr<FrameCipher> cipher,
     socket::SocketTransport transport
@@ -20,21 +22,21 @@ MessageStream::MessageStream(
     recv_buffer_.reserve(4096);
 }
 
-Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& params) noexcept {
+VoidResult MessageStream::send_message(const MessageSendParams& params, asio::yield_context yield) noexcept {
     // go-ethereum wire format: RLP-encoded uint(message_id) || raw payload bytes
     // No outer list — matches rlp.AppendUint64(code) + data in writeFrame.
     rlp::RlpEncoder encoder;
     if (auto res = encoder.add(params.message_id); !res) {
-        co_return SessionError::kInvalidMessage;
+        return SessionError::kInvalidMessage;
     }
     if (!params.payload.empty()) {
         if (auto res = encoder.AddRaw(detail::to_rlp_view(params.payload)); !res) {
-            co_return SessionError::kInvalidMessage;
+            return SessionError::kInvalidMessage;
         }
     }
 
     auto result = encoder.GetBytes();
-    if (!result) co_return SessionError::kInvalidMessage;
+    if (!result) return SessionError::kInvalidMessage;
     ByteBuffer message_data = detail::from_rlp_bytes(*result.value());
         
         // Compress if enabled (after HELLO, all messages use Snappy per go-ethereum SetSnappy)
@@ -50,7 +52,7 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         // Frame the message (may need to split into multiple frames)
         // For now, send as single frame (max 16MB)
         if ( message_data.size() > kMaxFrameSize ) {
-            co_return SessionError::kInvalidMessage;
+            return SessionError::kInvalidMessage;
         }
         
         FrameEncryptParams frame_params{
@@ -60,23 +62,23 @@ Awaitable<VoidResult> MessageStream::send_message(const MessageSendParams& param
         
         auto encrypted_frame_result = cipher_->encrypt_frame(frame_params);
         if ( !encrypted_frame_result ) {
-            co_return SessionError::kEncryptionError;
+            return SessionError::kEncryptionError;
         }
         
         // Send encrypted frame over socket
-        auto write_result = co_await transport_.write_all(encrypted_frame_result.value());
+        auto write_result = transport_.write_all(encrypted_frame_result.value(), yield);
         if ( !write_result ) {
-            co_return write_result.error();
+            return write_result.error();
         }
         
-        co_return outcome::success();
+        return outcome::success();
 }
 
-Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
+Result<Message> MessageStream::receive_message(asio::yield_context yield) noexcept {
     // Receive encrypted frame from socket
-    auto frame_result = co_await receive_frame();
+    auto frame_result = receive_frame(yield);
     if ( !frame_result || frame_result.value().empty() ) {
-        co_return SessionError::kInvalidMessage;
+        return SessionError::kInvalidMessage;
     }
         
         const auto& frame_data = frame_result.value();
@@ -90,14 +92,14 @@ Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
                     reinterpret_cast<const char*>(decode_src->data()),
                     decode_src->size(),
                     &uncompressed_len)) {
-                co_return SessionError::kInvalidMessage;
+                return SessionError::kInvalidMessage;
             }
             decompressed.resize(uncompressed_len);
             if (!snappy::RawUncompress(
                     reinterpret_cast<const char*>(decode_src->data()),
                     decode_src->size(),
                     reinterpret_cast<char*>(decompressed.data()))) {
-                co_return SessionError::kInvalidMessage;
+                return SessionError::kInvalidMessage;
             }
             decode_src = &decompressed;
         }
@@ -107,7 +109,7 @@ Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
 
         uint64_t msg_id = 0;
         if (!decoder.read(msg_id)) {
-            co_return SessionError::kInvalidMessage;
+            return SessionError::kInvalidMessage;
         }
 
         // Remaining bytes are the raw (possibly RLP-encoded) payload
@@ -118,10 +120,10 @@ Awaitable<Result<Message>> MessageStream::receive_message() noexcept {
         }
 
         Message msg{static_cast<uint8_t>(msg_id), std::move(payload)};
-        co_return msg;
+        return msg;
 }
 
-Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) noexcept {
+FramingResult<void> MessageStream::send_frame(ByteView frame_data, asio::yield_context yield) noexcept {
     // Encrypt and send frame
     FrameEncryptParams params{
         .frame_data = frame_data,
@@ -130,25 +132,25 @@ Awaitable<FramingResult<void>> MessageStream::send_frame(ByteView frame_data) no
         
         auto encrypted_result = cipher_->encrypt_frame(params);
         if ( !encrypted_result ) {
-            co_return encrypted_result.error();
+            return encrypted_result.error();
         }
         
         // Send over socket
-        auto write_result = co_await transport_.write_all(encrypted_result.value());
+        auto write_result = transport_.write_all(encrypted_result.value(), yield);
         if ( !write_result ) {
-            co_return FramingError::kEncryptionFailed;
+            return FramingError::kEncryptionFailed;
         }
         
-        co_return outcome::success();
+        return outcome::success();
 }
 
-Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
+FramingResult<ByteBuffer> MessageStream::receive_frame(asio::yield_context yield) noexcept {
     // Read frame header (32 bytes total = 16 header + 16 MAC)
     constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
-    auto header_with_mac_result = co_await transport_.read_exact(kFrameHeaderWithMacSize);
+    auto header_with_mac_result = transport_.read_exact(kFrameHeaderWithMacSize, yield);
     if ( !header_with_mac_result ) {
         ByteBuffer empty;
-        co_return empty;
+        return empty;
     }
         
         const auto& header_data = header_with_mac_result.value();
@@ -167,7 +169,7 @@ Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
         auto frame_size_result = cipher_->decrypt_header(header_span, header_mac_span);
         if ( !frame_size_result ) {
             ByteBuffer empty;
-            co_return empty;
+            return empty;
         }
         
         size_t frame_size = frame_size_result.value();
@@ -176,10 +178,10 @@ Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
         const size_t padding    = (frame_size % 16 != 0) ? (16 - frame_size % 16) : 0;
         const size_t padded_size = frame_size + padding;
         size_t total_frame_bytes = padded_size + kMacSize;
-        auto frame_with_mac_result = co_await transport_.read_exact(total_frame_bytes);
+        auto frame_with_mac_result = transport_.read_exact(total_frame_bytes, yield);
         if ( !frame_with_mac_result ) {
             ByteBuffer empty;
-            co_return empty;
+            return empty;
         }
         
         const auto& frame_data = frame_with_mac_result.value();
@@ -199,10 +201,10 @@ Awaitable<FramingResult<ByteBuffer>> MessageStream::receive_frame() noexcept {
         );
         if ( !decrypted_result ) {
             ByteBuffer empty;
-            co_return empty;
+            return empty;
         }
         
-        co_return decrypted_result.value();
+        return decrypted_result.value();
 }
 
 } // namespace rlpx::framing
