@@ -8,19 +8,46 @@
 #include <discv4/discv4_client.hpp>
 #include <gtest/gtest.h>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 #include <atomic>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/spawn.hpp>
 #include <chrono>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 
 namespace {
 
 using boost::asio::ip::udp;
+
+#ifdef _WIN32
+using SocketHandle = SOCKET;
+constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+inline int close_socket(SocketHandle sockfd) { return ::closesocket(sockfd); }
+
+struct WinsockInit {
+    WinsockInit() {
+        WSADATA data{};
+        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
+        EXPECT_EQ(rc, 0) << "WSAStartup() failed";
+    }
+    ~WinsockInit() { ::WSACleanup(); }
+};
+#else
+using SocketHandle = int;
+constexpr SocketHandle kInvalidSocket = -1;
+inline int close_socket(SocketHandle sockfd) { return ::close(sockfd); }
+#endif
 
 /// @brief A minimal UDP listener that records the first datagram it receives.
 ///        Uses a plain blocking socket in a background thread — no shared_ptrs
@@ -29,14 +56,20 @@ class UdpListener {
 public:
     explicit UdpListener(uint16_t port)
     {
+#ifdef _WIN32
+    static WinsockInit winsock_init;
+    (void)winsock_init;
+#endif
+
         // Bind a UDP socket synchronously so port() is valid immediately.
         sockfd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-        EXPECT_GE(sockfd_, 0) << "socket() failed";
+    EXPECT_NE(sockfd_, kInvalidSocket) << "socket() failed";
 
         struct timeval tv{};
         tv.tv_sec  = 0;
         tv.tv_usec = 100000;  // 100 ms receive timeout so the thread can poll running_
-        ::setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ::setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO,
+             reinterpret_cast<const char*>(&tv), sizeof(tv));
 
         sockaddr_in addr{};
         addr.sin_family      = AF_INET;
@@ -60,7 +93,11 @@ public:
         thread_  = std::thread([this] {
             std::array<uint8_t, 2048> buf{};
             while (running_) {
+#ifdef _WIN32
+                int n = ::recv(sockfd_, reinterpret_cast<char*>(buf.data()), static_cast<int>(buf.size()), 0);
+#else
                 ssize_t n = ::recv(sockfd_, buf.data(), buf.size(), 0);
+#endif
                 if (n > 0) { received_ = true; }
             }
         });
@@ -70,7 +107,10 @@ public:
     void stop()
     {
         running_ = false;
-        if (sockfd_ >= 0) { ::close(sockfd_); sockfd_ = -1; }
+        if (sockfd_ != kInvalidSocket) {
+            close_socket(sockfd_);
+            sockfd_ = kInvalidSocket;
+        }
         if (thread_.joinable()) { thread_.join(); }
     }
 
@@ -80,7 +120,7 @@ public:
     uint16_t port() const { return port_; }
 
 private:
-    int                 sockfd_{-1};
+    SocketHandle        sockfd_{kInvalidSocket};
     uint16_t            port_{0};
     std::atomic<bool>   received_{false};
     std::atomic<bool>   running_{false};

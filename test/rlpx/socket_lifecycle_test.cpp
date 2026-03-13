@@ -98,14 +98,15 @@ TEST_F(SocketLifecycleTest, SessionConnectParamsCreation) {
     PrivateKey local_priv{};
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
-    SessionConnectParams params{};
-    params.remote_host = "example.com";
-    params.remote_port = 30303;
-    params.local_public_key = local_pub;
-    params.local_private_key = local_priv;
-    params.peer_public_key = peer_key;
-    params.client_id = "test-client";
-    params.listen_port = 30303;
+    SessionConnectParams params{
+        "example.com",
+        30303,
+        local_pub,
+        local_priv,
+        peer_key,
+        "test-client",
+        30303
+    };
     
     // Verify params were set correctly
     EXPECT_EQ(params.remote_host, "example.com");
@@ -123,11 +124,12 @@ TEST_F(SocketLifecycleTest, SessionAcceptParamsCreation) {
     PrivateKey local_priv{};
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
-    SessionAcceptParams params{};
-    params.local_public_key = local_pub;
-    params.local_private_key = local_priv;
-    params.client_id = "test-server";
-    params.listen_port = 30303;
+    SessionAcceptParams params{
+        local_pub,
+        local_priv,
+        "test-server",
+        30303
+    };
     
     // Verify params were set correctly
     EXPECT_EQ(params.client_id, "test-server");
