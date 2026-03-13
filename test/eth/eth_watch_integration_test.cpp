@@ -83,18 +83,15 @@ protected:
 TEST_F(EthProtocolTest, StatusMessageRoundtrip) {
     std::cout << "\n[TEST] StatusMessageRoundtrip - Testing ETH Status message encode/decode\n";
 
-    eth::StatusMessage original{
-        .protocol_version = 68,
-        .network_id = 1,  // Mainnet
-        .genesis_hash = make_filled<eth::Hash256>(0xbb),
-        .fork_id = {
-            .fork_hash = make_filled<std::array<uint8_t, 4>>(0xcc),
-            .next_fork = 20000000
-        },
-        .earliest_block = 0,
-        .latest_block = 1000,
-        .latest_block_hash = make_filled<eth::Hash256>(0xaa),
-    };
+    eth::StatusMessage original{};
+    original.protocol_version = 68;
+    original.network_id = 1;  // Mainnet
+    original.genesis_hash = make_filled<eth::Hash256>(0xbb);
+    original.fork_id.fork_hash = make_filled<std::array<uint8_t, 4>>(0xcc);
+    original.fork_id.next_fork = 20000000;
+    original.earliest_block = 0;
+    original.latest_block = 1000;
+    original.latest_block_hash = make_filled<eth::Hash256>(0xaa);
 
     std::cout << "  → Encoding Status message (protocol=" << (int)original.protocol_version
               << ", network=" << original.network_id << ")\n";
@@ -146,15 +143,14 @@ TEST_F(EthProtocolTest, StatusMessageMultipleNetworks) {
     for (const auto& network : networks) {
         std::cout << "  → Testing " << network.name << " (network_id=" << network.network_id << ")\n";
 
-        eth::StatusMessage msg{
-            .protocol_version = 68,
-            .network_id = network.network_id,
-            .genesis_hash = {},
-            .fork_id = {},
-            .earliest_block = 0,
-            .latest_block = 0,
-            .latest_block_hash = {},
-        };
+        eth::StatusMessage msg{};
+        msg.protocol_version = 68;
+        msg.network_id = network.network_id;
+        msg.genesis_hash = {};
+        msg.fork_id = {};
+        msg.earliest_block = 0;
+        msg.latest_block = 0;
+        msg.latest_block_hash = {};
 
         auto encoded = eth::protocol::encode_status(msg);
         ASSERT_TRUE(encoded.has_value())

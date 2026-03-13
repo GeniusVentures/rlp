@@ -98,15 +98,14 @@ TEST_F(SocketLifecycleTest, SessionConnectParamsCreation) {
     PrivateKey local_priv{};
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
-    SessionConnectParams params{
-        .remote_host = "example.com",
-        .remote_port = 30303,
-        .local_public_key = local_pub,
-        .local_private_key = local_priv,
-        .peer_public_key = peer_key,
-        .client_id = "test-client",
-        .listen_port = 30303
-    };
+    SessionConnectParams params{};
+    params.remote_host = "example.com";
+    params.remote_port = 30303;
+    params.local_public_key = local_pub;
+    params.local_private_key = local_priv;
+    params.peer_public_key = peer_key;
+    params.client_id = "test-client";
+    params.listen_port = 30303;
     
     // Verify params were set correctly
     EXPECT_EQ(params.remote_host, "example.com");
@@ -124,12 +123,11 @@ TEST_F(SocketLifecycleTest, SessionAcceptParamsCreation) {
     PrivateKey local_priv{};
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
-    SessionAcceptParams params{
-        .local_public_key = local_pub,
-        .local_private_key = local_priv,
-        .client_id = "test-server",
-        .listen_port = 30303
-    };
+    SessionAcceptParams params{};
+    params.local_public_key = local_pub;
+    params.local_private_key = local_priv;
+    params.client_id = "test-server";
+    params.listen_port = 30303;
     
     // Verify params were set correctly
     EXPECT_EQ(params.client_id, "test-server");
@@ -141,13 +139,12 @@ TEST_F(SocketLifecycleTest, PeerInfoCreation) {
     PublicKey peer_key{};
     std::fill(peer_key.begin(), peer_key.end(), 0x42);
     
-    PeerInfo info{
-        .public_key = peer_key,
-        .client_id = "peer-client",
-        .listen_port = 30303,
-        .remote_address = "192.168.1.1",
-        .remote_port = 30303
-    };
+    PeerInfo info{};
+    info.public_key = peer_key;
+    info.client_id = "peer-client";
+    info.listen_port = 30303;
+    info.remote_address = "192.168.1.1";
+    info.remote_port = 30303;
     
     // Verify info structure
     EXPECT_EQ(info.client_id, "peer-client");

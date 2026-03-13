@@ -144,13 +144,12 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     );
 
     // Step 4: Build session with peer info
-    PeerInfo peer_info{
-        .public_key      = params.peer_public_key,
-        .client_id       = std::string(params.client_id),
-        .listen_port     = params.listen_port,
-        .remote_address  = "",
-        .remote_port     = params.remote_port
-    };
+    PeerInfo peer_info{};
+    peer_info.public_key = params.peer_public_key;
+    peer_info.client_id = std::string(params.client_id);
+    peer_info.listen_port = params.listen_port;
+    peer_info.remote_address = "";
+    peer_info.remote_port = params.remote_port;
 
     auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
         std::move(stream),
@@ -175,11 +174,10 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
         return SessionError::kHandshakeFailed;
     }
 
-    framing::MessageSendParams hello_send{
-        .message_id = kHelloMessageId,
-        .payload    = std::move(hello_encoded.value()),
-        .compress   = false
-    };
+    framing::MessageSendParams hello_send{};
+    hello_send.message_id = kHelloMessageId;
+    hello_send.payload = std::move(hello_encoded.value());
+    hello_send.compress = false;
     auto send_result = session->stream_->send_message(hello_send, yield);
     if (!send_result) {
         return send_result.error();
@@ -368,11 +366,10 @@ VoidResult RlpxSession::run_send_loop(asio::yield_context yield) noexcept {
         }
         
         // Compress if stream compression is enabled (set after HELLO negotiation)
-        framing::MessageSendParams send_params{
-            .message_id = msg->id,
-            .payload = msg->payload,
-            .compress = stream_->is_compression_enabled()
-        };
+        framing::MessageSendParams send_params{};
+        send_params.message_id = msg->id;
+        send_params.payload = msg->payload;
+        send_params.compress = stream_->is_compression_enabled();
         
         auto send_result = stream_->send_message(send_params, yield);
         
@@ -405,19 +402,17 @@ VoidResult RlpxSession::run_receive_loop(asio::yield_context yield) noexcept {
         SPDLOG_LOGGER_DEBUG(log, "receive_loop: msg id=0x{:02x} payload_size={}", msg.id, msg.payload.size());
         
         // Convert framing::Message to protocol::Message for routing
-        protocol::Message proto_msg{
-            .id = msg.id,
-            .payload = std::move(msg.payload)
-        };
+        protocol::Message proto_msg{};
+        proto_msg.id = msg.id;
+        proto_msg.payload = std::move(msg.payload);
         
         // Route message to appropriate handler (if registered)
         route_message(proto_msg);
         
         // Also push to receive channel for pull-based consumption
-        framing::Message frame_msg{
-            .id = proto_msg.id,
-            .payload = std::move(proto_msg.payload)
-        };
+        framing::Message frame_msg{};
+        frame_msg.id = proto_msg.id;
+        frame_msg.payload = std::move(proto_msg.payload);
         recv_channel_->push(std::move(frame_msg));
     }
     
