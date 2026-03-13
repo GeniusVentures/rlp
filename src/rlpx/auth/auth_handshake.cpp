@@ -110,10 +110,11 @@ AuthResult<ByteBuffer> create_auth_message(
                           static_cast<uint8_t>(prefix_val & 0xFFU) };
 
     // ── 7. ECIES encrypt with prefix as shared_mac_data ──
-    EciesEncryptParams params{};
-    params.plaintext = rlp_body;
-    params.recipient_public_key = remote_public_key;
-    params.shared_mac_data = ByteView(prefix.data(), prefix.size());
+    EciesEncryptParams params{
+        ByteView(rlp_body.data(), rlp_body.size()),
+        remote_public_key,
+        ByteView(prefix.data(), prefix.size())
+    };
 
     auth_log()->debug("create_auth_message: RLP+padding body={} bytes, prefix=0x{:02x}{:02x}",
                       rlp_body.size(), prefix[0], prefix[1]);
@@ -133,10 +134,11 @@ AuthResult<AuthKeyMaterial> parse_auth_message(
     gsl::span<const uint8_t, kPrivateKeySize> local_private_key
 ) noexcept {
     // Decrypt with ECIES
-    EciesDecryptParams params{};
-    params.ciphertext = encrypted_auth;
-    params.recipient_private_key = local_private_key;
-    params.shared_mac_data = {};
+    EciesDecryptParams params{
+        encrypted_auth,
+        local_private_key,
+        ByteView{}
+    };
 
     auto auth_body_result = EciesCipher::decrypt(params);
     if (!auth_body_result) {
@@ -200,10 +202,11 @@ AuthResult<ByteBuffer> create_ack_message(
     ack_body.push_back(kAuthVersion);
 
     // Encrypt with ECIES
-    EciesEncryptParams params{};
-    params.plaintext = ack_body;
-    params.recipient_public_key = remote_public_key;
-    params.shared_mac_data = {};
+    EciesEncryptParams params{
+        ByteView(ack_body.data(), ack_body.size()),
+        remote_public_key,
+        ByteView{}
+    };
 
     return EciesCipher::encrypt(params);
 }
@@ -217,10 +220,11 @@ AuthResult<void> parse_ack_message(
     AuthKeyMaterial& keys
 ) noexcept {
     // Decrypt with ECIES — shared_mac_data is the 2-byte EIP-8 length prefix
-    EciesDecryptParams params{};
-    params.ciphertext = encrypted_ack;
-    params.recipient_private_key = local_private_key;
-    params.shared_mac_data = shared_mac_data;
+    EciesDecryptParams params{
+        encrypted_ack,
+        local_private_key,
+        shared_mac_data
+    };
 
     auto ack_body_result = EciesCipher::decrypt(params);
     if (!ack_body_result)
