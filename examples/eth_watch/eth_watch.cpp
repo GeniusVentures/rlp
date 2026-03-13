@@ -245,13 +245,13 @@ void run_watch(std::string host,
     const auto& keypair = keypair_result.value();
 
     const rlpx::SessionConnectParams params{
-        .remote_host = host,
-        .remote_port = port,
-        .local_public_key = keypair.public_key,
-        .local_private_key = keypair.private_key,
-        .peer_public_key = peer_pubkey,
-        .client_id = "rlp-eth-watch",
-        .listen_port = 0
+        host,
+        port,
+        keypair.public_key,
+        keypair.private_key,
+        peer_pubkey,
+        "rlp-eth-watch",
+        0
     };
 
     SPDLOG_LOGGER_DEBUG(log, "run_watch: connecting to {}:{}", host, port);
@@ -270,21 +270,20 @@ void run_watch(std::string host,
     // HELLO was already exchanged inside connect(). Send ETH Status immediately.
     std::cout << "HELLO from peer: " << session->peer_info().client_id << "\n";
     {
-        eth::StatusMessage status{
-            .protocol_version = 68,
-            .network_id = network_id,
-            .genesis_hash = genesis_hash,
-            .fork_id = {},
-            .earliest_block = 0,
-            .latest_block = 0,
-            .latest_block_hash = genesis_hash,
-        };
+        eth::StatusMessage status{};
+        status.protocol_version = 68;
+        status.network_id = network_id;
+        status.genesis_hash = genesis_hash;
+        status.fork_id = {};
+        status.earliest_block = 0;
+        status.latest_block = 0;
+        status.latest_block_hash = genesis_hash;
         auto encoded = eth::protocol::encode_status(status);
         if (encoded) {
-            const auto post_result = session->post_message(rlpx::framing::Message{
-                .id = static_cast<uint8_t>(eth_offset + eth::protocol::kStatusMessageId),
-                .payload = std::move(encoded.value())
-            });
+            rlpx::framing::Message status_msg{};
+            status_msg.id = static_cast<uint8_t>(eth_offset + eth::protocol::kStatusMessageId);
+            status_msg.payload = std::move(encoded.value());
+            const auto post_result = session->post_message(std::move(status_msg));
             if (!post_result) {
                 SPDLOG_LOGGER_ERROR(log, "run_watch: failed to post ETH Status message");
             } else {
@@ -382,10 +381,10 @@ void run_watch(std::string host,
     watch_svc->set_send_callback([session, eth_offset](uint8_t eth_msg_id,
                                                         std::vector<uint8_t> payload)
     {
-        const auto post_result = session->post_message(rlpx::framing::Message{
-            .id      = static_cast<uint8_t>(eth_offset + eth_msg_id),
-            .payload = std::move(payload)
-        });
+        rlpx::framing::Message out_msg{};
+        out_msg.id = static_cast<uint8_t>(eth_offset + eth_msg_id);
+        out_msg.payload = std::move(payload);
+        const auto post_result = session->post_message(std::move(out_msg));
         if (!post_result)
         {
             static auto cb_log = rlp::base::createLogger("eth_watch");
@@ -415,10 +414,10 @@ void run_watch(std::string host,
         const rlpx::protocol::PongMessage pong;
         auto encoded = pong.encode();
         if (!encoded) { return; }
-        const auto post_result = session->post_message(rlpx::framing::Message{
-            .id = rlpx::kPongMessageId,
-            .payload = std::move(encoded.value())
-        });
+        rlpx::framing::Message pong_msg{};
+        pong_msg.id = rlpx::kPongMessageId;
+        pong_msg.payload = std::move(encoded.value());
+        const auto post_result = session->post_message(std::move(pong_msg));
         if (!post_result) { return; }
     });
 

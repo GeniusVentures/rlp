@@ -64,10 +64,9 @@ TEST(FrameCipherTest, EncryptFrame) {
 
     std::vector<uint8_t> frame_data = {0x01, 0x02, 0x03, 0x04, 0x05};
 
-    FrameEncryptParams params{
-        .frame_data = frame_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = frame_data;
+    params.is_first_frame = true;
 
     auto result = cipher.encrypt_frame(params);
 
@@ -85,10 +84,9 @@ TEST(FrameCipherTest, EncryptEmptyFrame) {
     
     std::vector<uint8_t> empty_data;
     
-    FrameEncryptParams params{
-        .frame_data = empty_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = empty_data;
+    params.is_first_frame = true;
     
     auto result = cipher.encrypt_frame(params);
     
@@ -102,10 +100,9 @@ TEST(FrameCipherTest, EncryptTooLargeFrame) {
     
     std::vector<uint8_t> too_large_data(kMaxFrameSize + 1, 0xFF);
     
-    FrameEncryptParams params{
-        .frame_data = too_large_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = too_large_data;
+    params.is_first_frame = true;
     
     auto result = cipher.encrypt_frame(params);
     
@@ -119,10 +116,9 @@ TEST(FrameCipherTest, DecryptHeader) {
     
     std::vector<uint8_t> frame_data = {0x01, 0x02, 0x03, 0x04, 0x05};
     
-    FrameEncryptParams params{
-        .frame_data = frame_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = frame_data;
+    params.is_first_frame = true;
     
     auto encrypted = cipher_encrypt.encrypt_frame(params);
     ASSERT_TRUE(encrypted.has_value());
@@ -148,10 +144,9 @@ TEST(FrameCipherTest, DecryptHeaderInvalidMac) {
     
     std::vector<uint8_t> frame_data = {0x01, 0x02, 0x03, 0x04, 0x05};
     
-    FrameEncryptParams params{
-        .frame_data = frame_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = frame_data;
+    params.is_first_frame = true;
     
     auto encrypted = cipher_encrypt.encrypt_frame(params);
     ASSERT_TRUE(encrypted.has_value());
@@ -184,10 +179,9 @@ TEST(FrameCipherTest, EncryptDecryptRoundtrip) {
     
     // Encrypt
     FrameCipher cipher_encrypt(secrets);
-    FrameEncryptParams params{
-        .frame_data = original_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = original_data;
+    params.is_first_frame = true;
     
     auto encrypted = cipher_encrypt.encrypt_frame(params);
     ASSERT_TRUE(encrypted.has_value());
@@ -213,12 +207,11 @@ TEST(FrameCipherTest, EncryptDecryptRoundtrip) {
     
     // Decrypt with flipped secrets (alice's egress = bob's ingress)
     FrameCipher cipher_decrypt(create_flipped_secrets());
-    FrameDecryptParams decrypt_params{
-        .header_ciphertext = ByteView(header_ct.data(), header_ct.size()),
-        .header_mac = ByteView(header_mac.data(), header_mac.size()),
-        .frame_ciphertext = ByteView(frame_ct.data(), frame_ct.size()),
-        .frame_mac = ByteView(frame_mac.data(), frame_mac.size())
-    };
+    FrameDecryptParams decrypt_params{};
+    decrypt_params.header_ciphertext = ByteView(header_ct.data(), header_ct.size());
+    decrypt_params.header_mac = ByteView(header_mac.data(), header_mac.size());
+    decrypt_params.frame_ciphertext = ByteView(frame_ct.data(), frame_ct.size());
+    decrypt_params.frame_mac = ByteView(frame_mac.data(), frame_mac.size());
     
     auto decrypted = cipher_decrypt.decrypt_frame(decrypt_params);
     ASSERT_TRUE(decrypted.has_value());
@@ -236,10 +229,9 @@ TEST(FrameCipherTest, MultipleFrames) {
     };
     
     for ( const auto& frame_data : frames ) {
-        FrameEncryptParams params{
-            .frame_data = frame_data,
-            .is_first_frame = false
-        };
+        FrameEncryptParams params{};
+        params.frame_data = frame_data;
+        params.is_first_frame = false;
         
         auto result = cipher.encrypt_frame(params);
         ASSERT_TRUE(result.has_value());
@@ -255,10 +247,9 @@ TEST(FrameCipherTest, MaxFrameSize) {
     
     std::vector<uint8_t> max_frame(kMaxFrameSize, 0xAA);
     
-    FrameEncryptParams params{
-        .frame_data = max_frame,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = max_frame;
+    params.is_first_frame = true;
     
     auto result = cipher.encrypt_frame(params);
     

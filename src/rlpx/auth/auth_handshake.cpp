@@ -111,9 +111,9 @@ AuthResult<ByteBuffer> create_auth_message(
 
     // ── 7. ECIES encrypt with prefix as shared_mac_data ──
     EciesEncryptParams params{
-        .plaintext            = rlp_body,
-        .recipient_public_key = remote_public_key,
-        .shared_mac_data      = ByteView(prefix.data(), prefix.size())
+        ByteView(rlp_body.data(), rlp_body.size()),
+        remote_public_key,
+        ByteView(prefix.data(), prefix.size())
     };
 
     auth_log()->debug("create_auth_message: RLP+padding body={} bytes, prefix=0x{:02x}{:02x}",
@@ -135,9 +135,9 @@ AuthResult<AuthKeyMaterial> parse_auth_message(
 ) noexcept {
     // Decrypt with ECIES
     EciesDecryptParams params{
-        .ciphertext = encrypted_auth,
-        .recipient_private_key = local_private_key,
-        .shared_mac_data = {}
+        encrypted_auth,
+        local_private_key,
+        ByteView{}
     };
 
     auto auth_body_result = EciesCipher::decrypt(params);
@@ -203,9 +203,9 @@ AuthResult<ByteBuffer> create_ack_message(
 
     // Encrypt with ECIES
     EciesEncryptParams params{
-        .plaintext = ack_body,
-        .recipient_public_key = remote_public_key,
-        .shared_mac_data = {}
+        ByteView(ack_body.data(), ack_body.size()),
+        remote_public_key,
+        ByteView{}
     };
 
     return EciesCipher::encrypt(params);
@@ -221,9 +221,9 @@ AuthResult<void> parse_ack_message(
 ) noexcept {
     // Decrypt with ECIES — shared_mac_data is the 2-byte EIP-8 length prefix
     EciesDecryptParams params{
-        .ciphertext            = encrypted_ack,
-        .recipient_private_key = local_private_key,
-        .shared_mac_data       = shared_mac_data
+        encrypted_ack,
+        local_private_key,
+        shared_mac_data
     };
 
     auto ack_body_result = EciesCipher::decrypt(params);

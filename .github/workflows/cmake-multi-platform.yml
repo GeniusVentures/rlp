@@ -1,83 +1,364 @@
-# This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
-# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
-name: CMake on multiple platforms
+name: Release Build CI
 
 on:
   push:
-    branches: [ "main", "dev_peer_discovery" ]
+    branches:
+      - develop
+      - main
+    paths-ignore:
+      - ".github/**"
+      - "Readme.md"
   pull_request:
-    branches: [ "main", "dev_peer_discovery" ]
+    branches:
+      - develop
+      - main
+    paths-ignore:
+      - ".github/**"
+      - "Readme.md"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: false
+        type: string
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-
+    env:
+      GRPC_BUILD_ENABLE_CCACHE: "ON"
+      GH_TOKEN: ${{ secrets.GNUS_TOKEN_1 }}
+    runs-on: ${{ matrix.host }}
+    container:
+      image: ${{ matrix.container }}
+      options: ${{ '--cap-add=IPC_LOCK' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GNUS_TOKEN_1 }}
     strategy:
-      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
       fail-fast: false
-
-      # Set up a matrix to run the following 3 configurations:
-      # 1. <Windows, Release, latest MSVC compiler toolchain on the default runner image, default generator>
-      # 2. <Linux, Release, latest GCC compiler toolchain on the default runner image, default generator>
-      # 3. <Linux, Release, latest Clang compiler toolchain on the default runner image, default generator>
-      #
-      # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        build_type: [Release]
-        c_compiler: [gcc, clang, cl]
+        target: [ Android, iOS, OSX, Linux, Windows ]
+        build-type: [ Release ]
+        abi: [ "" ]
         include:
-          - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
-          - os: ubuntu-latest
-            c_compiler: gcc
-            cpp_compiler: g++
-          - os: ubuntu-latest
-            c_compiler: clang
-            cpp_compiler: clang++
+          - target: Linux
+            host: sg-ubuntu-linux
+            abi: "x86_64"
+            build-type: "Release"
+            container: ghcr.io/geniusventures/debian-bullseye:latest
+          - target: Linux
+            host: sg-arm-linux
+            abi: "aarch64"
+            build-type: "Release"
+            container: ghcr.io/geniusventures/debian-bullseye:latest
+          - target: Windows
+            host: SG-WIN11
+          - target: OSX
+            host: gv-OSX-Large
+          - target: Android
+            host: sg-ubuntu-linux
+            abi: arm64-v8a
+            build-type: "Release"
+          - target: Android
+            host: sg-ubuntu-linux
+            abi: armeabi-v7a
+            build-type: "Release"
+          - target: iOS
+            host: macos-latest
         exclude:
-          - os: windows-latest
-            c_compiler: gcc
-          - os: windows-latest
-            c_compiler: clang
-          - os: ubuntu-latest
-            c_compiler: cl
-
+          - target: Android
+            abi: ""
+          - target: Linux
+            abi: ""
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - name: Configure Git Bash on Windows
+        if: ${{ runner.environment == 'self-hosted' && matrix.target == 'Windows' }}
+        run: |
+          $gitBinPath = "C:\Program Files\Git\bin"
 
-    - name: Set reusable strings
-      # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
-      id: strings
-      shell: bash
-      run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          echo "source-dir=${{ github.workspace }}/build/Windows" >> "$GITHUB_OUTPUT"
-          echo "build-output-dir=${{ github.workspace }}/build/Windows/build" >> "$GITHUB_OUTPUT"
-        else
-          echo "source-dir=${{ github.workspace }}/build/Linux" >> "$GITHUB_OUTPUT"
-          echo "build-output-dir=${{ github.workspace }}/build/Linux/build" >> "$GITHUB_OUTPUT"
-        fi
+          if (Test-Path $gitBinPath) {
+            Add-Content -Path $env:GITHUB_PATH -Value $gitBinPath
+            $env:PATH = "$gitBinPath;$env:PATH"
+          }
+          
+          Write-Output "Git Bash configured for bash shell commands"
+          $bashLocation = (Get-Command bash.exe -ErrorAction SilentlyContinue).Source
+          if ($bashLocation) {
+            Write-Output "Bash location: $bashLocation"
+          } else {
+            Write-Output "WARNING: bash.exe not found in PATH"
+          }
 
-    - name: Configure CMake
-      # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-      # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
-      run: >
-        cmake -B ${{ steps.strings.outputs.build-output-dir }}
-        -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
-        -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -S ${{ steps.strings.outputs.source-dir }}
+      - name: Clean workspace (self-hosted runners)
+        if: ${{ runner.environment == 'self-hosted' }}
+        working-directory: ${{ runner.workspace }}
+        shell: bash
+        run: |
+          echo "=== PRE-CLEANUP DEBUG ==="
+          echo "Current working directory: $(pwd)"
+          echo "Runner workspace: ${{ runner.workspace }}"
+          echo "GitHub workspace: ${{ github.workspace }}"
 
-    - name: Build
-      # Build your program with the given configuration. Note that --config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }}
+          echo "=== CLEANUP ARTIFACTS ==="
+          # Clean up artifacts from previous runs (self-hosted runners only)
+          
+          # Use sudo on Linux to handle root-owned files left by container jobs
+          SUDO=""
+          if [ "$(uname)" = "Linux" ]; then
+            SUDO="sudo"
+          fi
 
-    - name: Test
-      working-directory: ${{ steps.strings.outputs.build-output-dir }}
-      # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }}
+          # Clean contents of rlp directory but keep the directory itself
+          if [ -d "rlp" ]; then
+            echo "Cleaning rlp directory contents..."
+            $SUDO rm -rf rlp/* rlp/.* 2>/dev/null || true
+            echo "rlp directory cleaned (kept the directory)"
+          fi
+          
+          # Delete sibling dependency directories completely
+          for dir in thirdparty zkLLVM; do
+            if [ -d "$dir" ]; then
+              echo "Removing $dir directory..."
+              $SUDO rm -rf "$dir"
+            fi
+          done
+
+          echo "=== POST-CLEANUP DEBUG ==="
+          echo "Runner workspace contents:"
+          ls -la
+          if [ -d "rlp" ]; then
+            echo "rlp directory exists and contains:"
+            ls -la rlp/ 2>/dev/null || echo "  (empty)"
+          fi
+
+      - name: Checkout rlp repository
+        uses: actions/checkout@v6
+        with:
+          path: "rlp"
+          submodules: "recursive"
+
+      - name: Set build directory
+        shell: bash
+        run: |
+          if [ '${{ matrix.abi }}' ]; then
+            BUILD_DIRECTORY=build/${{ matrix.target }}/${{ matrix.build-type }}/${{ matrix.abi }}
+          else
+            BUILD_DIRECTORY=build/${{ matrix.target }}/${{ matrix.build-type }}
+          fi
+          echo "BUILD_DIRECTORY=$BUILD_DIRECTORY" >> $GITHUB_ENV
+
+      - name: Resolve branch/tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.tag }}" ]; then
+            CURRENT_BRANCH="${{ github.event.inputs.tag }}"
+            IS_TAG=true
+          elif ${{ github.event_name == 'pull_request' }}; then
+            CURRENT_BRANCH=${{ github.event.pull_request.head.ref }}
+            IS_TAG=false
+          else
+            CURRENT_BRANCH=$GITHUB_REF_NAME
+            IS_TAG=false
+          fi
+          echo "Identified current branch/tag as ${CURRENT_BRANCH}"
+          echo "CURRENT_BRANCH=${CURRENT_BRANCH}" >> $GITHUB_ENV
+          echo "IS_TAG=${IS_TAG}" >> $GITHUB_ENV
+
+          if [ "$IS_TAG" == "true" ]; then
+            RESOLVED_BRANCH="$CURRENT_BRANCH"
+          elif [ "$CURRENT_BRANCH" == "main" ]; then
+            RESOLVED_BRANCH="main"
+          else
+            RESOLVED_BRANCH="develop"
+          fi
+          echo "RESOLVED_BRANCH=${RESOLVED_BRANCH}" >> $GITHUB_ENV
+
+          if [ '${{ matrix.abi }}' ]; then
+            FILE_NAME=${{ matrix.target }}-${{ matrix.abi }}-${{ matrix.build-type }}.tar.gz
+          else
+            FILE_NAME=${{ matrix.target }}-${{ matrix.build-type }}.tar.gz
+          fi
+          echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
+
+      - name: Download thirdparty release
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          mkdir thirdparty && cd thirdparty
+          if [ "$IS_TAG" == "true" ]; then
+            tag_name="${RESOLVED_BRANCH}"
+          elif [ '${{ matrix.abi }}' ]; then
+            tag_name="${{ matrix.target }}-${{ matrix.abi }}-${RESOLVED_BRANCH}-${{ matrix.build-type }}"
+          else
+            tag_name="${{ matrix.target }}-${RESOLVED_BRANCH}-${{ matrix.build-type }}"
+          fi
+          gh release download ${tag_name} --repo GeniusVentures/thirdparty -p "${FILE_NAME}"
+          tar -zxf "${FILE_NAME}"
+          if [ "${{ matrix.target }}" = "Windows" ]; then
+            echo "THIRDPARTY_BUILD_DIR=$(pwd -W)/${BUILD_DIRECTORY}" >> $GITHUB_ENV
+          else
+            echo "THIRDPARTY_BUILD_DIR=$(pwd)/${BUILD_DIRECTORY}" >> $GITHUB_ENV
+          fi
+
+      - name: Download zkLLVM release
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          mkdir zkLLVM && cd zkLLVM
+
+          if [ "${{ matrix.target }}" = "Windows" ]; then
+            ZKLLVM_FILE_NAME=${{ matrix.target }}-${{ matrix.build-type }}.tar.gz
+            ZKLLVM_BUILD_DIR=build/${{ matrix.target }}/${{ matrix.build-type }}
+            tag_name=$( [ "$IS_TAG" == "true" ] && echo "${RESOLVED_BRANCH}" || echo "${{ matrix.target }}-${RESOLVED_BRANCH}-${{ matrix.build-type }}" )
+          elif [ '${{ matrix.abi }}' ]; then
+            ZKLLVM_FILE_NAME=${{ matrix.target }}-${{ matrix.abi }}-Release.tar.gz
+            ZKLLVM_BUILD_DIR=build/${{ matrix.target }}/Release/${{ matrix.abi }}
+            tag_name=$( [ "$IS_TAG" == "true" ] && echo "${RESOLVED_BRANCH}" || echo "${{ matrix.target }}-${{ matrix.abi }}-${RESOLVED_BRANCH}-Release" )
+          else
+            ZKLLVM_FILE_NAME=${{ matrix.target }}-Release.tar.gz
+            ZKLLVM_BUILD_DIR=build/${{ matrix.target }}/Release
+            tag_name=$( [ "$IS_TAG" == "true" ] && echo "${RESOLVED_BRANCH}" || echo "${{ matrix.target }}-${RESOLVED_BRANCH}-Release" )
+          fi
+
+          gh release download ${tag_name} --repo GeniusVentures/zkLLVM -p "${ZKLLVM_FILE_NAME}"
+
+          tar --exclude='*bin/assigner' --exclude='*bin/clang-zkllvm' --exclude='*bin/llvm-link-zkllvm' --exclude='*bin/transpiler' -xzf "${ZKLLVM_FILE_NAME}"
+
+
+          if [ "${{ matrix.target }}" = "Windows" ]; then
+            echo "ZKLLVM_BUILD_DIR=$(pwd -W)/${ZKLLVM_BUILD_DIR}" >> $GITHUB_ENV
+          else
+            echo "ZKLLVM_BUILD_DIR=$(pwd)/${ZKLLVM_BUILD_DIR}" >> $GITHUB_ENV
+          fi
+
+      - name: Configure Linux host
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo update-alternatives --install /usr/bin/cc cc $(which clang) 100
+          sudo update-alternatives --install /usr/bin/c++ c++ $(which clang++) 100
+          sudo update-alternatives --set cc $(which clang)
+          sudo update-alternatives --set c++ $(which clang++)
+          sudo apt install ccache ninja-build libvulkan-dev libsecret-1-dev dbus gnome-keyring -y
+          echo "CMAKE_GENERATOR=Ninja" >> $GITHUB_ENV
+
+      - name: Configure Windows host
+        if: ${{ runner.os == 'Windows' }}
+        run: choco install ccache -A
+
+      - name: Configure macOS host
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          brew install ninja bash gnu-tar
+
+          # Ensure GNU tar is first in PATH - check both possible Homebrew locations
+          if [ -d "/opt/homebrew/opt/gnu-tar/libexec/gnubin" ]; then
+            echo "PATH=/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
+            echo "Using GNU tar from /opt/homebrew"
+          elif [ -d "/usr/local/opt/gnu-tar/libexec/gnubin" ]; then
+            echo "PATH=/usr/local/opt/gnu-tar/libexec/gnubin:$PATH" >> $GITHUB_ENV
+            echo "Using GNU tar from /usr/local"
+          else
+            echo "WARNING: GNU tar installation not found in expected locations"
+            echo "Available tar: $(which tar)"
+          fi
+
+          echo "CMAKE_GENERATOR=Ninja" >> $GITHUB_ENV
+
+      - name: Add Darwin toolchain
+        if: ${{ matrix.target == 'OSX' }}
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Add iOS toolchain
+        if: ${{ matrix.target == 'iOS' }}
+        run: |
+          rustup toolchain install nightly-aarch64-apple-darwin
+          rustup component add rust-src --toolchain nightly-aarch64-apple-darwin
+          rustup target add aarch64-apple-ios
+
+      - name: Add Android toolchain
+        if: ${{ matrix.target == 'Android' }}
+        run: |
+          # Setup Android SDK
+          ANDROID_SDK_ROOT="$HOME/android-sdk"
+          
+          # Download command-line tools if not present
+          if [ ! -d "$ANDROID_SDK_ROOT/cmdline-tools/latest" ]; then
+            echo "Downloading Android command-line tools..."
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+            wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+            unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+            mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            rm cmdline-tools.zip
+          else
+            echo "Android command-line tools already exist"
+          fi
+          
+          # Always accept licenses and install/update required SDK components
+          echo "Installing/updating Android SDK components..."
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          
+          # Set environment variables
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          
+          # Verify SDK installation
+          echo "=== Android SDK Setup ==="
+          echo "ANDROID_HOME: $ANDROID_SDK_ROOT"
+          echo "SDK contents:"
+          ls -la "$ANDROID_SDK_ROOT"
+
+          # Download and setup Android NDK
+          NDK_VERSION="r27b"
+          NDK_DIR="$HOME/android-ndk-$NDK_VERSION"
+
+          if [ ! -d "$NDK_DIR" ]; then
+            echo "Downloading Android NDK..."
+            wget https://dl.google.com/android/repository/android-ndk-$NDK_VERSION-linux.zip -O ndk.zip
+            unzip -o ndk.zip -d $HOME
+            rm ndk.zip
+          fi
+
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> $GITHUB_ENV
+          
+          rustup target add aarch64-linux-android
+          rustup target add armv7-linux-androideabi
+
+      - name: Install bindgen
+        run: cargo install cbindgen
+
+      - name: Add wasm Rust target
+        run: rustup target add wasm32-unknown-emscripten
+
+      - name: Configure CMake for Android
+        if: ${{ matrix.target == 'Android'}}
+        working-directory: ${{github.workspace}}/rlp
+        run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DANDROID_ABI=${{matrix.abi}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
+
+      - name: Configure CMake for Mac
+        if: ${{ matrix.target == 'OSX'}}
+        working-directory: ${{github.workspace}}/rlp
+        run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DPLATFORM=MAC_UNIVERSAL -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
+
+      - name: Configure CMake for iOS
+        if: ${{ matrix.target == 'iOS'}}
+        working-directory: ${{github.workspace}}/rlp
+        run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DPLATFORM=OS64 -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
+
+      - name: Configure CMake for Linux
+        if: ${{matrix.target == 'Linux'}}
+        working-directory: ${{ github.workspace }}/rlp
+        run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}} -DSGNS_PRINT_LOGS=ON
+
+      - name: Configure CMake for Windows
+        if: ${{matrix.target == 'Windows'}}
+        working-directory: ${{github.workspace}}/rlp
+        run: cmake -S build/${{matrix.target}} -B $env:BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
+
+      - name: Build rlp
+        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+        run: cmake --build . --config ${{ matrix.build-type }} -j
