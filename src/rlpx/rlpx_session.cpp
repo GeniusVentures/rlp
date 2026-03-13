@@ -102,7 +102,7 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
 }
 
 // Factory for outbound connections
-Result<std::unique_ptr<RlpxSession>>
+Result<std::shared_ptr<RlpxSession>>
 RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yield) noexcept {
     // Step 1: Establish TCP connection with timeout
     auto executor = yield.get_executor();
@@ -152,7 +152,7 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
         .remote_port     = params.remote_port
     };
 
-    auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
+    auto session = std::shared_ptr<RlpxSession>(new RlpxSession(
         std::move(stream),
         std::move(peer_info),
         true  // is_initiator
@@ -162,9 +162,10 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     protocol::HelloMessage hello;
     hello.protocol_version = kProtocolVersion;
     hello.client_id        = std::string(params.client_id);
-    hello.capabilities     = { protocol::Capability{ "eth", 68 },
-                                protocol::Capability{ "eth", 67 },
-                                protocol::Capability{ "eth", 66 } };
+    // Advertise only ETH/69 — go-ethereum 1.15+ supports ETH/69 exclusively.
+    // Peers that support only ETH/68 (Geth ≤1.13.x) will DISCONNECT during HELLO
+    // (no common capability), which is fast-fail and correct behaviour.
+    hello.capabilities     = { protocol::Capability{ "eth", 69 } };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),
               params.local_public_key.end(),
@@ -241,16 +242,16 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
 
     asio::spawn(
         executor,
-        [session_ptr = session.get()](asio::yield_context yc) {
-            auto result = session_ptr->run_send_loop(yc);
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_send_loop(yc);
             (void)result;
         }
     );
 
     asio::spawn(
         executor,
-        [session_ptr = session.get()](asio::yield_context yc) {
-            auto result = session_ptr->run_receive_loop(yc);
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_receive_loop(yc);
             (void)result;
         }
     );
@@ -259,7 +260,7 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
 }
 
 // Factory for inbound connections
-Result<std::unique_ptr<RlpxSession>>
+Result<std::shared_ptr<RlpxSession>>
 RlpxSession::accept(const SessionAcceptParams& params, asio::yield_context /*yield*/) noexcept {
     (void)params;
     // TODO: Phase 3.5 - Implement inbound connection acceptance

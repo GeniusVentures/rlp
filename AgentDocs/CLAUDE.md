@@ -50,6 +50,11 @@ Your default mode is “tiny, surgical insertion into existing code”.
 - This means do **NOT** add debug strings in the code, then compile and run to see if they work.
   - Instead, if there is a bug, the agent should ask the user to debug the code to find the bug's root cause
 
+** When dealing with a bug
+- When I report a bug, or you find one, ask the user for options 
+  - Don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. 
+  - Then, have subagents try to fix the bug and prove it with a passing test.
+
 ## Important Guidelines
 - Do not commit changes without explicit user permission.
 - When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test.

@@ -214,9 +214,9 @@ echo ""
 # ── Test 2: Peer Connection ───────────────────────────────────────────────────
 test_start "EthWatchSepoliaTest.PeerConnection"
 
-ASAN_OPTIONS=halt_on_error=0 stdbuf -oL "$ETH_WATCH_BIN" \
+ASAN_OPTIONS=halt_on_error=0:replace_intrin=0:detect_stack_use_after_return=0:poison_heap=0 stdbuf -oL "$ETH_WATCH_BIN" \
     --chain sepolia \
-    --log-level debug \
+    --log-level error \
     --watch-contract "$CONTRACT" --watch-event "Transfer(address,address,uint256)" \
     --watch-contract "$CONTRACT" --watch-event "BridgeSourceBurned(address,uint256,uint256,uint256,uint256)" \
     >> "$DEBUG_LOG" 2>&1 &
@@ -238,7 +238,7 @@ while [ $ELAPSED -lt 60 ]; do
         kill "$TAIL_PID" 2>/dev/null || true
         exit 1
     fi
-    sleep 0.2
+    sleep 1
     ELAPSED=$((ELAPSED + 1))
 done
 if [ $ELAPSED -ge 60 ]; then

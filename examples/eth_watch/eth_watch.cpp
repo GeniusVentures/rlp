@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <array>
+#include <atomic>
+#include <deque>
+#include <functional>
 #include <iomanip>
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/io_context.hpp>
@@ -17,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <eth/messages.hpp>
 #include <eth/eth_watch_service.hpp>
@@ -41,6 +45,7 @@ struct Config {
     // ETH Status fields — must match the target chain
     uint64_t network_id = 1;
     eth::Hash256 genesis_hash{};
+    eth::ForkId  fork_id{};   ///< EIP-2124 fork identifier; set per chain
     // Discovery — set when --chain is used; empty when explicit host/port/pubkey given
     std::vector<std::string> bootnode_enodes;
 };
@@ -157,14 +162,19 @@ struct ChainEntry
     const std::vector<std::string>* bootnodes;
     uint64_t                        network_id;
     const char*                     genesis_hex;
+    eth::ForkId                     fork_id{};  ///< EIP-2124; computed from genesis + past forks
 };
 
 /// @brief Look up chain config by name
 std::optional<Config> load_chain_config(std::string_view chain_name)
 {
+    // Fork-ids are pre-computed via EIP-2124 for each chain as of early 2025.
+    // Sepolia: MergeNetsplit@1735371, Shanghai@1677557088, Cancun@1706655072, Prague@1741159776
+    static const eth::ForkId kSepoliaForkId{ { 0xed, 0x88, 0xb5, 0xfd }, 0 };
+
     static const std::unordered_map<std::string, ChainEntry> kChains = {
         { "mainnet",      ChainEntry{ &ETHEREUM_MAINNET_BOOTNODES, 1,        "d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3" } },
-        { "sepolia",      ChainEntry{ &ETHEREUM_SEPOLIA_BOOTNODES, 11155111, "25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9" } },
+        { "sepolia",      ChainEntry{ &ETHEREUM_SEPOLIA_BOOTNODES, 11155111, "25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9", kSepoliaForkId } },
         { "holesky",      ChainEntry{ &ETHEREUM_HOLESKY_BOOTNODES, 17000,    "b5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4" } },
         { "polygon",      ChainEntry{ &POLYGON_MAINNET_BOOTNODES,  137,      "a9c28ce2141b56c474f1dc504bee9b01eb1bd7d1a507580d5519d4437a97de1b" } },
         { "polygon-amoy", ChainEntry{ &POLYGON_AMOY_BOOTNODES,     80002,    "0000000000000000000000000000000000000000000000000000000000000000" } },
@@ -190,6 +200,7 @@ std::optional<Config> load_chain_config(std::string_view chain_name)
     Config cfg;
     cfg.network_id   = entry.network_id;
     cfg.genesis_hash = hash_from_hex(entry.genesis_hex);
+    cfg.fork_id      = entry.fork_id;
     // Store all bootnodes for discv4 — host/port/pubkey filled in after discovery
     for (const auto& bn : *entry.bootnodes)
     {
@@ -217,20 +228,27 @@ void print_usage(const char* exe) {
               << "  Base:     base, base-sepolia\n";
 }
 
+/// @brief A discovered peer whose public key has already been validated.
+struct ValidatedPeer
+{
+    discv4::DiscoveredPeer peer;
+    rlpx::PublicKey        pubkey;
+};
+
 /// @brief Attempts an RLPx connection to a peer and runs the ETH watch loop.
-///        Clears @p connected on every exit path so the discovery callback can
-///        retry the next discovered peer.  The session lifetime is controlled by
-///        a timer that the disconnect handler cancels, matching go-ethereum's
-///        pattern of re-entering discovery after any disconnection.
-/// @param connected  Shared atomic flag — cleared before this coroutine returns.
+///        Calls @p on_done on every exit path so the DialScheduler can recycle
+///        the dial slot.  Calls @p on_connected once the session is established
+///        so the scheduler can track it for async stop().
 void run_watch(std::string host,
                uint16_t port,
                rlpx::PublicKey peer_pubkey,
                uint8_t eth_offset,
                uint64_t network_id,
                eth::Hash256 genesis_hash,
+               eth::ForkId fork_id,
                std::vector<eth::cli::WatchSpec> watch_specs,
-               std::shared_ptr<std::atomic<bool>> connected,
+               std::function<void()> on_done,
+               std::function<void(std::shared_ptr<rlpx::RlpxSession>)> on_connected,
                boost::asio::yield_context yield)
 {
     static auto log = rlp::base::createLogger("eth_watch");
@@ -238,7 +256,7 @@ void run_watch(std::string host,
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if (!keypair_result) {
         SPDLOG_LOGGER_ERROR(log, "run_watch: failed to generate local keypair");
-        connected->store(false);
+        on_done();
         return;
     }
 
@@ -260,25 +278,26 @@ void run_watch(std::string host,
         auto err = session_result.error();
         std::cout << "Failed to connect to " << host << ":" << port
                   << " (error " << static_cast<int>(err) << ": " << rlpx::to_string(err) << ")\n";
-        connected->store(false);
+        on_done();
         return;
     }
 
-    auto session_unique = std::move(session_result.value());
-    auto session = std::shared_ptr<rlpx::RlpxSession>(std::move(session_unique));
+    auto session = std::move(session_result.value());
 
-    // HELLO was already exchanged inside connect(). Send ETH Status immediately.
+    // HELLO was already exchanged inside connect(). Notify scheduler of live session.
+    on_connected(session);
     std::cout << "HELLO from peer: " << session->peer_info().client_id << "\n";
     {
-        eth::StatusMessage status{
-            .protocol_version = 68,
+        eth::StatusMessage69 status69{
+            .protocol_version = 69,
             .network_id = network_id,
             .genesis_hash = genesis_hash,
-            .fork_id = {},
+            .fork_id = fork_id,
             .earliest_block = 0,
             .latest_block = 0,
             .latest_block_hash = genesis_hash,
         };
+        eth::StatusMessage status = status69;
         auto encoded = eth::protocol::encode_status(status);
         if (encoded) {
             const auto post_result = session->post_message(rlpx::framing::Message{
@@ -315,7 +334,7 @@ void run_watch(std::string host,
             if (!addr)
             {
                 std::cout << "Invalid contract address: " << spec.contract_hex << "\n";
-                connected->store(false);
+                on_done();
                 return;
             }
             contract = *addr;
@@ -444,36 +463,30 @@ void run_watch(std::string host,
                 return;
             }
             const auto& status = decoded.value();
-            // Accept any ETH version we advertise (66, 67, 68).
-            // go-ethereum validates status.ProtocolVersion == negotiated version;
-            // we don't yet track the negotiated version from HELLO so we accept
-            // any version in our advertised set and treat it as the negotiated one.
-            constexpr std::array<uint8_t, 3> kAdvertisedVersions = {68, 67, 66};
-            const bool version_ok = std::find(kAdvertisedVersions.begin(),
-                                              kAdvertisedVersions.end(),
-                                              status.protocol_version) != kAdvertisedVersions.end();
-            auto valid = version_ok
-                ? eth::protocol::validate_status(status, status.protocol_version,
-                                                 network_id, genesis_hash)
-                : eth::protocol::validate_status(status, 0 /* force mismatch */,
-                                                 network_id, genesis_hash);
+            const auto common = eth::get_common_fields(status);
+            auto valid = eth::protocol::validate_status(status, network_id, genesis_hash);
             if (!valid) {
                 using E = eth::StatusValidationError;
                 switch (valid.error()) {
                 case E::kProtocolVersionMismatch:
                     SPDLOG_LOGGER_WARN(gh_log, "ETH Status: protocol version not supported (peer={})",
-                                       status.protocol_version);
+                                       common.protocol_version);
                     break;
                 case E::kNetworkIDMismatch:
                     SPDLOG_LOGGER_WARN(gh_log, "ETH Status: network_id mismatch (peer={}, ours={})",
-                                       status.network_id, network_id);
+                                       common.network_id, network_id);
                     break;
                 case E::kGenesisMismatch:
                     SPDLOG_LOGGER_WARN(gh_log, "ETH Status: genesis mismatch");
                     break;
                 case E::kInvalidBlockRange:
-                    SPDLOG_LOGGER_WARN(gh_log, "ETH Status: invalid block range (earliest={} > latest={})",
-                                       status.earliest_block, status.latest_block);
+                    {
+                        const auto* msg69 = std::get_if<eth::StatusMessage69>(&status);
+                        const uint64_t earliest = msg69 ? msg69->earliest_block : 0;
+                        const uint64_t latest = msg69 ? msg69->latest_block : 0;
+                        SPDLOG_LOGGER_WARN(gh_log, "ETH Status: invalid block range (earliest={} > latest={})",
+                                           earliest, latest);
+                    }
                     break;
                 }
                 status_timeout->cancel(); // validation failed — stop waiting
@@ -481,10 +494,18 @@ void run_watch(std::string host,
                 return;
             }
             // Handshake successful — signal the awaiting coroutine.
+            const uint64_t latest_block = std::visit([](const auto& m) -> uint64_t
+            {
+                if constexpr (std::is_same_v<std::decay_t<decltype(m)>, eth::StatusMessage69>)
+                {
+                    return m.latest_block;
+                }
+                return 0;
+            }, status);
             SPDLOG_LOGGER_INFO(gh_log, "ETH Status: network_id={} protocol={} latest_block={}",
-                               status.network_id,
-                               static_cast<int>(status.protocol_version),
-                               status.latest_block);
+                               common.network_id,
+                               static_cast<int>(common.protocol_version),
+                               latest_block);
             status_received->store(true);
             status_timeout->cancel(); // wake the co_await below
             std::cout << "Connected. Watching for events...\n";
@@ -537,7 +558,7 @@ void run_watch(std::string host,
                 (void)session->disconnect(rlpx::DisconnectReason::kTimeout);
             }
             // else: validation failure — session->disconnect() already called in handler.
-            connected->store(false);
+            on_done();
             return;
         }
     }
@@ -545,11 +566,149 @@ void run_watch(std::string host,
 
     boost::system::error_code ec;
     lifetime->async_wait(boost::asio::redirect_error(yield, ec));
-    (void)session;
-    connected->store(false);
+    on_done();
 }
 
 } // namespace
+
+// ── WatcherPool ───────────────────────────────────────────────────────────────
+/// @brief Global resource pool shared across all chain DialSchedulers.
+///        Enforces the two-level fd cap: total across all chains, and per chain.
+///        @p max_total  — global fd cap  (mobile default 12, desktop 200)
+///        @p max_per_chain — per-chain cap (mobile default 3,  desktop 50)
+struct WatcherPool
+{
+    int               max_total;
+    int               max_per_chain;
+    std::atomic<int>  active_total{0};
+
+    WatcherPool(int max_total_, int max_per_chain_)
+        : max_total(max_total_), max_per_chain(max_per_chain_) {}
+};
+
+// ── DialScheduler ─────────────────────────────────────────────────────────────
+/// @brief Per-chain dial scheduler mirroring go-ethereum's dialScheduler.
+///        Maintains up to pool->max_per_chain concurrent run_watch coroutines,
+///        respecting the global pool->max_total cap across all chains.
+///        All methods run on the single io_context thread — no mutex needed.
+struct DialScheduler : std::enable_shared_from_this<DialScheduler>
+{
+    boost::asio::io_context&            io;
+    std::shared_ptr<WatcherPool>        pool;
+    uint8_t                             eth_offset;
+    uint64_t                            network_id;
+    eth::Hash256                        genesis_hash;
+    eth::ForkId                         fork_id;
+    std::vector<eth::cli::WatchSpec>    watch_specs;
+    std::shared_ptr<discv4::DialHistory> dial_history;
+
+    int                                         active{0};
+    bool                                        stopping{false};
+    std::deque<ValidatedPeer>                   queue;
+    std::vector<std::weak_ptr<rlpx::RlpxSession>> active_sessions;
+
+    DialScheduler(boost::asio::io_context&          io_,
+                  std::shared_ptr<WatcherPool>       pool_,
+                  uint8_t                            eth_offset_,
+                  uint64_t                           network_id_,
+                  eth::Hash256                       genesis_hash_,
+                  eth::ForkId                        fork_id_,
+                  std::vector<eth::cli::WatchSpec>   watch_specs_)
+        : io(io_)
+        , pool(std::move(pool_))
+        , eth_offset(eth_offset_)
+        , network_id(network_id_)
+        , genesis_hash(genesis_hash_)
+        , fork_id(fork_id_)
+        , watch_specs(std::move(watch_specs_))
+        , dial_history(std::make_shared<discv4::DialHistory>())
+    {}
+
+    /// @brief Enqueue a validated peer for dialing.
+    ///        If a slot is free (both per-chain and global caps), spawns immediately.
+    ///        Otherwise queues for later drain.
+    void enqueue(ValidatedPeer vp)
+    {
+        if (stopping) { return; }
+
+        dial_history->expire();
+        if (dial_history->contains(vp.peer.node_id)) { return; }
+
+        if (active < pool->max_per_chain &&
+            pool->active_total.load() < pool->max_total)
+        {
+            ++active;
+            ++pool->active_total;
+            dial_history->add(vp.peer.node_id);
+            spawn_dial(std::move(vp));
+        }
+        else
+        {
+            queue.push_back(std::move(vp));
+        }
+    }
+
+    /// @brief Called by every run_watch exit path.  Recycles the slot and
+    ///        drains the queue up to the available capacity.
+    void release()
+    {
+        --active;
+        --pool->active_total;
+
+        if (stopping) { return; }
+
+        dial_history->expire();
+        while (active < pool->max_per_chain &&
+               pool->active_total.load() < pool->max_total &&
+               !queue.empty())
+        {
+            ValidatedPeer vp = std::move(queue.front());
+            queue.pop_front();
+            if (dial_history->contains(vp.peer.node_id)) { continue; }
+            ++active;
+            ++pool->active_total;
+            dial_history->add(vp.peer.node_id);
+            spawn_dial(std::move(vp));
+        }
+    }
+
+    /// @brief Async stop — disconnect all active sessions immediately.
+    ///        Returns immediately; fds are freed on the next io_context cycle.
+    ///        New chain watchers can start claiming slots right away.
+    void stop()
+    {
+        stopping = true;
+        queue.clear();
+        for (auto& ws : active_sessions)
+        {
+            if (auto s = ws.lock())
+            {
+                (void)s->disconnect(rlpx::DisconnectReason::kClientQuitting);
+            }
+        }
+        active_sessions.clear();
+    }
+
+private:
+    void spawn_dial(ValidatedPeer vp)
+    {
+        auto sched = shared_from_this();
+        std::cout << "Dialing peer: " << vp.peer.ip << ":" << vp.peer.tcp_port << "\n";
+        boost::asio::spawn(io,
+            [sched, vp = std::move(vp)](boost::asio::yield_context yc)
+            {
+                run_watch(
+                    vp.peer.ip, vp.peer.tcp_port, vp.pubkey,
+                    sched->eth_offset, sched->network_id, sched->genesis_hash,
+                    sched->fork_id, sched->watch_specs,
+                    [sched]() { sched->release(); },
+                    [sched](std::shared_ptr<rlpx::RlpxSession> s) {
+                        sched->active_sessions.push_back(s);
+                    },
+                    yc);
+            });
+    }
+};
 
 int main(int argc, char** argv) {
     try {
@@ -704,54 +863,29 @@ int main(int argc, char** argv) {
             // Capture config values needed in the callback
             const uint64_t   network_id   = config->network_id;
             const auto       genesis_hash = config->genesis_hash;
+            const auto       fork_id      = config->fork_id;
             const uint8_t    eth_offset   = config->eth_offset;
             const auto       watch_specs  = config->watch_specs;
-            auto connected    = std::make_shared<std::atomic<bool>>(false);
-            // Mirrors go-ethereum's dial history: suppresses re-dialing the same
-            // node for dialHistoryExpiration (35 s) after each attempt.
-            auto dial_history = std::make_shared<discv4::DialHistory>();
+
+            // Two-level resource caps — desktop defaults (3 per chain, 200 total).
+            // 3 per chain keeps concurrent coroutine count low (ASan-safe) while still
+            // parallelising discovery.  Embedding apps pass platform-appropriate values:
+            //   mobile: WatcherPool(12, 3)   desktop: WatcherPool(200, 50)
+            auto pool      = std::make_shared<WatcherPool>(200, 3);
+            auto scheduler = std::make_shared<DialScheduler>(
+                io, pool, eth_offset, network_id, genesis_hash, fork_id, watch_specs);
 
             dv4->set_peer_discovered_callback(
-                [&io, network_id, genesis_hash, eth_offset, watch_specs,
-                 connected, dial_history]
-                (const discv4::DiscoveredPeer& peer)
+                [scheduler](const discv4::DiscoveredPeer& peer)
                 {
-                    // Validate public key before attempting connection
-                    rlpx::PublicKey pubkey{};
-                    std::copy(peer.node_id.begin(), peer.node_id.end(), pubkey.begin());
-                    if (!rlpx::crypto::Ecdh::verify_public_key(pubkey))
-                    {
-                        return;  // Skip peers with invalid pubkeys
-                    }
-
-                    // Prune stale history, then skip nodes dialed recently.
-                    // Mirrors go-ethereum's checkDial() + startDial() pattern.
-                    dial_history->expire();
-                    if (dial_history->contains(peer.node_id))
+                    ValidatedPeer vp;
+                    vp.peer = peer;
+                    std::copy(peer.node_id.begin(), peer.node_id.end(), vp.pubkey.begin());
+                    if (!rlpx::crypto::Ecdh::verify_public_key(vp.pubkey))
                     {
                         return;
                     }
-
-                    // Only one connection attempt in flight at a time.
-                    if (connected->exchange(true))
-                    {
-                        return;
-                    }
-
-                    // Record before spawning — same order as go-ethereum's startDial().
-                    dial_history->add(peer.node_id);
-
-                    std::cout << "Discovered peer: " << peer.ip
-                              << ":" << peer.tcp_port << " — connecting...\n";
-
-                    boost::asio::spawn(io,
-                        [pubkey, peer, eth_offset, network_id, genesis_hash,
-                         watch_specs, connected](boost::asio::yield_context yc)
-                        {
-                            run_watch(peer.ip, peer.tcp_port, pubkey,
-                                      eth_offset, network_id, genesis_hash,
-                                      watch_specs, connected, yc);
-                        });
+                    scheduler->enqueue(std::move(vp));
                 });
 
             dv4->set_error_callback([](const std::string& err) {
@@ -803,12 +937,15 @@ int main(int argc, char** argv) {
                  eth_offset = config->eth_offset,
                  network_id = config->network_id,
                  genesis_hash = config->genesis_hash,
+                 fork_id = config->fork_id,
                  watch_specs = std::move(config->watch_specs)](boost::asio::yield_context yc)
                 {
                     run_watch(host, port, peer_pubkey,
-                              eth_offset, network_id, genesis_hash,
+                              eth_offset, network_id, genesis_hash, fork_id,
                               watch_specs,
-                              std::make_shared<std::atomic<bool>>(true), yc);
+                              []() {},
+                              [](std::shared_ptr<rlpx::RlpxSession>) {},
+                              yc);
                 });
         }
 
