@@ -165,7 +165,9 @@ TEST_F(SocketLifecycleTest, MessageChannelOperations) {
     std::queue<framing::Message> queue;
     
     // Push a message
-    framing::Message msg1{.id = 0x00, .payload = {0x01, 0x02, 0x03}};
+    framing::Message msg1{};
+    msg1.id = 0x00;
+    msg1.payload = {0x01, 0x02, 0x03};
     queue.push(std::move(msg1));
     
     // Queue should not be empty
