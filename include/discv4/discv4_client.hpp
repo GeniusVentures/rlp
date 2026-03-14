@@ -6,6 +6,8 @@
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 #include "discv4/discv4_pong.hpp"
+#include "discv4/discv4_enr_request.hpp"
+#include "discv4/discv4_enr_response.hpp"
 #include "discv4/discv4_error.hpp"
 #include <rlp/result.hpp>
 #include <rlpx/rlpx_error.hpp>
@@ -13,6 +15,7 @@
 #include <array>
 #include <chrono>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -36,6 +39,7 @@ struct DiscoveredPeer {
     uint16_t udp_port;
     uint16_t tcp_port;
     std::chrono::steady_clock::time_point last_seen;
+    std::optional<ForkId> eth_fork_id{};  ///< ENR-derived ForkId; empty if eth entry absent or ENR failed.
 };
 
 // Discovery client configuration
@@ -101,6 +105,21 @@ public:
         boost::asio::yield_context yield
     );
 
+    /// @brief Send ENRRequest to a bonded peer and return the raw ENR record bytes.
+    ///
+    /// The peer must already be bonded (ping/pong complete) before calling this.
+    /// Mirrors go-ethereum UDPv4::RequestENR().
+    ///
+    /// @param ip    Target node IP address.
+    /// @param port  Target node UDP port.
+    /// @param yield Boost.Asio stackful coroutine context.
+    /// @return Parsed ENRResponse on success, error on timeout or parse failure.
+    discv4::Result<discv4_enr_response> request_enr(
+        const std::string& ip,
+        uint16_t port,
+        boost::asio::yield_context yield
+    );
+
     // Get list of discovered peers
     std::vector<DiscoveredPeer> get_peers() const;
 
@@ -112,6 +131,13 @@ public:
 
     // Get local node ID
     const NodeId& local_node_id() const { return config_.public_key; }
+
+    /// @brief Return the local UDP port the socket is bound to.
+    ///        Useful in tests where bind_port=0 (OS-assigned ephemeral port).
+    uint16_t bound_port() const noexcept
+    {
+        return socket_.local_endpoint().port();
+    }
 
 private:
     // Receive loop
@@ -125,6 +151,8 @@ private:
     void handle_pong(const uint8_t* data, size_t length, const udp::endpoint& sender);
     void handle_find_node(const uint8_t* data, size_t length, const udp::endpoint& sender);
     void handle_neighbours(const uint8_t* data, size_t length, const udp::endpoint& sender);
+    void handle_enr_request(const uint8_t* data, size_t length, const udp::endpoint& sender);
+    void handle_enr_response(const uint8_t* data, size_t length, const udp::endpoint& sender);
 
     // Send packet
     discv4::Result<void> send_packet(
@@ -163,7 +191,9 @@ private:
     struct PendingReply
     {
         std::shared_ptr<boost::asio::steady_timer> timer;
-        std::shared_ptr<discv4_pong>               pong; ///< filled by handle_pong; null for findnode entries
+        std::shared_ptr<discv4_pong>               pong;         ///< filled by handle_pong; null for non-ping entries
+        std::shared_ptr<discv4_enr_response>       enr_response; ///< filled by handle_enr_response; null for non-ENR entries
+        std::array<uint8_t, kWireHashSize>         expected_hash{}; ///< hash of the outbound ENRRequest; used for ReplyTok verification
     };
     std::unordered_map<std::string, PendingReply> pending_replies_;
 

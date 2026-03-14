@@ -1,6 +1,144 @@
 # Checkpoint — 2026-03-14
 
 ## Current Status
+- The **ENRRequest / ENRResponse** wire path and chain pre-filter are fully implemented and unit-tested.
+- The bond → ENR → `ForkId` enrichment is wired into `discv4_client::handle_neighbours`.
+- `DialScheduler::filter_fn` is implemented and `make_fork_id_filter()` is provided.
+- **`test_discovery.cpp` has NOT yet been updated** to hook the ENR filter into the live Sepolia run.
+  That is the immediate next step.
+
+---
+
+## Currently Staged Files
+
+| Status | File | Staged purpose |
+|---|---|---|
+| `M` | `AgentDocs/CHECKPOINT.md` | This checkpoint update |
+| `M` | `include/discv4/discv4_constants.hpp` | Added `kPacketTypeEnrRequest=0x05`, `kPacketTypeEnrResponse=0x06` |
+| `A` | `include/discv4/discv4_enr_request.hpp` | ENRRequest struct + `RlpPayload()` (mirrors go-ethereum `v4wire.ENRRequest`) |
+| `A` | `include/discv4/discv4_enr_response.hpp` | `ForkId` struct + `discv4_enr_response` with `Parse()` and `ParseEthForkId()` |
+| `A` | `src/discv4/discv4_enr_request.cpp` | ENRRequest RLP encode implementation |
+| `A` | `src/discv4/discv4_enr_response.cpp` | ENRResponse wire parse + ENR record `eth` key-value walk |
+| `M` | `src/discv4/CMakeLists.txt` | Added `discv4_enr_request.cpp`, `discv4_enr_response.cpp` |
+| `M` | `include/discv4/discv4_client.hpp` | Added `request_enr()`, `handle_enr_request/response()`, extended `PendingReply`, `bound_port()`, `std::optional<ForkId> eth_fork_id` on `DiscoveredPeer` |
+| `M` | `src/discv4/discv4_client.cpp` | Dispatch types 5/6, `handle_enr_request` (silent drop), `handle_enr_response` (ReplyTok verify + wake), `request_enr()`, moved `peer_callback_` into coroutine after ENR enrichment |
+| `M` | `include/discv4/dial_scheduler.hpp` | Added `FilterFn` type alias, `filter_fn` member, filter check in `enqueue()`, `make_fork_id_filter()` free function |
+| `A` | `test/discv4/enr_request_test.cpp` | 5 tests: ENRRequest encode/decode round-trips |
+| `A` | `test/discv4/enr_response_test.cpp` | 9 tests: ENRResponse Parse + ParseEthForkId (missing key, multi-key, empty) |
+| `A` | `test/discv4/enr_client_test.cpp` | 3 tests: send reaches target, timeout, full loopback |
+| `A` | `test/discv4/enr_enrichment_test.cpp` | 3 tests: `DiscoveredPeer.eth_fork_id` population |
+| `A` | `test/discv4/dial_filter_test.cpp` | 7 tests: `make_fork_id_filter` + `DialScheduler` accept/reject/no-ENR |
+| `M` | `test/discv4/CMakeLists.txt` | Registered all new test targets |
+
+---
+
+## What Changed Since Previous Checkpoint
+
+### ENRRequest / ENRResponse wire support (EIP-868)
+- `discv4_enr_request` mirrors `v4wire.ENRRequest{Expiration uint64}`.
+  `RlpPayload()` produces `packet-type(0x05) || RLP([expiration])` ready for signing.
+- `discv4_enr_response` mirrors `v4wire.ENRResponse{ReplyTok []byte; Record enr.Record}`.
+  `Parse()` follows the same pattern as `discv4_pong::Parse()`.
+
+### ForkId extraction from ENR records (EIP-778 + EIP-2124)
+- `ParseEthForkId()` walks the ENR record key-value pairs, finds the `"eth"` key,
+  decodes the value as `RLP(enrEntry)` = `RLP([ [hash4, next_uint64] ])`.
+- `ForkId` struct mirrors `forkid.ID{Hash [4]byte; Next uint64}`.
+
+### request_enr() in discv4_client
+- Public method analogous to `ping()` and `find_node()`.
+- Sends ENRRequest, registers a `PendingReply` keyed by `kPacketTypeEnrResponse`.
+- `handle_enr_response()` verifies `ReplyTok == expected_hash` before waking the coroutine.
+- `handle_enr_request()` silently drops inbound requests (no local ENR record yet).
+
+### Bond → ENR enrichment in handle_neighbours
+- `peer_callback_` moved inside the spawned coroutine.
+- Flow: `ensure_bond` → `request_enr` → `ParseEthForkId` → set `peer.eth_fork_id` → call `peer_callback_`.
+- Caller receives a `DiscoveredPeer` with `eth_fork_id` populated when the remote supports EIP-868.
+
+### DialScheduler pre-dial filter
+- `FilterFn = std::function<bool(const DiscoveredPeer&)>` added to `dial_scheduler.hpp`.
+- `DialScheduler::filter_fn` applied at the top of `enqueue()` before history/cap checks.
+- `make_fork_id_filter(expected_hash)` free function: accepts peers whose `eth_fork_id.hash`
+  matches; rejects peers with no `eth_fork_id` (no ENR or no `eth` entry).
+
+### Unit test coverage added
+| Test suite | Tests | What it guards |
+|---|---|---|
+| `EnrRequestEncodeTest` | 5 | ENRRequest encode, packet type byte, round-trip |
+| `EnrResponseParseTest` | 5 | ENRResponse Parse: success, hash round-trip, record round-trip, wrong type, too-short |
+| `EnrForkIdParseTest` | 4 | ParseEthForkId: round-trip, missing key, skip unrelated keys, empty record |
+| `EnrClientTest` | 3 | request_enr: send reaches target, timeout, full loopback reply |
+| `EnrEnrichmentTest` | 3 | DiscoveredPeer.eth_fork_id default/set/loopback |
+| `ForkIdFilterTest` | 4 | make_fork_id_filter: match, mismatch, no-ENR, ignores next field |
+| `DialSchedulerFilterTest` | 3 | enqueue: no filter dials all, filter drops wrong-chain, reject-all yields zero |
+
+---
+
+## Remaining Live Discovery Gap
+
+### test_discovery.cpp does not yet use the ENR filter
+`test_discovery.cpp` builds and runs the full discovery + dial flow, but it does not yet set
+`scheduler->filter_fn`. Without the filter, the current behaviour is unchanged from the previous
+checkpoint — peers are still dialed regardless of their ENR `eth` entry.
+
+### Sepolia fork hash to use in the filter
+The Sepolia ENR `eth` entry uses the same CRC32 ForkId as in the ETH Status handshake.
+The current Sepolia post-Prague hash (as used in `test_discovery.cpp`) is:
+
+```cpp
+// Sepolia: MergeNetsplit@1735371, Shanghai@1677557088, Cancun@1706655072, Prague@1741159776
+static const eth::ForkId kSepoliaForkId{ { 0xed, 0x88, 0xb5, 0xfd }, 0 };
+```
+
+The `make_fork_id_filter` call for `test_discovery.cpp` should use:
+```cpp
+scheduler->filter_fn = discv4::make_fork_id_filter( { 0xed, 0x88, 0xb5, 0xfd } );
+```
+
+**⚠️ Verify this hash against a live Sepolia peer's ENR before committing.**
+The ENR-advertised hash may differ from the ETH Status hash if the node's ENR was not updated
+after the Prague fork. Verify by running `test_discovery` with `--log-level debug` and
+inspecting the `ParseEthForkId` result before enabling the filter.
+
+---
+
+## Recommended Next Step
+
+1. **Add the ENR filter to `test_discovery.cpp`** — set `scheduler->filter_fn` after the scheduler
+   is constructed, using `make_fork_id_filter({ 0xed, 0x88, 0xb5, 0xfd })`.
+2. **Run `test_discovery --log-level debug --timeout 60`** and verify:
+   - ENR requests are being sent to bonded peers
+   - `ParseEthForkId` is returning results for Sepolia peers
+   - The filter correctly drops wrong-chain peers before the dial slot is consumed
+   - The `connected (right chain)` count improves vs the previous baseline of 0
+3. **If the hash needs adjustment** (ENR hash ≠ ETH Status hash), update the filter constant
+   and re-run.
+
+---
+
+## How to Run
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja
+
+# All ENR unit tests
+./test/discv4/discv4_enr_request_test
+./test/discv4/discv4_enr_response_test
+./test/discv4/discv4_enr_client_test
+./test/discv4/discv4_enr_enrichment_test
+./test/discv4/discv4_dial_filter_test
+
+# Regression tests
+./test/discv4/discv4_client_test
+./test/discv4/discv4_dial_scheduler_test
+
+# Live Sepolia discovery run (next step: verify ENR filter works)
+./examples/discovery/test_discovery --log-level debug --timeout 60
+```
+
+## Current Status
 - This checkpoint reflects the **currently staged git files** as of 2026-03-14.
 - The earlier “all dial slots wait the full 5 seconds” diagnosis is now **only partially true**.
   The staged fixes improved slot recycling and connection turnover, but live Sepolia discovery

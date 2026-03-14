@@ -50,6 +50,12 @@ using DialFn = std::function<void(
     std::function<void(std::shared_ptr<rlpx::RlpxSession>)>    on_connected,
     boost::asio::yield_context                                  yield)>;
 
+/// @brief Predicate applied to a DiscoveredPeer before it is enqueued for dialing.
+///        Return true to allow dialing, false to drop.
+///        When unset (nullptr), all peers are accepted.
+///        Mirrors go-ethereum UDPv4::NewNodeFilter (eth/protocols/eth/discovery.go).
+using FilterFn = std::function<bool( const DiscoveredPeer& )>;
+
 /// @brief Per-chain dial scheduler mirroring go-ethereum's dialScheduler.
 ///        Maintains up to pool->max_per_chain concurrent dial coroutines,
 ///        respecting the global pool->max_total cap across all chains.
@@ -59,6 +65,7 @@ struct DialScheduler : std::enable_shared_from_this<DialScheduler>
     boost::asio::io_context&              io;
     std::shared_ptr<WatcherPool>          pool;
     DialFn                                dial_fn;
+    FilterFn                              filter_fn{};  ///< Optional peer filter; nullptr = accept all.
     std::shared_ptr<DialHistory>          dial_history;
 
     int                                          active{0};
@@ -82,7 +89,16 @@ struct DialScheduler : std::enable_shared_from_this<DialScheduler>
     ///        Otherwise queues for later drain.
     void enqueue(ValidatedPeer vp)
     {
-        if (stopping) { return; }
+        if ( stopping )
+        {
+            return;
+        }
+
+        // Drop peers that do not match the chain filter (e.g. wrong ForkId).
+        if ( filter_fn && !filter_fn( vp.peer ) )
+        {
+            return;
+        }
 
         dial_history->expire();
         if (dial_history->contains(vp.peer.node_id)) { return; }
@@ -168,6 +184,36 @@ private:
                     yc);
             });
     }
-};
+}; // struct DialScheduler
+
+/// @brief Create a FilterFn that accepts only peers whose ENR eth entry carries
+///        a ForkId with the given 4-byte hash (CRC32 of genesis + applied forks).
+///
+/// Mirrors go-ethereum NewNodeFilter (eth/protocols/eth/discovery.go):
+/// @code
+///   return func(n *enode.Node) bool {
+///       var entry enrEntry
+///       if err := n.Load(&entry); err != nil { return false }
+///       return filter(entry.ForkID) == nil
+///   }
+/// @endcode
+///
+/// Peers with no eth_fork_id (ENR absent or eth entry missing) are dropped.
+///
+/// @param expected_hash  4-byte CRC32 fork hash to match against.
+/// @return FilterFn suitable for assignment to DialScheduler::filter_fn.
+[[nodiscard]] inline FilterFn make_fork_id_filter(
+    const std::array<uint8_t, 4U>& expected_hash ) noexcept
+{
+    return [expected_hash]( const DiscoveredPeer& peer ) -> bool
+    {
+        if ( !peer.eth_fork_id.has_value() )
+        {
+            return false;
+        }
+        return peer.eth_fork_id.value().hash == expected_hash;
+    };
+}
 
 } // namespace discv4
+

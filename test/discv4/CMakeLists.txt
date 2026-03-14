@@ -128,3 +128,61 @@ target_include_directories(discv4_enr_response_test PRIVATE
 
 gtest_discover_tests(discv4_enr_response_test)
 
+# ENR client (request_enr) integration tests
+add_executable(discv4_enr_client_test
+    ${CMAKE_CURRENT_LIST_DIR}/enr_client_test.cpp
+)
+
+target_link_libraries(discv4_enr_client_test PRIVATE
+    discv4
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv4_enr_client_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+gtest_discover_tests(discv4_enr_client_test
+    PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"
+)
+
+# ENR enrichment flow tests (DiscoveredPeer.eth_fork_id population)
+add_executable(discv4_enr_enrichment_test
+    ${CMAKE_CURRENT_LIST_DIR}/enr_enrichment_test.cpp
+)
+
+target_link_libraries(discv4_enr_enrichment_test PRIVATE
+    discv4
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv4_enr_enrichment_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+gtest_discover_tests(discv4_enr_enrichment_test
+    PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"
+)
+
+# ForkId filter + DialScheduler integration tests
+add_executable(discv4_dial_filter_test
+    ${CMAKE_CURRENT_LIST_DIR}/dial_filter_test.cpp
+)
+
+target_link_libraries(discv4_dial_filter_test PRIVATE
+    discv4
+    rlpx
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv4_dial_filter_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+gtest_discover_tests(discv4_dial_filter_test
+    PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"
+)
+

@@ -6,6 +6,8 @@
 #include "discv4/discv4_error.hpp"
 #include "discv4/discv4_ping.hpp"
 #include "discv4/discv4_pong.hpp"
+#include "discv4/discv4_enr_request.hpp"
+#include "discv4/discv4_enr_response.hpp"
 #include "base/logger.hpp"
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
@@ -108,6 +110,12 @@ void discv4_client::handle_packet(const uint8_t* data, size_t length, const udp:
             break;
         case kPacketTypeNeighbours:
             handle_neighbours(data, length, sender);
+            break;
+        case kPacketTypeEnrRequest:
+            handle_enr_request(data, length, sender);
+            break;
+        case kPacketTypeEnrResponse:
+            handle_enr_response(data, length, sender);
             break;
         default:
             if (error_callback_) {
@@ -295,13 +303,9 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
             peers_[node_key] = peer;
         }
 
-        if (peer_callback_)
-        {
-            logger_->debug("Neighbour peer: {}:{}", peer.ip, peer.tcp_port);
-            peer_callback_(peer);
-        }
-
-        // Recursive kademlia: bond with and query each new peer we haven't queued yet.
+        // Recursive kademlia: bond -> ENR enrichment -> peer_callback_ -> find_node.
+        // peer_callback_ is deferred into the coroutine so eth_fork_id is populated
+        // before the caller decides whether to enqueue the peer for dialing.
         const std::string ep_key = peer.ip + ":" + std::to_string(peer.udp_port);
         if (running_ && discovered_set_.count(ep_key) == 0)
         {
@@ -310,9 +314,27 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
             const uint16_t    disc_port = peer.udp_port;
             const NodeId      disc_id   = peer.node_id;
             asio::spawn(io_context_,
-                [this, disc_ip, disc_port, disc_id](asio::yield_context yield)
+                [this, disc_ip, disc_port, disc_id, enriched_peer = peer](asio::yield_context yield) mutable
                 {
                     ensure_bond(disc_ip, disc_port, yield);
+
+                    // Request ENR and populate eth_fork_id when available.
+                    auto enr_result = request_enr(disc_ip, disc_port, yield);
+                    if (enr_result)
+                    {
+                        auto fork_result = enr_result.value().ParseEthForkId();
+                        if (fork_result)
+                        {
+                            enriched_peer.eth_fork_id = fork_result.value();
+                        }
+                    }
+
+                    if (peer_callback_)
+                    {
+                        logger_->debug("Neighbour peer: {}:{}", enriched_peer.ip, enriched_peer.tcp_port);
+                        peer_callback_(enriched_peer);
+                    }
+
                     auto fn = find_node(disc_ip, disc_port, disc_id, yield);
                     (void)fn;
                 });
@@ -321,8 +343,99 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
 }
 
 
-std::string discv4_client::reply_key(const std::string& ip, uint16_t port, uint8_t ptype) noexcept
+void discv4_client::handle_enr_request(const uint8_t* /*data*/, size_t /*length*/, const udp::endpoint& sender)
 {
+    // We do not yet maintain a local ENR record, so we cannot send a valid ENRResponse.
+    // Silently drop inbound ENRRequests — mirrors the behaviour of a node that has no
+    // ENR to advertise.  This will be revisited when local ENR support is added.
+    logger_->debug("ENRRequest from {}:{} — no local ENR, dropping",
+                   sender.address().to_string(), sender.port());
+}
+
+void discv4_client::handle_enr_response(const uint8_t* data, size_t length, const udp::endpoint& sender)
+{
+    if ( length < kPacketHeaderSize )
+    {
+        return;
+    }
+
+    const rlp::ByteView raw( data, length );
+    auto parse_result = discv4_enr_response::Parse( raw );
+    if ( !parse_result )
+    {
+        return; // silently drop malformed ENRResponse
+    }
+
+    const std::string key = reply_key( sender.address().to_string(), sender.port(), kPacketTypeEnrResponse );
+    auto it = pending_replies_.find( key );
+    if ( it == pending_replies_.end() )
+    {
+        return; // unsolicited — drop
+    }
+
+    // Verify ReplyTok matches the hash of the ENRRequest we sent.
+    if ( parse_result.value().request_hash != it->second.expected_hash )
+    {
+        return; // wrong token — drop
+    }
+
+    *it->second.enr_response = std::move( parse_result.value() );
+    it->second.timer->cancel(); // wake the waiting request_enr() coroutine
+}
+
+discv4::Result<discv4_enr_response> discv4_client::request_enr(
+    const std::string& ip,
+    uint16_t           port,
+    asio::yield_context yield )
+{
+    if ( !running_ ) { return discv4Error::kNetworkSendFailed; }
+
+    discv4_enr_request req;
+    req.expiration = static_cast<uint64_t>( std::time( nullptr ) ) + kPacketExpirySeconds;
+
+    const auto payload = req.RlpPayload();
+    if ( payload.empty() ) { return discv4Error::kRlpPayloadEmpty; }
+
+    auto signed_packet = sign_packet( payload );
+    if ( !signed_packet ) { return discv4Error::kSigningFailed; }
+
+    // The outer hash occupies the first kWireHashSize bytes of the signed wire packet.
+    // This is what the remote will echo back as ReplyTok in its ENRResponse.
+    std::array<uint8_t, kWireHashSize> sent_hash{};
+    std::copy( signed_packet.value().begin(),
+               signed_packet.value().begin() + kWireHashSize,
+               sent_hash.begin() );
+
+    const udp::endpoint destination( asio::ip::make_address( ip ), port );
+    auto send_result = send_packet( signed_packet.value(), destination, yield );
+    if ( !send_result ) { return discv4Error::kNetworkSendFailed; }
+
+    // Register pending reply — mirrors the ping() pattern.
+    const std::string key      = reply_key( ip, port, kPacketTypeEnrResponse );
+    auto              timer    = std::make_shared<asio::steady_timer>( io_context_ );
+    auto              enr_slot = std::make_shared<discv4_enr_response>();
+
+    PendingReply entry{};
+    entry.timer         = timer;
+    entry.enr_response  = enr_slot;
+    entry.expected_hash = sent_hash;
+    pending_replies_[key] = std::move( entry );
+
+    timer->expires_after( config_.ping_timeout );
+
+    boost::system::error_code ec;
+    timer->async_wait( asio::redirect_error( yield, ec ) );
+    pending_replies_.erase( key );
+
+    if ( ec == boost::asio::error::operation_aborted )
+    {
+        // Timer cancelled by handle_enr_response — response was received.
+        return *enr_slot;
+    }
+    return discv4Error::kPongTimeout;
+}
+
+std::string discv4_client::reply_key(const std::string& ip, uint16_t port, uint8_t ptype) noexcept{
     return ip + ":" + std::to_string(port) + ":" + std::to_string(ptype);
 }
 

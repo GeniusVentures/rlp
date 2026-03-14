@@ -150,3 +150,138 @@ TEST( EnrResponseParseTest, TooShortInputIsRejected )
     EXPECT_FALSE( result.has_value() ) << "Parse() must reject truncated input";
 }
 
+// ---------------------------------------------------------------------------
+// ParseEthForkId tests
+// ---------------------------------------------------------------------------
+
+/// @brief Build an ENR record with an `eth` entry containing the given ForkId.
+///
+/// ENR record: RLP([sig_64, seq, "eth", RLP(enrEntry)])
+/// enrEntry value:  RLP([ RLP([hash4, next_uint64]) ])
+///   outer list = enrEntry struct fields
+///   inner list = ForkId struct fields
+std::vector<uint8_t> make_enr_record_with_eth( const discv4::ForkId& fork_id, uint64_t seq = 1U )
+{
+    // Build the ForkId inner list: RLP([hash4, next])
+    rlp::RlpEncoder fork_enc;
+    EXPECT_TRUE( fork_enc.BeginList() );
+    EXPECT_TRUE( fork_enc.add( rlp::ByteView( fork_id.hash.data(), fork_id.hash.size() ) ) );
+    EXPECT_TRUE( fork_enc.add( fork_id.next ) );
+    EXPECT_TRUE( fork_enc.EndList() );
+    auto fork_bytes = fork_enc.MoveBytes();
+    EXPECT_TRUE( fork_bytes.has_value() );
+
+    // Build the enrEntry outer list: RLP([ ForkId ])
+    rlp::RlpEncoder entry_enc;
+    EXPECT_TRUE( entry_enc.BeginList() );
+    EXPECT_TRUE( entry_enc.AddRaw( rlp::ByteView( fork_bytes.value().data(), fork_bytes.value().size() ) ) );
+    EXPECT_TRUE( entry_enc.EndList() );
+    auto entry_bytes = entry_enc.MoveBytes();
+    EXPECT_TRUE( entry_bytes.has_value() );
+
+    // Build the full ENR record: RLP([sig_64, seq, "eth", entry_value])
+    rlp::RlpEncoder rec_enc;
+    EXPECT_TRUE( rec_enc.BeginList() );
+
+    // Signature — 64 zero bytes.
+    const std::array<uint8_t, 64U> sig{};
+    EXPECT_TRUE( rec_enc.add( rlp::ByteView( sig.data(), sig.size() ) ) );
+
+    // Sequence number.
+    EXPECT_TRUE( rec_enc.add( seq ) );
+
+    // Key: "eth" = {0x65, 0x74, 0x68}
+    const std::array<uint8_t, 3U> eth_key{ 0x65U, 0x74U, 0x68U };
+    EXPECT_TRUE( rec_enc.add( rlp::ByteView( eth_key.data(), eth_key.size() ) ) );
+
+    // Value: enrEntry RLP.
+    EXPECT_TRUE( rec_enc.AddRaw( rlp::ByteView( entry_bytes.value().data(), entry_bytes.value().size() ) ) );
+
+    EXPECT_TRUE( rec_enc.EndList() );
+    auto rec_bytes = rec_enc.MoveBytes();
+    EXPECT_TRUE( rec_bytes.has_value() );
+    return std::vector<uint8_t>( rec_bytes.value().begin(), rec_bytes.value().end() );
+}
+
+/// @brief ParseEthForkId() extracts hash and next from a record with an eth entry.
+TEST( EnrForkIdParseTest, ParseEthForkIdRoundTrips )
+{
+    const discv4::ForkId expected{ { 0xDE, 0xAD, 0xBE, 0xEF }, 12345678ULL };
+
+    const auto record = make_enr_record_with_eth( expected );
+
+    discv4::discv4_enr_response resp;
+    resp.record_rlp = record;
+
+    auto result = resp.ParseEthForkId();
+    ASSERT_TRUE( result.has_value() ) << "ParseEthForkId() must succeed on a record with eth entry";
+    EXPECT_EQ( result.value(), expected );
+}
+
+/// @brief ParseEthForkId() returns error when record has no eth entry.
+TEST( EnrForkIdParseTest, MissingEthEntryReturnsError )
+{
+    // A minimal record with no key-value pairs.
+    const auto record = make_minimal_enr_record( 1U );
+
+    discv4::discv4_enr_response resp;
+    resp.record_rlp = record;
+
+    auto result = resp.ParseEthForkId();
+    EXPECT_FALSE( result.has_value() ) << "ParseEthForkId() must fail when eth key is absent";
+}
+
+/// @brief ParseEthForkId() skips unrelated keys and finds eth.
+TEST( EnrForkIdParseTest, FindsEthKeyAmongOtherKeys )
+{
+    const discv4::ForkId expected{ { 0x01, 0x02, 0x03, 0x04 }, 0ULL };
+
+    // Build ForkId + enrEntry bytes (reuse helper logic inline).
+    rlp::RlpEncoder fork_enc;
+    (void)fork_enc.BeginList();
+    (void)fork_enc.add( rlp::ByteView( expected.hash.data(), expected.hash.size() ) );
+    (void)fork_enc.add( expected.next );
+    (void)fork_enc.EndList();
+    auto fork_bytes = fork_enc.MoveBytes();
+
+    rlp::RlpEncoder entry_enc;
+    (void)entry_enc.BeginList();
+    (void)entry_enc.AddRaw( rlp::ByteView( fork_bytes.value().data(), fork_bytes.value().size() ) );
+    (void)entry_enc.EndList();
+    auto entry_bytes = entry_enc.MoveBytes();
+
+    // Record with an extra key "abc" before "eth" (ENR keys must be sorted; "abc" < "eth").
+    rlp::RlpEncoder rec_enc;
+    (void)rec_enc.BeginList();
+    const std::array<uint8_t, 64U> sig{};
+    (void)rec_enc.add( rlp::ByteView( sig.data(), sig.size() ) );
+    (void)rec_enc.add( uint64_t{ 1U } );
+    // key "abc"
+    const std::array<uint8_t, 3U> abc_key{ 0x61U, 0x62U, 0x63U };
+    (void)rec_enc.add( rlp::ByteView( abc_key.data(), abc_key.size() ) );
+    // value for "abc" — a simple byte string
+    const std::array<uint8_t, 1U> abc_val{ 0xFFU };
+    (void)rec_enc.add( rlp::ByteView( abc_val.data(), abc_val.size() ) );
+    // key "eth"
+    const std::array<uint8_t, 3U> eth_key{ 0x65U, 0x74U, 0x68U };
+    (void)rec_enc.add( rlp::ByteView( eth_key.data(), eth_key.size() ) );
+    (void)rec_enc.AddRaw( rlp::ByteView( entry_bytes.value().data(), entry_bytes.value().size() ) );
+    (void)rec_enc.EndList();
+    auto rec_bytes = rec_enc.MoveBytes();
+
+    discv4::discv4_enr_response resp;
+    resp.record_rlp = std::vector<uint8_t>( rec_bytes.value().begin(), rec_bytes.value().end() );
+
+    auto result = resp.ParseEthForkId();
+    ASSERT_TRUE( result.has_value() ) << "ParseEthForkId() must find eth key after skipping abc";
+    EXPECT_EQ( result.value(), expected );
+}
+
+/// @brief ParseEthForkId() returns error on empty record_rlp.
+TEST( EnrForkIdParseTest, EmptyRecordReturnsError )
+{
+    discv4::discv4_enr_response resp;
+    // record_rlp is default-empty
+    auto result = resp.ParseEthForkId();
+    EXPECT_FALSE( result.has_value() ) << "ParseEthForkId() must fail on empty record_rlp";
+}

@@ -6,9 +6,11 @@
 
 namespace discv4 {
 
+// ASCII bytes for the ENR key "eth" (go-ethereum eth/protocols/eth/discovery.go).
+static constexpr std::array<uint8_t, 3U> kEthKey{ 0x65U, 0x74U, 0x68U };
+
 rlp::Result<discv4_enr_response> discv4_enr_response::Parse( rlp::ByteView raw ) noexcept
 {
-    // Minimum: hash(32) + sig(65) + type(1) = kWireHeaderSize bytes before the payload.
     if ( raw.size() <= kWireHeaderSize )
     {
         return rlp::DecodingError::kInputTooShort;
@@ -19,11 +21,9 @@ rlp::Result<discv4_enr_response> discv4_enr_response::Parse( rlp::ByteView raw )
         return rlp::DecodingError::kUnexpectedString;
     }
 
-    // Payload starts after the wire header.
     rlp::ByteView payload( raw.data() + kWireHeaderSize, raw.size() - kWireHeaderSize );
     rlp::RlpDecoder decoder( payload );
 
-    // Outer list: [reply_tok, record]
     BOOST_OUTCOME_TRY( bool is_list, decoder.IsList() );
     if ( !is_list )
     {
@@ -34,10 +34,8 @@ rlp::Result<discv4_enr_response> discv4_enr_response::Parse( rlp::ByteView raw )
 
     discv4_enr_response response;
 
-    // ReplyTok — 32-byte hash of the originating ENRRequest packet.
     BOOST_OUTCOME_TRY( decoder.read( response.request_hash ) );
 
-    // Record — capture raw RLP bytes (header + payload) for later parsing.
     BOOST_OUTCOME_TRY( auto record_header, decoder.PeekHeader() );
     const size_t record_total = record_header.header_size_bytes + record_header.payload_size_bytes;
 
@@ -50,10 +48,76 @@ rlp::Result<discv4_enr_response> discv4_enr_response::Parse( rlp::ByteView raw )
         decoder.Remaining().data(),
         decoder.Remaining().data() + record_total );
 
-    // Consume the record item; ignore any trailing `Rest` fields (forward compatibility).
     BOOST_OUTCOME_TRY( decoder.SkipItem() );
 
     return response;
+}
+
+rlp::Result<ForkId> discv4_enr_response::ParseEthForkId() const noexcept
+{
+    if ( record_rlp.empty() )
+    {
+        return rlp::DecodingError::kInputTooShort;
+    }
+
+    rlp::ByteView   record_view( record_rlp.data(), record_rlp.size() );
+    rlp::RlpDecoder record_dec( record_view );
+
+    // ENR record: RLP([signature, seq, k0, v0, k1, v1, ...])
+    BOOST_OUTCOME_TRY( bool is_list, record_dec.IsList() );
+    if ( !is_list )
+    {
+        return rlp::DecodingError::kUnexpectedString;
+    }
+    BOOST_OUTCOME_TRY( size_t record_len, record_dec.ReadListHeaderBytes() );
+    (void)record_len;
+
+    // Skip signature (first element).
+    BOOST_OUTCOME_TRY( record_dec.SkipItem() );
+
+    // Skip sequence number (second element).
+    BOOST_OUTCOME_TRY( record_dec.SkipItem() );
+
+    // Iterate key/value pairs looking for key == "eth".
+    while ( !record_dec.IsFinished() )
+    {
+        rlp::Bytes key_bytes;
+        BOOST_OUTCOME_TRY( record_dec.read( key_bytes ) );
+
+        if ( key_bytes.size() == kEthKey.size() &&
+             std::equal( key_bytes.begin(), key_bytes.end(), kEthKey.begin() ) )
+        {
+            // Value: RLP(enrEntry) = RLP([ [hash4, next_uint64] ])
+            // Outer list = enrEntry fields; inner list = ForkId fields.
+            BOOST_OUTCOME_TRY( bool val_is_list, record_dec.IsList() );
+            if ( !val_is_list )
+            {
+                return rlp::DecodingError::kUnexpectedString;
+            }
+            BOOST_OUTCOME_TRY( size_t outer_val_len, record_dec.ReadListHeaderBytes() );
+            (void)outer_val_len;
+
+            BOOST_OUTCOME_TRY( bool fork_is_list, record_dec.IsList() );
+            if ( !fork_is_list )
+            {
+                return rlp::DecodingError::kUnexpectedString;
+            }
+            BOOST_OUTCOME_TRY( size_t fork_len, record_dec.ReadListHeaderBytes() );
+            (void)fork_len;
+
+            ForkId fork_id;
+            BOOST_OUTCOME_TRY( record_dec.read( fork_id.hash ) );
+            BOOST_OUTCOME_TRY( record_dec.read( fork_id.next ) );
+
+            return fork_id;
+        }
+
+        // Not "eth" — skip the value and continue.
+        BOOST_OUTCOME_TRY( record_dec.SkipItem() );
+    }
+
+    // `eth` key not present in record.
+    return rlp::DecodingError::kUnexpectedString;
 }
 
 } // namespace discv4
