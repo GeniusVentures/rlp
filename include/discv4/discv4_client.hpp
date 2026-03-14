@@ -15,6 +15,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace discv4 {
@@ -44,7 +45,7 @@ struct discv4Config {
     uint16_t tcp_port = 30303;
     std::array<uint8_t, 32> private_key{};  // secp256k1 private key
     NodeId public_key{};                     // secp256k1 public key (uncompressed, 64 bytes)
-    std::chrono::seconds ping_timeout{5};
+    std::chrono::milliseconds ping_timeout{5000};
     std::chrono::seconds peer_expiry{300};   // 5 minutes
 };
 
@@ -154,15 +155,30 @@ private:
     PeerDiscoveredCallback peer_callback_;
     ErrorCallback error_callback_;
 
-    // Pending requests
-    struct PendingRequest {
-        std::chrono::steady_clock::time_point sent_time;
-        std::function<void(const uint8_t*, size_t)> callback;
-    };
-    std::unordered_map<std::string, PendingRequest> pending_pings_;  // key: endpoint_string
-
     // Running state
     std::atomic<bool> running_{false};
+
+    // Pending reply entries — one per outstanding PING or FIND_NODE.
+    // Keyed by reply_key(). All access on the single io_context thread — no mutex needed.
+    struct PendingReply
+    {
+        std::shared_ptr<boost::asio::steady_timer> timer;
+        std::shared_ptr<discv4_pong>               pong; ///< filled by handle_pong; null for findnode entries
+    };
+    std::unordered_map<std::string, PendingReply> pending_replies_;
+
+    /// Endpoints that completed PING→PONG bond. key: "ip:port"
+    std::unordered_set<std::string> bonded_set_;
+    /// Endpoints already queued for recursive PING+FIND_NODE (prevents duplicate work). key: "ip:port"
+    std::unordered_set<std::string> discovered_set_;
+
+    /// @brief Build the pending-reply map key.
+    static std::string reply_key(const std::string& ip, uint16_t port, uint8_t ptype) noexcept;
+
+    /// @brief Ensure a PING→PONG bond exists before sending FIND_NODE.
+    ///        Calls ping() if the endpoint is not yet in bonded_set_.
+    void ensure_bond(const std::string& ip, uint16_t port,
+                     boost::asio::yield_context yield) noexcept;
 };
 
 } // namespace discv4

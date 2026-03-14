@@ -55,6 +55,10 @@ Your default mode is “tiny, surgical insertion into existing code”.
   - Don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. 
   - Then, have subagents try to fix the bug and prove it with a passing test.
 
+** Tool preference
+- Prefer the workspace file reader and workspace directory tools over `grep_search` for reading and exploring files.
+- Use `grep_search` only as a last resort when you need to search across many files for a pattern and the workspace tools are insufficient.
+
 ## Important Guidelines
 - Do not commit changes without explicit user permission.
 - When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test.

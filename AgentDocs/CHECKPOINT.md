@@ -1,190 +1,169 @@
-# Checkpoint — 2026-03-06 (End of Day 8 extended session)
+# Checkpoint — 2026-03-14
 
-## Build Status
-- **`ninja` builds with zero errors, zero warnings** as of end of session.
-- **`ctest` 441/441 tests pass** (no regressions). The new `HandshakeVectorsTest` compiles and is registered in CTest.
+## Current Status
+- This checkpoint reflects the **currently staged git files** as of 2026-03-14.
+- The earlier “all dial slots wait the full 5 seconds” diagnosis is now **only partially true**.
+  The staged fixes improved slot recycling and connection turnover, but live Sepolia discovery
+  is still failing to reach the target validated connections.
+- The most recent observed live run of `./examples/discovery/test_discovery --timeout 30 --log-level warn`
+  reported:
+  - `dialed: 239`
+  - `connect_failed: 191`
+  - `wrong_chain: 25`
+  - `too_many_peers: 12`
+  - `status_timeout: 4`
+  - `connected (right chain): 0`
 
----
-
-## What Was Accomplished This Session
-
-### Days 2–7 (prior sessions, already complete)
-- Full ETH/66+ packet encode/decode (transactions, block bodies, new block, receipts)
-- ABI decoder (`eth/abi_decoder.hpp/.cpp`) with keccak256 event signature hashing
-- `EthWatchService` — subscribe/unwatch, `process_message`, `process_receipts`, `process_new_block`
-- `ChainTracker` — deduplication window, tip tracking
-- GNUS.AI contract address constants + unit tests (`gnus_contracts_test`)
-- spdlog integration (`src/base/logger.cpp`, `include/base/logger.hpp`) with `--log-level` CLI arg
-- `eth_watch` example binary wired end-to-end: discv4 discovery → RLPx connect → ETH status → watch events
-- discv4 full bond cycle: PING → wait for PONG → wait for reverse PING → send PONG → send FIND_NODE → parse NEIGHBOURS
-- Magic number cleanup across all `src/` and `include/` files; constants extracted to named `constexpr`
-- All markdown docs moved to `AgentDocs/`
-- `AGENT_MISTAKES.md` created with M001–M016
-
-### Day 8 (this session)
-- **RLPx handshake rewrite** based on direct read of `go-ethereum/p2p/rlpx/rlpx.go`:
-  - `create_auth_message`: RLP-encode `[sig, pubkey, nonce, version=4]`, append 100 bytes random padding, EIP-8 prefix (uint16-BE of ciphertext length), ECIES encrypt
-  - `parse_ack_message`: read 2-byte length prefix, read body, ECIES decrypt, RLP-decode `[eph_pubkey, nonce, version]`
-  - `derive_frame_secrets`: exact port of go-ethereum `secrets()` — ECDH → sharedSecret → aesSecret → macSecret → MAC seeds
-  - `FrameCipher` rewrite: exact port of go-ethereum `hashMAC` and `sessionState` (AES-256-CTR enc/dec, running-keccak MAC accumulator, `computeHeader`/`computeFrame`)
-- **`test/rlpx/handshake_vectors_test.cpp`** — new test validating `derive_frame_secrets()` against go-ethereum `TestHandshakeForwardCompatibility` vectors (Auth₂/Ack₂, responder perspective)
-- **`include/rlpx/auth/auth_handshake.hpp`** — `derive_frame_secrets` moved to `public static`; free function `derive_frame_secrets(keys, is_initiator)` added in `auth_handshake.cpp` as test entry point
+### Current interpretation
+1. **Throughput improved** after the staged socket-timeout and socket-close fixes.
+2. **Wrong-chain peers are now visible in stats**, so the issue is no longer just slot starvation.
+3. The remaining major gap is still **chain pre-filtering before dial**. go-ethereum solves that with
+   ENR-based filtering before outbound RLPx dials.
 
 ---
 
-## Current Failure Mode (the problem to solve Monday)
+## Currently Staged Files
 
-The binary connects to discovered Sepolia peers, completes auth (sends auth, receives ack), derives secrets — but **frame MAC verification fails immediately on the first frame**:
-
-```
-[debug][rlpx.auth] execute: ack parsed successfully
-[debug][rlpx.frame] decrypt_header: MAC mismatch
-Error: Invalid message
-```
-
-### Root Cause Hypothesis
-The `FrameCipher::HashMAC` model stores all bytes written and recomputes `keccak256(all_written)` on each `sum()` call. This is correct for the **seed initialisation** phase (go-ethereum's `mac.Write(xor(MAC,nonce)); mac.Write(auth)`) but the `computeHeader` / `computeFrame` operations in go-ethereum update the *running* keccak accumulator in-place — they do NOT restart from the seed bytes.
-
-Specifically, `computeHeader` in go-ethereum does:
-```go
-sum1 := m.hash.Sum(m.hashBuffer[:0])   // peek at current state WITHOUT resetting
-return m.compute(sum1, header)          // then write aesBuffer back into hash
-```
-And `m.hash` is a `keccak.NewLegacyKeccak256()` that was seeded once and **continues accumulating** — it is NOT re-hashed from scratch on every call.
-
-Our `HashMAC::sum()` correctly recomputes `keccak256(written)` which equals `hash.Sum()` only because keccak is deterministic. **BUT** `compute()` then calls `m.hash.Write(aesBuffer)` which appends 16 bytes to the running accumulator. Our `HashMAC::compute_header` / `compute_frame` must also append those 16 `aesBuffer` bytes to `written` after every call, otherwise `sum()` diverges from go-ethereum's `hash.Sum()` after the first frame.
-
-### The Exact Fix Needed Monday
-
-In `src/rlpx/framing/frame_cipher.cpp`, `HashMAC::compute()` must append the `aesBuffer` XOR result back into `written`:
-
-```cpp
-// go-ethereum: m.hash.Write(m.aesBuffer[:])
-write(aes_buf.data(), aes_buf.size());  // keep accumulator in sync
-```
-
-This single line is almost certainly the MAC mismatch root cause. The `HandshakeVectorsTest` currently only validates key derivation (AES secret, MAC secret, ingress seed hash) — it does NOT yet exercise `computeHeader`/`computeFrame`. A new `FrameCipherMacTest` with go-ethereum's known frame vectors should be written to verify this fix before live testing.
+| Status | File | Staged purpose |
+|---|---|---|
+| `M` | `AgentDocs/CHECKPOINT.md` | Update checkpoint to current staged work |
+| `M` | `AgentDocs/CLAUDE.md` | Agent guidance update |
+| `M` | `examples/CMakeLists.txt` | Build integration for examples |
+| `A` | `examples/discovery/CMakeLists.txt` | Build target for live discovery example |
+| `A` | `examples/discovery/test_discovery.cpp` | New live Sepolia discovery + ETH Status functional test |
+| `M` | `examples/eth_watch/eth_watch.cpp` | Switched to shared dial scheduler path, removed noisy stdout, tightened handshake accounting |
+| `A` | `include/discv4/dial_scheduler.hpp` | Shared `WatcherPool` / `DialScheduler` extracted for discv4-based outbound dialing |
+| `M` | `include/discv4/discv4_client.hpp` | Public discv4 client API updates to support reply matching and recursive discovery flow |
+| `M` | `include/rlpx/framing/message_stream.hpp` | Added stream close hook |
+| `M` | `src/discv4/discv4_client.cpp` | Pending-reply tracking, unsolicited-reply rejection, recursive bond/findnode flow hardening |
+| `M` | `src/discv4/discv4_pong.cpp` | PONG parsing adjustments |
+| `M` | `src/discv4/packet_factory.cpp` | Packet-factory cleanup for current discv4 path |
+| `M` | `src/rlpx/framing/message_stream.cpp` | Implemented stream close forwarding |
+| `M` | `src/rlpx/protocol/messages.cpp` | RLPx protocol message handling updates |
+| `M` | `src/rlpx/rlpx_session.cpp` | Advertise `eth/68` + `eth/69`; close underlying stream on disconnect; reduce noisy disconnect logging |
+| `M` | `src/rlpx/socket/socket_transport.cpp` | Enforced real TCP connect timeout; mapped cancelled reads to connection failure |
+| `M` | `test/discv4/CMakeLists.txt` | Register new discv4 test target(s) |
+| `A` | `test/discv4/dial_scheduler_test.cpp` | Regression test for fast-fail slot recycling |
+| `M` | `test/discv4/discv4_client_test.cpp` | Lifetime and recursive bonding UDP-delivery tests |
+| `M` | `test/rlpx/frame_cipher_test.cpp` | Real-handshake-secret round-trip regression coverage |
 
 ---
 
-## Key Files
+## What Changed in the Staged Set
 
-| File | Purpose |
-|------|---------|
-| `src/rlpx/auth/auth_handshake.cpp` | Handshake: create_auth, parse_ack, derive_frame_secrets |
-| `src/rlpx/auth/ecies_cipher.cpp` | ECIES encrypt/decrypt (OpenSSL) |
-| `src/rlpx/crypto/ecdh.cpp` | secp256k1 ECDH, key generation |
-| `src/rlpx/framing/frame_cipher.cpp` | HashMAC + AES-CTR frame enc/dec — **has the bug above** |
-| `include/rlpx/auth/auth_keys.hpp` | `AuthKeyMaterial`, `FrameSecrets` structs |
-| `include/rlpx/framing/frame_cipher.hpp` | `FrameCipher` public interface |
-| `include/rlpx/rlpx_types.hpp` | All `constexpr` size constants |
-| `test/rlpx/handshake_vectors_test.cpp` | go-ethereum vector test for key derivation |
-| `test/rlpx/frame_cipher_test.cpp` | Round-trip frame enc/dec test (does NOT use go-ethereum vectors yet) |
-| `examples/eth_watch/eth_watch.cpp` | Live CLI tool: `./eth_watch --chain sepolia --log-level debug` |
-| `AgentDocs/AGENT_MISTAKES.md` | Agent error log — **read before writing any code** |
+### 1. New live Sepolia discovery harness
+- `examples/discovery/test_discovery.cpp` is a new functional CLI that:
+  - bonds with Sepolia bootnodes via discv4,
+  - recursively discovers peers,
+  - dials peers through `DialScheduler`,
+  - performs RLPx + ETH Status handshake validation,
+  - reports GTest-style pass/fail output and dial statistics.
+
+### 2. Shared discv4 dial scheduler extracted
+- `include/discv4/dial_scheduler.hpp` now holds the reusable outbound dial scheduler logic.
+- `examples/eth_watch/eth_watch.cpp` was updated to consume the shared scheduler instead of carrying
+  its own embedded version.
+
+### 3. Slot turnover and connection cleanup were fixed
+- `src/rlpx/socket/socket_transport.cpp` now actually honors the connect timeout by cancelling the socket.
+- `src/rlpx/rlpx_session.cpp` now closes the underlying stream in `disconnect()`, preventing zombie sessions
+  from keeping sockets and pending reads alive.
+- These changes match the observed jump from roughly ~138 dials / 30s to ~239 dials / 30s in the live test.
+
+### 4. ETH handshake compatibility was widened
+- `src/rlpx/rlpx_session.cpp` now advertises both `eth/68` and `eth/69` instead of only `eth/69`.
+- This aligns better with mixed live-peer capability sets and removes one possible early disconnect cause.
+
+### 5. Logging was de-noised for normal runs
+- `examples/eth_watch/eth_watch.cpp` moved noisy `std::cout` diagnostics to logger-based output.
+- Pre-HELLO disconnect logging in `src/rlpx/rlpx_session.cpp` was reduced from warning-level noise to debug-level detail.
+
+---
+
+## Tests Added or Strengthened in the Staged Set
+
+| Test | File | What it guards |
+|---|---|---|
+| `DialSchedulerTest.FastFailReleasesSlotForNextPeer` | `test/discv4/dial_scheduler_test.cpp` | Confirms fast-fail dials immediately recycle slots and drain the queue |
+| `DiscoveryClientLifetimeTest.ClientAlive_PacketReachesListener` | `test/discv4/discv4_client_test.cpp` | Confirms a live discv4 client can send UDP packets while kept alive across `io.run()` |
+| `DiscoveryClientLifetimeTest.ClientOuterScope_MultiPingReachesListeners` | same | Guards the outer-scope lifetime pattern used by callers |
+| `RecursiveBondingTest.FindNodeSentToPeer_PacketReachesListener` | same | Verifies `find_node()` packet delivery |
+| `RecursiveBondingTest.PingToNewPeer_PacketReachesListener` | same | Verifies `ping()` packet delivery to newly seen peers |
+| `RecursiveBondingTest.FindNodeSentToMultiplePeers_AllReceivePackets` | same | Verifies multi-peer recursive findnode packet delivery |
+| `FrameCipherVectorTest.InitiatorToResponderRoundTrip` | `test/rlpx/frame_cipher_test.cpp` | Uses real handshake-derived secrets to prove initiator→responder frame decrypt works |
+
+---
+
+## Remaining Live Discovery Failure
+
+The current live failure is **not** best explained by frame-cipher corruption anymore.
+
+### What the staged work has already improved
+- Faster dial turnover
+- Explicit dial-failure accounting
+- Better ETH capability negotiation
+- Cleaner disconnect handling
+
+### What still appears to be missing
+- **ENR-based chain filtering before dial**
+
+go-ethereum does not blindly dial every discv4-discovered node. For discv4, it requests the remote
+ENR first and filters nodes by the `eth` ENR entry / ForkID before handing them to the dialer.
+Our current staged code still discovers chain-agnostic peers and rejects wrong-chain nodes later,
+after TCP and RLPx work has already been spent.
+
+---
+
+## Recommended Next Step
+
+Implement the **minimal discv4 + ENRRequest path** modeled after go-ethereum:
+
+1. Add `ENRREQUEST` / `ENRRESPONSE` packet support in the discv4 wire path.
+2. Request ENR for newly bonded peers before enqueueing them for RLPx dialing.
+3. Extract the `eth` ENR entry and filter by Sepolia fork hash before calling `DialScheduler::enqueue()`.
+4. Add small unit tests mirroring the go-ethereum discv4 ENR request/response path where practical.
+
+This remains the shortest path to fixing the current Sepolia discovery failure without taking on a full discv5 implementation.
+
+### ENRREQUEST implementation notes from this conversation
+
+- **Reference files in go-ethereum**:
+  - `go-ethereum/p2p/discover/v4wire/v4wire.go`
+  - `go-ethereum/p2p/discover/v4_udp.go`
+  - `go-ethereum/eth/protocols/eth/discovery.go`
+  - `go-ethereum/eth/backend.go`
+- **Important protocol fact**: discv4 and discv5 are both UDP-based. The reason to prefer discv4 here is
+  not transport simplicity, but implementation size: `discv4 + ENRRequest` is a small extension of the
+  current code, whereas discv5 is a much larger encrypted-session protocol.
+- **Minimal scope boundary**: do **not** rewrite discovery, scheduler, RLPx, or ETH handshake flow. The only
+  new behavior should be: `bond -> request ENR -> read eth entry -> filter -> enqueue dial`.
+- **Current data gap**: `DiscoveredPeer` currently carries only `node_id`, `ip`, `udp_port`, `tcp_port`, and
+  `last_seen`. It does not yet carry ENR-derived chain metadata.
+- **First code step**: mirror go-ethereum packet support by adding discv4 packet types 5 and 6
+  (`ENRREQUEST`, `ENRRESPONSE`) and the minimal encode/decode support for those payloads.
+- **Second code step**: add a request/reply path in `discv4_client` analogous to the existing `PING/PONG` and
+  `FIND_NODE/NEIGHBOURS` matching, then request ENR after a peer is bonded.
+- **Third code step**: decode just enough of the ENR record to read the `eth` entry / fork identifier needed
+  for Sepolia filtering before the peer reaches `DialScheduler::enqueue()`.
+- **First tests to add**:
+  1. wire encode/decode coverage for `ENRREQUEST` / `ENRRESPONSE`,
+  2. reply-matching coverage for the new request/response path,
+  3. a small filtering test proving a wrong-chain ENR is dropped before dialing.
 
 ---
 
 ## How to Run
 
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
-ninja                        # build
-ctest --output-on-failure    # run all 441 tests
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja
+ctest --output-on-failure
 
-# Run new vector test only
-./test/rlpx/rlpx_handshake_vectors_tests
+# Focused tests touched by the current staged work
+./test/discv4/discv4_dial_scheduler_test
+./test/discv4/discv4_client_test
+./test/rlpx/rlpx_frame_cipher_tests
 
-# Live Sepolia test
-./examples/eth_watch/eth_watch --chain sepolia --log-level debug
+# Live Sepolia discovery run
+./examples/discovery/test_discovery --log-level warn --timeout 30
 ```
-
----
-
-## Monday Task List (priority order)
-
-1. **Fix `HashMAC::compute()` in `frame_cipher.cpp`** — append `aesBuffer` bytes into `written` after every `compute()` call. This is the single most likely cause of the MAC mismatch.
-
-2. **Write `FrameCipherMacTest` using go-ethereum frame vectors** — go-ethereum `TestFrameRW` in `p2p/rlpx/rlpx_test.go` has known plaintexts and expected ciphertexts. Use those to verify `encrypt_frame` / `decrypt_frame` produce identical output before retrying live connection.
-
-3. **Re-run live test** — after #1 and #2 pass, `./eth_watch --chain sepolia --log-level debug` should reach `HELLO from peer: Geth/...`.
-
-4. **ETH STATUS handling** — after HELLO, send ETH Status message (message id 0x10, network_id=11155111, genesis hash, fork id). Currently `EthWatchService::process_message` dispatches on message ids but the STATUS exchange is not fully wired in `rlpx_session.cpp`.
-
-5. **NewBlockHashes → GetBlockBodies → GetReceipts pipeline** — once STATUS succeeds, implement the receipt-fetching loop in `EthWatchService`.
-
----
-
-## go-ethereum Reference
-The local copy of go-ethereum is at:
-```
-/Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/rlp/  (go-ethereum source)
-```
-Key files to read:
-- `p2p/rlpx/rlpx.go` — frame cipher, handshake (already read this session)
-- `p2p/rlpx/rlpx_test.go` — `TestFrameRW`, `TestHandshakeForwardCompatibility` vectors
-- `eth/protocols/eth/handler.go` — ETH STATUS, NewBlockHashes dispatch
-
-
----
-
-# Checkpoint — 2026-03-12 (C++17 Migration + DialScheduler Planning)
-
-## Build Status
-- **`ninja` builds with zero errors, zero warnings** (114/114 targets)
-- **`ctest` 510/510 tests pass**
-
----
-
-## What Was Accomplished This Session
-
-### Prior agent (C++20→C++17 coroutine migration)
-- Replaced all `co_await`/`co_spawn`/`co_return` with `boost::asio::spawn` / `yield_context` / `return` across:
-  `rlpx_session`, `auth_handshake`, `message_stream`, `socket_transport`, `discv4_client`, `eth_watch`
-- Added `boost::context` and `boost::coroutines` to `src/discv4/CMakeLists.txt` and `src/rlpx/CMakeLists.txt`
-- Build: 114/114 targets, zero errors/warnings
-
-### This session
-- Ran `ctest` → 508/510 — 2 failures in `DiscoveryClientLifetimeTest`
-  - Root cause: ASan `stack-buffer-underflow` inside `boost::coroutines::standard_stack_allocator::allocate`
-  - Well-known macOS ARM64 false positive (ASan itself prints "False positive error reports may follow")
-  - Investigated suppression file approach — `interceptor_via_fun` not supported on macOS ASan for this case
-  - Fix: `ASAN_OPTIONS=halt_on_error=0` via `gtest_discover_tests PROPERTIES ENVIRONMENT` in `test/discv4/CMakeLists.txt`
-  - **510/510 tests pass**
-- Ran `examples/test_eth_watch.sh`
-  - Preflight: **PASSED**
-  - eth_watch binary also hit the ASan false positive → added `ASAN_OPTIONS=halt_on_error=0` to launch line in `examples/test_eth_watch.sh`
-  - PeerConnection: **FAILED** — first discovered peer was BeraGeth/v1.011602.6 (wrong chain), 5s ETH Status timeout
-  - Diagnosed root cause: `connected->exchange(true)` gate allows only 1 dial at a time; all 40+ other discovered peers dropped, never retried after first failure
-- Studied go-ethereum `dial.go`: `dialScheduler` with `maxActiveDials=50` (`defaultMaxPendingPeers`), continuous queue drain via `doneCh`
-- **Planned `DialScheduler`** for `eth_watch.cpp` (approved, not yet implemented — see plan below)
-
----
-
-## Files Modified (uncommitted)
-- `test/discv4/CMakeLists.txt` — `gtest_discover_tests PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"`
-- `examples/test_eth_watch.sh` — `ASAN_OPTIONS=halt_on_error=0` prefixed to eth_watch binary launch line
-
----
-
-## Current Failure Mode
-
-`test_eth_watch.sh PeerConnection` fails. `eth_watch` tries only one peer at a time.
-When BeraGeth (wrong chain) is first, it fails after 5s, and the 40+ queued Sepolia peers are never retried.
-
----
-
-## Next Task: Implement DialScheduler in eth_watch.cpp
-
-Mirror go-ethereum's `dialScheduler` pattern — **50 concurrent dials**, queue drains as slots free up:
-
-1. Add `ValidatedPeer` struct (`DiscoveredPeer` + decoded `PublicKey`)
-2. Add `DialScheduler` struct:
-   - `static constexpr int kMaxActive = 50`
-   - `int active{0}`, `std::deque<ValidatedPeer> queue`
-   - `enqueue()` — if slot free → spawn immediately; else push queue
-   - `release()` — `active--`, expire dial_history, drain queue up to kMaxActive
-   - `spawn_dial()` — `boost::asio::spawn` a `run_watch` coroutine
-3. Change `run_watch` signature: replace `shared_ptr<atomic<bool>> connected` with `std::function<void()> on_done`; every `connected->store(false)` → `on_done()`
-4. Replace discovery callback `connected->exchange(true)` gate with `scheduler->enqueue(...)`
-5. Build, ctest 510/510, run test_eth_watch.sh end-to-end

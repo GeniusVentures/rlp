@@ -22,6 +22,11 @@ MessageStream::MessageStream(
     recv_buffer_.reserve(4096);
 }
 
+void MessageStream::close() noexcept
+{
+    (void)transport_.close();
+}
+
 VoidResult MessageStream::send_message(const MessageSendParams& params, asio::yield_context yield) noexcept {
     // go-ethereum wire format: RLP-encoded uint(message_id) || payload
     // When Snappy is enabled, ONLY the payload is compressed; the message ID stays uncompressed.

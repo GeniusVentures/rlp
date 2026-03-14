@@ -28,6 +28,7 @@
 #include <discv4/bootnodes.hpp>
 #include <discv4/bootnodes_test.hpp>
 #include <discv4/dial_history.hpp>
+#include <discv4/dial_scheduler.hpp>
 #include <discv4/discv4_client.hpp>
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/rlpx_error.hpp>
@@ -193,7 +194,8 @@ std::optional<Config> load_chain_config(std::string_view chain_name)
     const auto& entry = it->second;
     if (entry.bootnodes->empty())
     {
-        std::cout << "No bootnodes configured for chain: " << chain_name << "\n";
+        static auto log = rlp::base::createLogger("eth_watch");
+        SPDLOG_LOGGER_ERROR(log, "No bootnodes configured for chain: {}", chain_name);
         return std::nullopt;
     }
 
@@ -227,13 +229,6 @@ void print_usage(const char* exe) {
               << "  BSC:      bsc, bsc-testnet\n"
               << "  Base:     base, base-sepolia\n";
 }
-
-/// @brief A discovered peer whose public key has already been validated.
-struct ValidatedPeer
-{
-    discv4::DiscoveredPeer peer;
-    rlpx::PublicKey        pubkey;
-};
 
 /// @brief Attempts an RLPx connection to a peer and runs the ETH watch loop.
 ///        Calls @p on_done on every exit path so the DialScheduler can recycle
@@ -276,17 +271,15 @@ void run_watch(std::string host,
     auto session_result = rlpx::RlpxSession::connect(params, yield);
     if (!session_result) {
         auto err = session_result.error();
-        std::cout << "Failed to connect to " << host << ":" << port
-                  << " (error " << static_cast<int>(err) << ": " << rlpx::to_string(err) << ")\n";
+        SPDLOG_LOGGER_DEBUG(log, "run_watch: failed to connect to {}:{} (error {}: {})",
+                            host, port, static_cast<int>(err), rlpx::to_string(err));
         on_done();
         return;
     }
 
     auto session = std::move(session_result.value());
 
-    // HELLO was already exchanged inside connect(). Notify scheduler of live session.
-    on_connected(session);
-    std::cout << "HELLO from peer: " << session->peer_info().client_id << "\n";
+    SPDLOG_LOGGER_DEBUG(log, "run_watch: HELLO from peer: {}", session->peer_info().client_id);
     {
         eth::StatusMessage69 status69{
             .protocol_version = 69,
@@ -333,7 +326,7 @@ void run_watch(std::string host,
             auto addr = eth::cli::parse_address(spec.contract_hex);
             if (!addr)
             {
-                std::cout << "Invalid contract address: " << spec.contract_hex << "\n";
+                SPDLOG_LOGGER_ERROR(log, "Invalid contract address: {}", spec.contract_hex);
                 on_done();
                 return;
             }
@@ -349,53 +342,59 @@ void run_watch(std::string host,
             abi_params,
             [sig_copy, abi_params](const eth::MatchedEvent& ev, const std::vector<eth::abi::AbiValue>& vals)
             {
-                std::cout << sig_copy << " at block " << ev.block_number;
+                static auto ev_log = rlp::base::createLogger("eth_watch");
+                auto bytes_to_hex = [](const auto& arr) {
+                    std::string s;
+                    s.reserve(arr.size() * 2);
+                    for (const auto b : arr) {
+                        const char hex[] = "0123456789abcdef";
+                        s += hex[(static_cast<uint8_t>(b) >> 4) & 0xf];
+                        s += hex[ static_cast<uint8_t>(b)       & 0xf];
+                    }
+                    return s;
+                };
+
+                std::string header = sig_copy + " at block " + std::to_string(ev.block_number);
                 if (ev.tx_hash != eth::codec::Hash256{})
                 {
-                    std::cout << "  tx: 0x";
-                    for (const auto b : ev.tx_hash) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
-                    std::cout << std::dec;
+                    header += "  tx: 0x" + bytes_to_hex(ev.tx_hash);
                 }
-                std::cout << "\n";
+                SPDLOG_LOGGER_INFO(ev_log, "{}", header);
 
                 for (size_t i = 0; i < vals.size(); ++i)
                 {
-                    // Use the registered field name if available, else fall back to index
                     const std::string label = (i < abi_params.size() && !abi_params[i].name.empty())
                         ? abi_params[i].name
                         : std::to_string(i);
-                    std::cout << "  [" << label << "] ";
-
+                    std::string value;
                     if (const auto* addr = std::get_if<eth::codec::Address>(&vals[i]))
                     {
-                        std::cout << "0x";
-                        for (const auto b : *addr) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
-                        std::cout << std::dec;
+                        value = "0x" + bytes_to_hex(*addr);
                     }
                     else if (const auto* u256 = std::get_if<intx::uint256>(&vals[i]))
                     {
-                        std::cout << intx::to_string(*u256);
+                        value = intx::to_string(*u256);
                     }
                     else if (const auto* b32 = std::get_if<eth::codec::Hash256>(&vals[i]))
                     {
-                        std::cout << "0x";
-                        for (const auto b : *b32) { std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b); }
-                        std::cout << std::dec;
+                        value = "0x" + bytes_to_hex(*b32);
                     }
                     else if (const auto* bval = std::get_if<bool>(&vals[i]))
                     {
-                        std::cout << (*bval ? "true" : "false");
+                        value = (*bval ? "true" : "false");
                     }
-                    std::cout << "\n";
+                    SPDLOG_LOGGER_INFO(ev_log, "  [{}] {}", label, value);
                 }
             });
 
-        std::cout << "Watching: " << spec.event_signature;
         if (!spec.contract_hex.empty())
         {
-            std::cout << " on contract " << spec.contract_hex;
+            SPDLOG_LOGGER_INFO(log, "Watching: {} on contract {}", spec.event_signature, spec.contract_hex);
         }
-        std::cout << "\n";
+        else
+        {
+            SPDLOG_LOGGER_INFO(log, "Watching: {}", spec.event_signature);
+        }
     }
 
     watch_svc->set_send_callback([session, eth_offset](uint8_t eth_msg_id,
@@ -424,10 +423,11 @@ void run_watch(std::string host,
     lifetime->expires_after(std::chrono::hours(24 * 365));
 
     session->set_disconnect_handler([session, lifetime, status_timeout](const rlpx::protocol::DisconnectMessage& msg) {
+        static auto disc_log = rlp::base::createLogger("eth_watch");
         (void)session;
-        std::cout << "Disconnected: reason=" << static_cast<int>(msg.reason) << "\n";
+        SPDLOG_LOGGER_DEBUG(disc_log, "run_watch: Disconnected reason={}", static_cast<int>(msg.reason));
         lifetime->cancel();
-        status_timeout->cancel(); // wake handshake wait if Status not yet received
+        status_timeout->cancel();
     });
 
     session->set_ping_handler([session](const rlpx::protocol::PingMessage&) {
@@ -442,7 +442,7 @@ void run_watch(std::string host,
     });
 
     session->set_generic_handler([session, eth_offset, network_id, genesis_hash, watch_svc,
-                                   status_received, status_timeout](const rlpx::protocol::Message& msg) {
+                                   status_received, status_timeout, on_connected](const rlpx::protocol::Message& msg) {
         (void)session;
         static auto gh_log = rlp::base::createLogger("eth_watch");
         if (msg.id < eth_offset) {
@@ -508,7 +508,8 @@ void run_watch(std::string host,
                                latest_block);
             status_received->store(true);
             status_timeout->cancel(); // wake the co_await below
-            std::cout << "Connected. Watching for events...\n";
+            SPDLOG_LOGGER_INFO(gh_log, "Connected. Watching for events...");
+            on_connected(session);
             return;
         }
 
@@ -553,8 +554,6 @@ void run_watch(std::string host,
                 // Timer expired naturally — peer never sent ETH Status.
                 SPDLOG_LOGGER_WARN(log, "run_watch: ETH Status handshake timeout ({}:{}) — "
                                    "peer is likely on a different chain", host, port);
-                std::cout << "Handshake timeout: " << host << ":" << port
-                          << " — peer never sent ETH Status (wrong chain?)\n";
                 (void)session->disconnect(rlpx::DisconnectReason::kTimeout);
             }
             // else: validation failure — session->disconnect() already called in handler.
@@ -571,144 +570,7 @@ void run_watch(std::string host,
 
 } // namespace
 
-// ── WatcherPool ───────────────────────────────────────────────────────────────
-/// @brief Global resource pool shared across all chain DialSchedulers.
-///        Enforces the two-level fd cap: total across all chains, and per chain.
-///        @p max_total  — global fd cap  (mobile default 12, desktop 200)
-///        @p max_per_chain — per-chain cap (mobile default 3,  desktop 50)
-struct WatcherPool
-{
-    int               max_total;
-    int               max_per_chain;
-    std::atomic<int>  active_total{0};
-
-    WatcherPool(int max_total_, int max_per_chain_)
-        : max_total(max_total_), max_per_chain(max_per_chain_) {}
-};
-
-// ── DialScheduler ─────────────────────────────────────────────────────────────
-/// @brief Per-chain dial scheduler mirroring go-ethereum's dialScheduler.
-///        Maintains up to pool->max_per_chain concurrent run_watch coroutines,
-///        respecting the global pool->max_total cap across all chains.
-///        All methods run on the single io_context thread — no mutex needed.
-struct DialScheduler : std::enable_shared_from_this<DialScheduler>
-{
-    boost::asio::io_context&            io;
-    std::shared_ptr<WatcherPool>        pool;
-    uint8_t                             eth_offset;
-    uint64_t                            network_id;
-    eth::Hash256                        genesis_hash;
-    eth::ForkId                         fork_id;
-    std::vector<eth::cli::WatchSpec>    watch_specs;
-    std::shared_ptr<discv4::DialHistory> dial_history;
-
-    int                                         active{0};
-    bool                                        stopping{false};
-    std::deque<ValidatedPeer>                   queue;
-    std::vector<std::weak_ptr<rlpx::RlpxSession>> active_sessions;
-
-    DialScheduler(boost::asio::io_context&          io_,
-                  std::shared_ptr<WatcherPool>       pool_,
-                  uint8_t                            eth_offset_,
-                  uint64_t                           network_id_,
-                  eth::Hash256                       genesis_hash_,
-                  eth::ForkId                        fork_id_,
-                  std::vector<eth::cli::WatchSpec>   watch_specs_)
-        : io(io_)
-        , pool(std::move(pool_))
-        , eth_offset(eth_offset_)
-        , network_id(network_id_)
-        , genesis_hash(genesis_hash_)
-        , fork_id(fork_id_)
-        , watch_specs(std::move(watch_specs_))
-        , dial_history(std::make_shared<discv4::DialHistory>())
-    {}
-
-    /// @brief Enqueue a validated peer for dialing.
-    ///        If a slot is free (both per-chain and global caps), spawns immediately.
-    ///        Otherwise queues for later drain.
-    void enqueue(ValidatedPeer vp)
-    {
-        if (stopping) { return; }
-
-        dial_history->expire();
-        if (dial_history->contains(vp.peer.node_id)) { return; }
-
-        if (active < pool->max_per_chain &&
-            pool->active_total.load() < pool->max_total)
-        {
-            ++active;
-            ++pool->active_total;
-            dial_history->add(vp.peer.node_id);
-            spawn_dial(std::move(vp));
-        }
-        else
-        {
-            queue.push_back(std::move(vp));
-        }
-    }
-
-    /// @brief Called by every run_watch exit path.  Recycles the slot and
-    ///        drains the queue up to the available capacity.
-    void release()
-    {
-        --active;
-        --pool->active_total;
-
-        if (stopping) { return; }
-
-        dial_history->expire();
-        while (active < pool->max_per_chain &&
-               pool->active_total.load() < pool->max_total &&
-               !queue.empty())
-        {
-            ValidatedPeer vp = std::move(queue.front());
-            queue.pop_front();
-            if (dial_history->contains(vp.peer.node_id)) { continue; }
-            ++active;
-            ++pool->active_total;
-            dial_history->add(vp.peer.node_id);
-            spawn_dial(std::move(vp));
-        }
-    }
-
-    /// @brief Async stop — disconnect all active sessions immediately.
-    ///        Returns immediately; fds are freed on the next io_context cycle.
-    ///        New chain watchers can start claiming slots right away.
-    void stop()
-    {
-        stopping = true;
-        queue.clear();
-        for (auto& ws : active_sessions)
-        {
-            if (auto s = ws.lock())
-            {
-                (void)s->disconnect(rlpx::DisconnectReason::kClientQuitting);
-            }
-        }
-        active_sessions.clear();
-    }
-
-private:
-    void spawn_dial(ValidatedPeer vp)
-    {
-        auto sched = shared_from_this();
-        std::cout << "Dialing peer: " << vp.peer.ip << ":" << vp.peer.tcp_port << "\n";
-        boost::asio::spawn(io,
-            [sched, vp = std::move(vp)](boost::asio::yield_context yc)
-            {
-                run_watch(
-                    vp.peer.ip, vp.peer.tcp_port, vp.pubkey,
-                    sched->eth_offset, sched->network_id, sched->genesis_hash,
-                    sched->fork_id, sched->watch_specs,
-                    [sched]() { sched->release(); },
-                    [sched](std::shared_ptr<rlpx::RlpxSession> s) {
-                        sched->active_sessions.push_back(s);
-                    },
-                    yc);
-            });
-    }
-};
+// ── WatcherPool and DialScheduler are defined in include/discv4/dial_scheduler.hpp ──
 
 int main(int argc, char** argv) {
     try {
@@ -867,18 +729,27 @@ int main(int argc, char** argv) {
             const uint8_t    eth_offset   = config->eth_offset;
             const auto       watch_specs  = config->watch_specs;
 
-            // Two-level resource caps — desktop defaults (3 per chain, 200 total).
-            // 3 per chain keeps concurrent coroutine count low (ASan-safe) while still
-            // parallelising discovery.  Embedding apps pass platform-appropriate values:
-            //   mobile: WatcherPool(12, 3)   desktop: WatcherPool(200, 50)
-            auto pool      = std::make_shared<WatcherPool>(200, 3);
-            auto scheduler = std::make_shared<DialScheduler>(
-                io, pool, eth_offset, network_id, genesis_hash, fork_id, watch_specs);
+            // Two-level resource caps — desktop defaults (10 per chain, 200 total).
+            // Embedding apps pass platform-appropriate values:
+            //   mobile: WatcherPool(12, 3)   desktop: WatcherPool(200, 10)
+            auto pool = std::make_shared<discv4::WatcherPool>(200, 10);
+            auto scheduler = std::make_shared<discv4::DialScheduler>(
+                io, pool,
+                [eth_offset, network_id, genesis_hash, fork_id, watch_specs]
+                (discv4::ValidatedPeer                                            vp,
+                 std::function<void()>                                            on_done,
+                 std::function<void(std::shared_ptr<rlpx::RlpxSession>)>         on_connected,
+                 boost::asio::yield_context                                       yc)
+                {
+                    run_watch(vp.peer.ip, vp.peer.tcp_port, vp.pubkey,
+                              eth_offset, network_id, genesis_hash, fork_id, watch_specs,
+                              std::move(on_done), std::move(on_connected), yc);
+                });
 
             dv4->set_peer_discovered_callback(
                 [scheduler](const discv4::DiscoveredPeer& peer)
                 {
-                    ValidatedPeer vp;
+                    discv4::ValidatedPeer vp;
                     vp.peer = peer;
                     std::copy(peer.node_id.begin(), peer.node_id.end(), vp.pubkey.begin());
                     if (!rlpx::crypto::Ecdh::verify_public_key(vp.pubkey))
@@ -909,7 +780,8 @@ int main(int argc, char** argv) {
                 boost::asio::spawn(io,
                     [dv4, host = bn->host, port = bn->port, bn_id](boost::asio::yield_context yc)
                     {
-                        auto result = dv4->ping(host, port, bn_id, yc);
+                        // find_node internally calls ensure_bond (ping→pong) then sends FIND_NODE
+                        auto result = dv4->find_node(host, port, bn_id, yc);
                         (void)result;
                     });
             }

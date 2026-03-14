@@ -162,10 +162,8 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     protocol::HelloMessage hello;
     hello.protocol_version = kProtocolVersion;
     hello.client_id        = std::string(params.client_id);
-    // Advertise only ETH/69 — go-ethereum 1.15+ supports ETH/69 exclusively.
-    // Peers that support only ETH/68 (Geth ≤1.13.x) will DISCONNECT during HELLO
-    // (no common capability), which is fast-fail and correct behaviour.
-    hello.capabilities     = { protocol::Capability{ "eth", 69 } };
+    // Advertise both ETH/68 and ETH/69 — peers negotiate the highest common version.
+    hello.capabilities     = { protocol::Capability{ "eth", 68 }, protocol::Capability{ "eth", 69 } };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),
               params.local_public_key.end(),
@@ -225,12 +223,8 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     } else if (peer_msg.id == kDisconnectMessageId) {
         static auto log = rlp::base::createLogger("rlpx.session");
         auto disc = protocol::DisconnectMessage::decode(peer_msg.payload);
-        if (disc) {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO, reason={}",
-                static_cast<int>(disc.value().reason));
-        } else {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO (reason undecodable)");
-        }
+        SPDLOG_LOGGER_DEBUG(log, "connect: peer sent Disconnect before HELLO, reason={}",
+            disc ? static_cast<int>(disc.value().reason) : -1);
         return SessionError::kHandshakeFailed;
     } else {
         static auto log = rlp::base::createLogger("rlpx.session");
@@ -331,6 +325,10 @@ RlpxSession::disconnect(DisconnectReason reason) noexcept {
     }
 
     state_.store(SessionState::kClosed, std::memory_order_release);
+    if (stream_)
+    {
+        stream_->close();
+    }
     return outcome::success();
 }
 
