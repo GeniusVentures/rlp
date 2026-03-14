@@ -93,3 +93,38 @@ gtest_discover_tests(discv4_client_test
     # See https://github.com/google/sanitizers/issues/189
     PROPERTIES ENVIRONMENT "ASAN_OPTIONS=halt_on_error=0"
 )
+
+# ENRRequest wire encode tests
+add_executable(discv4_enr_request_test
+    ${CMAKE_CURRENT_LIST_DIR}/enr_request_test.cpp
+)
+
+target_link_libraries(discv4_enr_request_test PRIVATE
+    discv4
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv4_enr_request_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+gtest_discover_tests(discv4_enr_request_test)
+
+# ENRResponse wire decode tests
+add_executable(discv4_enr_response_test
+    ${CMAKE_CURRENT_LIST_DIR}/enr_response_test.cpp
+)
+
+target_link_libraries(discv4_enr_response_test PRIVATE
+    discv4
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv4_enr_response_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+gtest_discover_tests(discv4_enr_response_test)
+

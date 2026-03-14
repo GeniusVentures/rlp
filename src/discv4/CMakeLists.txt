@@ -6,6 +6,8 @@ add_library(discv4 STATIC
         ${CMAKE_CURRENT_LIST_DIR}/discv4_pong.cpp
         ${CMAKE_CURRENT_LIST_DIR}/discv4_error.cpp
         ${CMAKE_CURRENT_LIST_DIR}/discv4_client.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv4_enr_request.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv4_enr_response.cpp
 )
 
 target_include_directories(discv4 PUBLIC
