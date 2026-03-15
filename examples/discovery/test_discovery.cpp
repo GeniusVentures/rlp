@@ -49,6 +49,8 @@
 
 #include <spdlog/spdlog.h>
 
+#include "../chain_config.hpp"
+
 // ── Sepolia chain constants ───────────────────────────────────────────────────
 
 static constexpr uint64_t kSepoliaNetworkId = 11155111;
@@ -71,8 +73,9 @@ static eth::Hash256 sepolia_genesis()
     return h;
 }
 
-// Sepolia: MergeNetsplit@1735371, Shanghai@1677557088, Cancun@1706655072, Prague@1741159776
-static const eth::ForkId kSepoliaForkId{ { 0xed, 0x88, 0xb5, 0xfd }, 0 };
+// Sepolia post-BPO2 fallback hash — used only when chains.json is not found.
+// Update chains.json instead of this constant when the fork advances.
+static const std::array<uint8_t, 4U> kSepoliaForkHashFallback{ 0x26, 0x89, 0x56, 0xb6 };
 
 // ── Test framework ────────────────────────────────────────────────────────────
 
@@ -136,7 +139,8 @@ static void dial_connect_only(
     std::function<void()>                                          on_done,
     std::function<void(std::shared_ptr<rlpx::RlpxSession>)>       on_connected,
     boost::asio::yield_context                                     yield,
-    std::shared_ptr<DialStats>                                     stats)
+    std::shared_ptr<DialStats>                                     stats,
+    eth::ForkId                                                    fork_id)
 {
     static auto log = rlp::base::createLogger("test_discovery");
     ++stats->dialed;
@@ -176,7 +180,7 @@ static void dial_connect_only(
             .protocol_version  = 69,
             .network_id        = kSepoliaNetworkId,
             .genesis_hash      = genesis,
-            .fork_id           = kSepoliaForkId,
+            .fork_id           = fork_id,
             .earliest_block    = 0,
             .latest_block      = 0,
             .latest_block_hash = genesis,
@@ -311,6 +315,18 @@ int main(int argc, char** argv)
         else if (arg == "--dials" && i + 1 < argc)      { max_dials       = std::atoi(argv[++i]); }
     }
 
+    // ── Fork hash — loaded from chains.json, fallback to compiled-in value ──────
+    const auto loaded_hash = load_fork_hash( "sepolia", argv[0] );
+    if ( !loaded_hash )
+    {
+        std::cout << "[  WARN    ] chains.json not found or missing 'sepolia' key — "
+                     "using compiled-in fallback hash.\n";
+    }
+    const eth::ForkId sepolia_fork_id{
+        loaded_hash.value_or( kSepoliaForkHashFallback ),
+        0
+    };
+
     TestSuite suite;
     suite.header(3);
 
@@ -340,17 +356,13 @@ int main(int argc, char** argv)
     boost::asio::steady_timer deadline(io, std::chrono::seconds(timeout_secs));
 
     // ── DialScheduler ────────────────────────────────────────────────────────
-    // go-ethereum: maxActiveDials=50, maxDialPeers=MaxPeers/dialRatio(3)=16
-    // In practice for Sepolia (sparse nodes, many mainnet peers), 10-16 concurrent
-    // avoids TooManyPeers (reason=4) rejections from overloaded Sepolia peers.
     const int kMaxActiveDials = 50;
     auto pool = std::make_shared<discv4::WatcherPool>(kMaxActiveDials, max_dials * 2);
 
-    // sched_ref lets the on_connected wrapper read total_validated after construction.
     auto sched_ref = std::make_shared<discv4::DialScheduler*>(nullptr);
 
     auto scheduler = std::make_shared<discv4::DialScheduler>(io, pool,
-        [&io, &deadline, min_connections, sched_ref, stats]
+        [&io, &deadline, min_connections, sched_ref, stats, sepolia_fork_id]
         (discv4::ValidatedPeer                                      vp,
          std::function<void()>                                      on_done,
          std::function<void(std::shared_ptr<rlpx::RlpxSession>)>   on_connected,
@@ -367,9 +379,14 @@ int main(int argc, char** argv)
                         io.stop();
                     }
                 },
-                yc, stats);
+                yc, stats, sepolia_fork_id);
         });
     *sched_ref = scheduler.get();
+
+    // Pre-dial ENR chain filter: only enqueue peers whose ENR `eth` entry carries
+    // the correct Sepolia fork hash.  Mirrors go-ethereum NewNodeFilter.
+    // Peers with no eth_fork_id (ENR absent or no `eth` entry) are also dropped.
+    scheduler->filter_fn = discv4::make_fork_id_filter( sepolia_fork_id.fork_hash );
 
     dv4->set_peer_discovered_callback(
         [scheduler, &peers_count](const discv4::DiscoveredPeer& peer)
@@ -382,7 +399,6 @@ int main(int argc, char** argv)
             scheduler->enqueue(std::move(vp));
         });
 
-    // Track bonds via the bond log string — use error callback for discv4 noise only
     dv4->set_error_callback([](const std::string&) {});
 
     deadline.async_wait([&](boost::system::error_code) {

@@ -23,3 +23,34 @@ target_link_libraries(test_discovery
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(test_discovery PRIVATE -fno-sanitize=address)
 endif()
+
+# ── test_enr_survey ───────────────────────────────────────────────────────────
+# Diagnostic live test: discovery-only (no dialing), no fork-id filter.
+# Tallies eth_fork_id presence and hash frequency to diagnose live ENR failures.
+add_executable(test_enr_survey
+    test_enr_survey.cpp
+)
+
+target_link_libraries(test_enr_survey
+    PRIVATE
+    rlpx
+    rlp
+    discv4
+    logger
+    Boost::boost
+    Boost::json
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(test_enr_survey PRIVATE -fno-sanitize=address)
+endif()
+
+# Copy chains.json from examples/ alongside both discovery binaries at build time.
+# Update examples/chains.json (no recompile needed) when fork hashes change.
+add_custom_command(TARGET test_discovery POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/../chains.json
+        $<TARGET_FILE_DIR:test_discovery>/chains.json
+    COMMENT "Copying chains.json to discovery binary directory"
+)
+

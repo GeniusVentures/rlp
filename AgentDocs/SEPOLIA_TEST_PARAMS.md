@@ -1,6 +1,26 @@
 # Sepolia Test Parameters for eth_watch
 
-## Quick Answer
+## Current Sepolia Fork Hash (as of March 2026)
+
+The Sepolia chain is post-BPO2. Forks applied (all timestamps):
+- MergeNetsplit block 1735371
+- Shanghai 1677557088
+- Cancun 1706655072
+- Prague 1741159776 (passed ~March 5, 2025)
+- Osaka 1760427360 (passed ~October 14, 2025)
+- BPO1 1761017184 (passed ~October 21, 2025)
+- BPO2 1761607008 (passed ~October 28, 2025)
+
+**Current ENR/Status ForkId:** `{ 0x26, 0x89, 0x56, 0xb6 }`, Next=0
+
+Verified via `go-ethereum/core/forkid/forkid_test.go` SepoliaChainConfig test vectors
+and confirmed by live `test_enr_survey` run (March 14, 2026 — only hash `26 89 56 b6`
+matched current Sepolia peers in the ENR survey).
+
+> **Do NOT use `0xed, 0x88, 0xb5, 0xfd`** — that was the Prague hash with Next=1760427360,
+> valid only before Osaka launched (~Oct 2025). It will match zero live peers today.
+
+
 
 To test `eth_watch` with a public Sepolia node, you can use one of the **bootstrap nodes** (though they won't send block data, they will at least connect):
 
