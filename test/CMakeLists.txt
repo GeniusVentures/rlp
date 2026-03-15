@@ -9,7 +9,6 @@ if(ENABLE_FUZZING)
 endif()
 add_subdirectory(rlpx)
 add_subdirectory(discv4)
-add_subdirectory(discv5)
 
 
 
