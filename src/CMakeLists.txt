@@ -76,6 +76,3 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx
 
 # Add discv4 subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/discv4 ${CMAKE_CURRENT_BINARY_DIR}/discv4)
-
-# Add discv5 subdirectory
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/discv5 ${CMAKE_CURRENT_BINARY_DIR}/discv5)
