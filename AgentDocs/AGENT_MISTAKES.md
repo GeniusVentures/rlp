@@ -170,7 +170,7 @@ Live network testing cannot distinguish between "our crypto is wrong" and "the p
 
 ## SUBMODULE MANAGEMENT
 
-### M015 — Accidentally updating the `build` submodule pointer
-**What happened**: When merging `enr_records` into `copilot/discv5-implementation`, the `build` submodule pointer was updated as part of the merge. This broke Android builds because the new submodule commit lacked the `android::log`/`android::android` interface targets.  
-**Rule**: **Never modify the `build` submodule pointer.** If the submodule pointer changes during a merge, revert it immediately with `git checkout <pre-merge-commit>~0 -- build`. Submodule updates must be done intentionally by a human, not incidentally during merges.
+### M015 — Incorrectly reverting the `build` submodule pointer
+**What happened**: When merging `enr_records` into `copilot/discv5-implementation`, the `build` submodule pointer was updated from `bc5302b` to `f09f0cb` (the latest `main` of cmaketemplate). This was mistakenly reverted to `bc5302b`, which is the *older* commit and lacks Android library support. `f09f0cb` is the correct commit — it adds the `android::log`/`android::android` interface targets and thirdparty directory updates.  
+**Rule**: When the `build` submodule pointer changes during a merge, verify whether the new commit is from the latest `main` of cmaketemplate. If it is, keep it (or update to it). The correct workflow to update the submodule is: go into `build/`, run `git pull && git checkout main`, then `cd ..` and `git add build`.
 
