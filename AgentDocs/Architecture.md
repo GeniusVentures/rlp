@@ -324,3 +324,98 @@ This C++ implementation ensures decentralized monitoring of your smart contracts
 
 
 
+
+---
+
+## discv5 Module (added 2026-03-15)
+
+A parallel discovery stack that locates Ethereum-compatible peers via the discv5 protocol (EIP-8020).  It is deliberately additive — the existing discv4 stack and all RLPx/ETH code remain unchanged.
+
+### High-level data flow
+
+```
+BootnodeSource (ENR or enode URIs)
+       │
+       ▼
+discv5_crawler
+  ├── queued_peers_    — next FINDNODE targets
+  ├── measured_ids_    — nodes that replied
+  ├── failed_ids_      — nodes that timed out
+  └── discovered_ids_  — dedup set
+       │
+       │  PeerDiscoveredCallback (ValidatedPeer)
+       ▼
+discovery::ValidatedPeer  ← shared with discv4 via include/discovery/discovered_peer.hpp
+       │
+       ▼
+DialScheduler / RLPx session (existing, unchanged)
+```
+
+### New files
+
+```
+include/
+  discovery/
+    discovered_peer.hpp       — shared NodeId / ForkId / ValidatedPeer
+  discv5/
+    discv5_constants.hpp      — all domain sizes + wire POD structs
+    discv5_error.hpp          — discv5Error enum
+    discv5_types.hpp          — EnrRecord, discv5Config, callbacks
+    discv5_enr.hpp            — EnrParser (decode, verify, to_validated_peer)
+    discv5_bootnodes.hpp      — IBootnodeSource, ChainBootnodeRegistry
+    discv5_crawler.hpp        — peer queue state machine
+    discv5_client.hpp         — UDP socket + async loops
+
+src/discv5/
+  discv5_error.cpp
+  discv5_enr.cpp              — base64url, RLP, secp256k1 signature verify
+  discv5_bootnodes.cpp        — per-chain seed lists (Ethereum/Polygon/BSC/Base)
+  discv5_crawler.cpp          — enqueue/dedup/emit
+  discv5_client.cpp           — co_spawn receive + crawler loops, FINDNODE send
+  CMakeLists.txt
+
+test/discv5/
+  discv5_enr_test.cpp         — go-ethereum test vectors
+  discv5_bootnodes_test.cpp   — registry and source tests
+  discv5_crawler_test.cpp     — deterministic state machine tests
+  CMakeLists.txt
+
+examples/discv5_crawl/
+  discv5_crawl.cpp            — live example binary
+  CMakeLists.txt
+```
+
+### Wire-format structs (M014)
+
+All packet-size constants are derived from `sizeof(WireStruct)`, never bare literals:
+
+| Struct | Size | Constant |
+|---|---|---|
+| `IPv4Wire` | 4 B | `kIPv4Bytes` |
+| `IPv6Wire` | 16 B | `kIPv6Bytes` |
+| `MaskingIvWire` | 16 B | `kMaskingIvBytes` |
+| `GcmNonceWire` | 12 B | `kGcmNonceBytes` |
+| `StaticHeaderWire` | 23 B | `kStaticHeaderBytes` |
+| `EnrSigWire` | 64 B | `kEnrSigBytes` |
+| `CompressedPubKeyWire` | 33 B | `kCompressedKeyBytes` |
+| `UncompressedPubKeyWire` | 65 B | `kUncompressedKeyBytes` |
+
+### Supported chains (ChainBootnodeRegistry)
+
+| Chain | ID | Source format |
+|---|---|---|
+| Ethereum mainnet | 1 | ENR (go-ethereum V5Bootnodes) |
+| Ethereum Sepolia | 11155111 | enode (go-ethereum SepoliaBootnodes) |
+| Ethereum Holesky | 17000 | enode (go-ethereum HoleskyBootnodes) |
+| Polygon mainnet | 137 | enode (docs.polygon.technology) |
+| Polygon Amoy | 80002 | enode (docs.polygon.technology) |
+| BSC mainnet | 56 | enode (bnb-chain/bsc params/config.go) |
+| BSC testnet | 97 | enode (bnb-chain/bsc params/config.go) |
+| Base mainnet | 8453 | OP Stack — inject at runtime |
+| Base Sepolia | 84532 | OP Stack — inject at runtime |
+
+### Next sprint
+
+1. WHOAREYOU / HANDSHAKE session layer (AES-GCM key derivation).
+2. Decode incoming NODES responses and feed the crawler queue.
+3. Wire discv5_client as an alternative to discv4_client inside eth_watch.
