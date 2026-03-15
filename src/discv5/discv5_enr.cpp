@@ -25,9 +25,6 @@ namespace discv5
 // Base64url decode lookup table
 // ---------------------------------------------------------------------------
 
-/// @brief Sentinel value in the decode table for invalid characters.
-static constexpr uint8_t kBase64Invalid = 0xFFU;
-
 /// @brief Static decode table for the base64url alphabet (RFC-4648 §5).
 ///        Index = ASCII code, value = 6-bit group (or kBase64Invalid).
 ///        Built from the named constants in discv5_constants.hpp so that no

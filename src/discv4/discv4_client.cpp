@@ -6,9 +6,10 @@
 #include "discv4/discv4_error.hpp"
 #include "discv4/discv4_ping.hpp"
 #include "discv4/discv4_pong.hpp"
+#include "discv4/discv4_enr_request.hpp"
+#include "discv4/discv4_enr_response.hpp"
 #include "base/logger.hpp"
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
@@ -42,28 +43,36 @@ rlpx::VoidResult discv4_client::start() {
     }
 
     // Start receive loop
-    asio::co_spawn(io_context_, receive_loop(), asio::detached);
+    asio::spawn(io_context_, [this](asio::yield_context yield) {
+        receive_loop(yield);
+    });
 
     return rlp::outcome::success();
 }
 
-void discv4_client::stop() {
+void discv4_client::stop()
+{
     running_ = false;
+    for (auto& [key, reply] : pending_replies_)
+    {
+        reply.timer->cancel();
+    }
+    pending_replies_.clear();
     boost::system::error_code ec;
     socket_.close(ec);
 }
 
-boost::asio::awaitable<void> discv4_client::receive_loop() {
+void discv4_client::receive_loop(asio::yield_context yield) {
     std::array<uint8_t, kUdpBufferSize> buffer{};
 
     while (running_) {
         udp::endpoint sender_endpoint;
         boost::system::error_code ec;
 
-        size_t bytes_received = co_await socket_.async_receive_from(
+        size_t bytes_received = socket_.async_receive_from(
             asio::buffer(buffer),
             sender_endpoint,
-            asio::redirect_error(asio::use_awaitable, ec)
+            asio::redirect_error(yield, ec)
         );
 
         if (ec) {
@@ -102,6 +111,12 @@ void discv4_client::handle_packet(const uint8_t* data, size_t length, const udp:
         case kPacketTypeNeighbours:
             handle_neighbours(data, length, sender);
             break;
+        case kPacketTypeEnrRequest:
+            handle_enr_request(data, length, sender);
+            break;
+        case kPacketTypeEnrResponse:
+            handle_enr_response(data, length, sender);
+            break;
         default:
             if (error_callback_) {
                 error_callback_("Unknown packet type: " + std::to_string(packet_type));
@@ -120,12 +135,9 @@ void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::e
     std::copy(data, data + kHashSize, ping_hash.begin());
     logger_->debug("PING from {}:{} — sending PONG", sender.address().to_string(), sender.port());
 
-    // Build PONG payload: packet-type(kPacketTypePong) || RLP([to_endpoint, ping_hash, expiration])
-    // to_endpoint = [sender_ip(4), udp_port, tcp_port]
     rlp::RlpEncoder encoder;
     if (!encoder.BeginList()) { return; }
 
-    // to_endpoint sub-list
     if (!encoder.BeginList()) { return; }
     const auto addr     = sender.address().to_v4().to_bytes();
     const rlp::ByteView ip_bv(addr.data(), addr.size());
@@ -134,10 +146,8 @@ void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::e
     if (!encoder.add(config_.tcp_port))            { return; }
     if (!encoder.EndList())                        { return; }
 
-    // ping_hash
     if (!encoder.add(rlp::ByteView(ping_hash.data(), ping_hash.size()))) { return; }
 
-    // expiration = now + 60s
     const uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + kPacketExpirySeconds;
     if (!encoder.add(expiration)) { return; }
 
@@ -146,7 +156,6 @@ void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::e
     auto bytes_result = encoder.MoveBytes();
     if (!bytes_result) { return; }
 
-    // Prepend packet-type byte
     std::vector<uint8_t> payload;
     payload.reserve(kPacketTypeSize + bytes_result.value().size());
     payload.push_back(kPacketTypePong);
@@ -157,21 +166,20 @@ void discv4_client::handle_ping(const uint8_t* data, size_t length, const udp::e
 
     const std::string ip   = sender.address().to_string();
     const uint16_t    port = sender.port();
-    asio::co_spawn(io_context_,
-        [this, ip, port, pkt = std::move(signed_packet.value())]()
-            -> boost::asio::awaitable<void>
+
+    // Mark sender as bonded — they reached us so the endpoint is proven reachable.
+    bonded_set_.insert(ip + ":" + std::to_string(port));
+
+    asio::spawn(io_context_,
+        [this, ip, port, pkt = std::move(signed_packet.value())](asio::yield_context yield)
         {
             const udp::endpoint dest(asio::ip::make_address(ip), port);
-            auto send_result = co_await send_packet(pkt, dest);
-            (void)send_result;
-
-            // Bond is now complete — send FIND_NODE asking for peers
-            // closest to our own node ID
+            auto send_result = send_packet(pkt, dest, yield);
+            if (!send_result) { return; }
             logger_->debug("Bond complete with {}:{} — sending FIND_NODE", ip, port);
-            auto find_result = co_await find_node(ip, port, config_.public_key);
+            auto find_result = find_node(ip, port, config_.public_key, yield);
             (void)find_result;
-        },
-        asio::detached);
+        });
 }
 
 void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::endpoint& sender) {
@@ -179,19 +187,25 @@ void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::e
         return;
     }
 
-    // discv4_pong::Parse expects the full wire packet (hash || sig || type || rlp)
     const rlp::ByteView full_packet(data, length);
     auto pong_result = discv4_pong::Parse(full_packet);
     if (!pong_result) {
-        if (error_callback_) {
-            error_callback_("Failed to parse PONG packet");
-        }
-        return;
+        return; // silently drop malformed PONG
     }
 
-    // PONG received — bond will complete when we respond to the bootnode's
-    // return PING.  FIND_NODE is sent from handle_ping after our PONG is sent.
     logger_->debug("PONG from {}:{}", sender.address().to_string(), sender.port());
+
+    // Only accept PONG if we have an outstanding PING to this endpoint.
+    // Mirrors go-ethereum verifyPong → handleReply check.
+    const std::string key = reply_key(sender.address().to_string(), sender.port(), kPacketTypePong);
+    auto it = pending_replies_.find(key);
+    if (it == pending_replies_.end())
+    {
+        return; // unsolicited — drop
+    }
+
+    *it->second.pong = std::move(pong_result.value());
+    it->second.timer->cancel(); // wake the waiting ping() coroutine
 }
 
 void discv4_client::handle_find_node(const uint8_t* data, size_t length, const udp::endpoint& sender) {
@@ -202,26 +216,30 @@ void discv4_client::handle_find_node(const uint8_t* data, size_t length, const u
 }
 
 void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const udp::endpoint& sender) {
-    (void)sender;
-
     if (length < kPacketHeaderSize) {
         return;
     }
 
+    // Only accept NEIGHBOURS if we have an outstanding FIND_NODE to this endpoint.
+    // Mirrors go-ethereum verifyNeighbors → handleReply check.
+    const std::string key = reply_key(sender.address().to_string(), sender.port(), kPacketTypeNeighbours);
+    auto it = pending_replies_.find(key);
+    if (it == pending_replies_.end())
+    {
+        return; // unsolicited — drop
+    }
+
+    // Cancel the waiting find_node() coroutine — we got the reply.
+    it->second.timer->cancel();
+
     const rlp::ByteView raw(data + kPacketHeaderSize, length - kPacketHeaderSize);
     rlp::RlpDecoder decoder(raw);
 
-    // Outer list header
     auto outer_len_result = decoder.ReadListHeaderBytes();
-    if (!outer_len_result) {
-        return;
-    }
+    if (!outer_len_result) { return; }
 
-    // Nodes list header
     auto nodes_len_result = decoder.ReadListHeaderBytes();
-    if (!nodes_len_result) {
-        return;
-    }
+    if (!nodes_len_result) { return; }
 
     const rlp::ByteView after_nodes_start = decoder.Remaining();
     const size_t        nodes_byte_len    = nodes_len_result.value();
@@ -229,56 +247,38 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
     while (!decoder.IsFinished())
     {
         const size_t consumed = after_nodes_start.size() - decoder.Remaining().size();
-        if (consumed >= nodes_byte_len) {
-            break;
-        }
+        if (consumed >= nodes_byte_len) { break; }
 
-        // Each node is a flat list: [ ip(4), udp, tcp, pubkey(64) ]
-        // (go-ethereum RpcNode — no endpoint sub-list wrapper)
         auto node_len_result = decoder.ReadListHeaderBytes();
-        if (!node_len_result) {
-            break;
-        }
+        if (!node_len_result) { break; }
         const rlp::ByteView node_start = decoder.Remaining();
         const size_t        node_len   = node_len_result.value();
 
         rlp::Bytes ip_bytes;
-        if (!decoder.read(ip_bytes) || ip_bytes.size() != kIPv4Size) {
-            break;
-        }
+        if (!decoder.read(ip_bytes) || ip_bytes.size() != kIPv4Size) { break; }
 
         uint16_t udp_port = 0;
-        if (!decoder.read(udp_port)) {
-            break;
-        }
+        if (!decoder.read(udp_port)) { break; }
 
         uint16_t tcp_port = 0;
-        if (!decoder.read(tcp_port)) {
-            break;
-        }
+        if (!decoder.read(tcp_port)) { break; }
 
         rlp::Bytes pubkey_bytes;
-        if (!decoder.read(pubkey_bytes) || pubkey_bytes.size() != kNodeIdSize) {
-            break;
-        }
+        if (!decoder.read(pubkey_bytes) || pubkey_bytes.size() != kNodeIdSize) { break; }
 
-        // Skip any remaining fields in this node (e.g. per-node expiry)
+        // Skip any remaining fields in this node entry for forward compatibility.
         const size_t node_consumed = node_start.size() - decoder.Remaining().size();
-        if (node_consumed < node_len) {
+        if (node_consumed < node_len)
+        {
             const size_t        remaining_in_node = node_len - node_consumed;
             const rlp::ByteView skip_view         = decoder.Remaining().substr(0, remaining_in_node);
             rlp::RlpDecoder     skip_decoder(skip_view);
-            while (!skip_decoder.IsFinished()) {
-                if (!skip_decoder.SkipItem()) { break; }
-            }
+            while (!skip_decoder.IsFinished()) { if (!skip_decoder.SkipItem()) { break; } }
             const size_t        actually_skipped = skip_view.size() - skip_decoder.Remaining().size();
-            const rlp::ByteView after_node       = decoder.Remaining().substr(actually_skipped);
-            decoder = rlp::RlpDecoder(after_node);
+            decoder = rlp::RlpDecoder(decoder.Remaining().substr(actually_skipped));
         }
 
-        if (tcp_port == 0) {
-            continue;
-        }
+        if (tcp_port == 0) { continue; }
 
         DiscoveredPeer peer;
         std::copy(pubkey_bytes.begin(), pubkey_bytes.end(), peer.node_id.begin());
@@ -292,123 +292,272 @@ void discv4_client::handle_neighbours(const uint8_t* data, size_t length, const 
 
         {
             const std::lock_guard<std::mutex> lock(peers_mutex_);
-            std::string key;
-            key.reserve(kNodeIdHexSize);
-            for (const uint8_t byte : peer.node_id) {
+            std::string node_key;
+            node_key.reserve(kNodeIdHexSize);
+            for (const uint8_t byte : peer.node_id)
+            {
                 const char* hex_chars = "0123456789abcdef";
-                key += hex_chars[byte >> 4];
-                key += hex_chars[byte & 0x0fu];
+                node_key += hex_chars[byte >> 4];
+                node_key += hex_chars[byte & 0x0fu];
             }
-            peers_[key] = peer;
+            peers_[node_key] = peer;
         }
 
-        if (peer_callback_) {
-            logger_->debug("Neighbour peer: {}:{}", peer.ip, peer.tcp_port);
-            peer_callback_(peer);
+        // Recursive kademlia: bond -> ENR enrichment -> peer_callback_ -> find_node.
+        // peer_callback_ is deferred into the coroutine so eth_fork_id is populated
+        // before the caller decides whether to enqueue the peer for dialing.
+        const std::string ep_key = peer.ip + ":" + std::to_string(peer.udp_port);
+        if (running_ && discovered_set_.count(ep_key) == 0)
+        {
+            discovered_set_.insert(ep_key);
+            const std::string disc_ip   = peer.ip;
+            const uint16_t    disc_port = peer.udp_port;
+            const NodeId      disc_id   = peer.node_id;
+            asio::spawn(io_context_,
+                [this, disc_ip, disc_port, disc_id, enriched_peer = peer](asio::yield_context yield) mutable
+                {
+                    ensure_bond(disc_ip, disc_port, yield);
+
+                    // Request ENR and populate eth_fork_id when available.
+                    auto enr_result = request_enr(disc_ip, disc_port, yield);
+                    if (enr_result)
+                    {
+                        auto fork_result = enr_result.value().ParseEthForkId();
+                        if (fork_result)
+                        {
+                            enriched_peer.eth_fork_id = fork_result.value();
+                        }
+                    }
+
+                    if (peer_callback_)
+                    {
+                        logger_->debug("Neighbour peer: {}:{}", enriched_peer.ip, enriched_peer.tcp_port);
+                        peer_callback_(enriched_peer);
+                    }
+
+                    auto fn = find_node(disc_ip, disc_port, disc_id, yield);
+                    (void)fn;
+                });
         }
     }
 }
 
 
-boost::asio::awaitable<discv4::Result<discv4_pong>> discv4_client::ping(
+void discv4_client::handle_enr_request(const uint8_t* /*data*/, size_t /*length*/, const udp::endpoint& sender)
+{
+    // We do not yet maintain a local ENR record, so we cannot send a valid ENRResponse.
+    // Silently drop inbound ENRRequests — mirrors the behaviour of a node that has no
+    // ENR to advertise.  This will be revisited when local ENR support is added.
+    logger_->debug("ENRRequest from {}:{} — no local ENR, dropping",
+                   sender.address().to_string(), sender.port());
+}
+
+void discv4_client::handle_enr_response(const uint8_t* data, size_t length, const udp::endpoint& sender)
+{
+    if ( length < kPacketHeaderSize )
+    {
+        return;
+    }
+
+    const rlp::ByteView raw( data, length );
+    auto parse_result = discv4_enr_response::Parse( raw );
+    if ( !parse_result )
+    {
+        return; // silently drop malformed ENRResponse
+    }
+
+    const std::string key = reply_key( sender.address().to_string(), sender.port(), kPacketTypeEnrResponse );
+    auto it = pending_replies_.find( key );
+    if ( it == pending_replies_.end() )
+    {
+        return; // unsolicited — drop
+    }
+
+    // Verify ReplyTok matches the hash of the ENRRequest we sent.
+    if ( parse_result.value().request_hash != it->second.expected_hash )
+    {
+        return; // wrong token — drop
+    }
+
+    *it->second.enr_response = std::move( parse_result.value() );
+    it->second.timer->cancel(); // wake the waiting request_enr() coroutine
+}
+
+discv4::Result<discv4_enr_response> discv4_client::request_enr(
+    const std::string& ip,
+    uint16_t           port,
+    asio::yield_context yield )
+{
+    if ( !running_ ) { return discv4Error::kNetworkSendFailed; }
+
+    discv4_enr_request req;
+    req.expiration = static_cast<uint64_t>( std::time( nullptr ) ) + kPacketExpirySeconds;
+
+    const auto payload = req.RlpPayload();
+    if ( payload.empty() ) { return discv4Error::kRlpPayloadEmpty; }
+
+    auto signed_packet = sign_packet( payload );
+    if ( !signed_packet ) { return discv4Error::kSigningFailed; }
+
+    // The outer hash occupies the first kWireHashSize bytes of the signed wire packet.
+    // This is what the remote will echo back as ReplyTok in its ENRResponse.
+    std::array<uint8_t, kWireHashSize> sent_hash{};
+    std::copy( signed_packet.value().begin(),
+               signed_packet.value().begin() + kWireHashSize,
+               sent_hash.begin() );
+
+    const udp::endpoint destination( asio::ip::make_address( ip ), port );
+    auto send_result = send_packet( signed_packet.value(), destination, yield );
+    if ( !send_result ) { return discv4Error::kNetworkSendFailed; }
+
+    // Register pending reply — mirrors the ping() pattern.
+    const std::string key      = reply_key( ip, port, kPacketTypeEnrResponse );
+    auto              timer    = std::make_shared<asio::steady_timer>( io_context_ );
+    auto              enr_slot = std::make_shared<discv4_enr_response>();
+
+    PendingReply entry{};
+    entry.timer         = timer;
+    entry.enr_response  = enr_slot;
+    entry.expected_hash = sent_hash;
+    pending_replies_[key] = std::move( entry );
+
+    timer->expires_after( config_.ping_timeout );
+
+    boost::system::error_code ec;
+    timer->async_wait( asio::redirect_error( yield, ec ) );
+    pending_replies_.erase( key );
+
+    if ( ec == boost::asio::error::operation_aborted )
+    {
+        // Timer cancelled by handle_enr_response — response was received.
+        return *enr_slot;
+    }
+    return discv4Error::kPongTimeout;
+}
+
+std::string discv4_client::reply_key(const std::string& ip, uint16_t port, uint8_t ptype) noexcept{
+    return ip + ":" + std::to_string(port) + ":" + std::to_string(ptype);
+}
+
+void discv4_client::ensure_bond(const std::string& ip, uint16_t port,
+                                 boost::asio::yield_context yield) noexcept
+{
+    const std::string ep_key = ip + ":" + std::to_string(port);
+    if (bonded_set_.count(ep_key) != 0) { return; }
+
+    NodeId dummy_id{};
+    auto result = ping(ip, port, dummy_id, yield);
+    if (result) { bonded_set_.insert(ep_key); }
+}
+
+discv4::Result<discv4_pong> discv4_client::ping(
     const std::string& ip,
     uint16_t port,
-    const NodeId& node_id
+    const NodeId& /*node_id*/,
+    asio::yield_context yield
 ) {
-    // Create PING packet
+    if (!running_) { return discv4Error::kNetworkSendFailed; }
     discv4_ping ping_packet(
         config_.bind_ip, config_.bind_port, config_.tcp_port,
         ip, port, port
     );
 
     auto payload = ping_packet.RlpPayload();
-    if (payload.empty()) {
-        co_return discv4Error::kRlpPayloadEmpty;
-    }
+    if (payload.empty()) { return discv4Error::kRlpPayloadEmpty; }
 
-    // Sign the packet
     auto signed_packet = sign_packet(payload);
-    if (!signed_packet) {
-        co_return discv4Error::kSigningFailed;
-    }
+    if (!signed_packet) { return discv4Error::kSigningFailed; }
 
-    // Send packet
     udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = co_await send_packet(signed_packet.value(), destination);
-    if (!send_result) {
-        co_return discv4Error::kNetworkSendFailed;
-    }
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
+    if (!send_result) { return discv4Error::kNetworkSendFailed; }
 
-    // Wait for PONG response (simplified - in production use proper async waiting)
-    // For now, return success - PONG will be handled in receive_loop
-    co_return discv4Error::kPongTimeout;  // Placeholder
+    // Register pending reply matcher — mirrors go-ethereum's sendPing replyMatcher.
+    const std::string key  = reply_key(ip, port, kPacketTypePong);
+    auto timer      = std::make_shared<asio::steady_timer>(io_context_);
+    auto pong_slot  = std::make_shared<discv4_pong>();
+    pending_replies_[key] = PendingReply{ timer, pong_slot };
+    timer->expires_after(config_.ping_timeout);
+
+    boost::system::error_code ec;
+    timer->async_wait(asio::redirect_error(yield, ec));
+    pending_replies_.erase(key);
+
+    if (ec == boost::asio::error::operation_aborted)
+    {
+        // Timer was cancelled by handle_pong — PONG was received.
+        bonded_set_.insert(ip + ":" + std::to_string(port));
+        return *pong_slot;
+    }
+    return discv4Error::kPongTimeout;
 }
 
-boost::asio::awaitable<rlpx::VoidResult> discv4_client::find_node(
+rlpx::VoidResult discv4_client::find_node(
     const std::string& ip,
     uint16_t port,
-    const NodeId& target_id
+    const NodeId& target_id,
+    asio::yield_context yield
 ) {
-    // FIND_NODE payload: packet-type(0x03) || RLP([target(64), expiration])
+    if (!running_) { return rlp::outcome::success(); }
+    // Ensure bond before querying — mirrors go-ethereum's ensureBond call in findnode().
+    ensure_bond(ip, port, yield);
+
     rlp::RlpEncoder encoder;
-    if (!encoder.BeginList()) {
-        co_return rlp::outcome::success();
-    }
-    if (!encoder.add(rlp::ByteView(target_id.data(), target_id.size()))) {
-        co_return rlp::outcome::success();
-    }
+    if (!encoder.BeginList()) { return rlp::outcome::success(); }
+    if (!encoder.add(rlp::ByteView(target_id.data(), target_id.size()))) { return rlp::outcome::success(); }
     const uint32_t expiration = static_cast<uint32_t>(std::time(nullptr)) + kPacketExpirySeconds;
-    if (!encoder.add(expiration)) {
-        co_return rlp::outcome::success();
-    }
-    if (!encoder.EndList()) {
-        co_return rlp::outcome::success();
-    }
+    if (!encoder.add(expiration)) { return rlp::outcome::success(); }
+    if (!encoder.EndList()) { return rlp::outcome::success(); }
 
     auto bytes_result = encoder.MoveBytes();
-    if (!bytes_result) {
-        co_return rlp::outcome::success();
-    }
+    if (!bytes_result) { return rlp::outcome::success(); }
 
-    // Prepend packet type byte
     std::vector<uint8_t> payload;
     payload.reserve(kWirePacketTypeSize + bytes_result.value().size());
     payload.push_back(kPacketTypeFindNode);
-    payload.insert(payload.end(),
-                   bytes_result.value().begin(),
-                   bytes_result.value().end());
+    payload.insert(payload.end(), bytes_result.value().begin(), bytes_result.value().end());
 
     auto signed_packet = sign_packet(payload);
-    if (!signed_packet) {
-        co_return rlp::outcome::success();
-    }
+    if (!signed_packet) { return rlp::outcome::success(); }
 
     const udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = co_await send_packet(signed_packet.value(), destination);
-    (void)send_result;
-    co_return rlp::outcome::success();
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
+    if (!send_result) { return rlp::outcome::success(); }
+
+    // Register pending reply matcher for NEIGHBOURS — mirrors go-ethereum's pending() call.
+    const std::string key   = reply_key(ip, port, kPacketTypeNeighbours);
+    auto timer = std::make_shared<asio::steady_timer>(io_context_);
+    pending_replies_[key] = PendingReply{ timer, nullptr };
+    timer->expires_after(config_.ping_timeout); // reuse ping_timeout as findnode reply timeout
+
+    boost::system::error_code ec;
+    timer->async_wait(asio::redirect_error(yield, ec));
+    pending_replies_.erase(key);
+
+    return rlp::outcome::success();
 }
 
-boost::asio::awaitable<discv4::Result<void>> discv4_client::send_packet(
+discv4::Result<void> discv4_client::send_packet(
     const std::vector<uint8_t>& packet,
-    const udp::endpoint& destination
+    const udp::endpoint& destination,
+    asio::yield_context yield
 ) {
     boost::system::error_code ec;
 
-    co_await socket_.async_send_to(
+    socket_.async_send_to(
         asio::buffer(packet),
         destination,
-        asio::redirect_error(asio::use_awaitable, ec)
+        asio::redirect_error(yield, ec)
     );
 
     if (ec) {
         if (error_callback_) {
             error_callback_("Send error: " + ec.message());
         }
-        co_return discv4Error::kNetworkSendFailed;
+        return discv4Error::kNetworkSendFailed;
     }
 
-    co_return rlp::outcome::success();
+    return rlp::outcome::success();
 }
 
 discv4::Result<std::vector<uint8_t>> discv4_client::sign_packet(const std::vector<uint8_t>& payload) {

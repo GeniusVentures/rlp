@@ -30,6 +30,8 @@ static constexpr uint8_t kPacketTypePing         = 0x01U;
 static constexpr uint8_t kPacketTypePong         = 0x02U;
 static constexpr uint8_t kPacketTypeFindNode     = 0x03U;
 static constexpr uint8_t kPacketTypeNeighbours   = 0x04U;
+static constexpr uint8_t kPacketTypeEnrRequest   = 0x05U;
+static constexpr uint8_t kPacketTypeEnrResponse  = 0x06U;
 
 /// Protocol version advertised in PING packets
 static constexpr uint8_t kProtocolVersion        = 0x04U;

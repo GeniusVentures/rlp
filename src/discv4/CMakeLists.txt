@@ -6,6 +6,8 @@ add_library(discv4 STATIC
         ${CMAKE_CURRENT_LIST_DIR}/discv4_pong.cpp
         ${CMAKE_CURRENT_LIST_DIR}/discv4_error.cpp
         ${CMAKE_CURRENT_LIST_DIR}/discv4_client.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv4_enr_request.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv4_enr_response.cpp
 )
 
 target_include_directories(discv4 PUBLIC
@@ -17,6 +19,8 @@ target_include_directories(discv4 PUBLIC
 # Link public dependencies
 target_link_libraries(discv4 PUBLIC
         Boost::boost
+        Boost::context
+        Boost::coroutine
         libsecp256k1::secp256k1
         logger
 )

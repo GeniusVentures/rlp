@@ -5,25 +5,21 @@
 
 #include "../rlpx_types.hpp"
 #include "../rlpx_error.hpp"
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <memory>
 
 namespace rlpx::socket {
 
-// Hide Boost types (Law of Demeter)
-template<typename T>
-using Awaitable = boost::asio::awaitable<T>;
-
-// Transport layer abstraction over TCP socket
-// Provides async read/write operations with proper error handling
+/// Transport layer abstraction over TCP socket.
+/// Provides async read/write operations with proper error handling.
 class SocketTransport {
 public:
     using tcp = boost::asio::ip::tcp;
     using Strand = boost::asio::strand<boost::asio::any_io_executor>;
 
-    // Create transport from connected socket
+    /// Create transport from connected socket.
     explicit SocketTransport(tcp::socket socket) noexcept;
 
     // Non-copyable, moveable
@@ -32,18 +28,24 @@ public:
     SocketTransport(SocketTransport&&) noexcept = default;
     SocketTransport& operator=(SocketTransport&&) noexcept = default;
 
-    // Async read exact number of bytes
-    [[nodiscard]] Awaitable<Result<ByteBuffer>>
-    read_exact(size_t num_bytes) noexcept;
+    /// @brief Async read exact number of bytes.
+    /// @param num_bytes Number of bytes to read.
+    /// @param yield     Boost.Asio stackful coroutine context.
+    /// @return Filled ByteBuffer on success, SessionError on failure.
+    [[nodiscard]] Result<ByteBuffer>
+    read_exact(size_t num_bytes, boost::asio::yield_context yield) noexcept;
 
-    // Async write all bytes
-    [[nodiscard]] Awaitable<VoidResult>
-    write_all(ByteView data) noexcept;
+    /// @brief Async write all bytes.
+    /// @param data  Data to send.
+    /// @param yield Boost.Asio stackful coroutine context.
+    /// @return Success or SessionError on failure.
+    [[nodiscard]] VoidResult
+    write_all(ByteView data, boost::asio::yield_context yield) noexcept;
 
-    // Close socket gracefully
+    /// Close socket gracefully.
     [[nodiscard]] VoidResult close() noexcept;
 
-    // Query connection state
+    /// Query connection state.
     [[nodiscard]] bool is_open() const noexcept;
 
     // Get remote endpoint info
@@ -56,16 +58,23 @@ public:
 
 private:
     tcp::socket socket_;
-    Strand strand_; // Ensures thread-safe sequential operations
+    Strand strand_; ///< Ensures thread-safe sequential operations.
 };
 
-// Connect to remote endpoint with timeout
-[[nodiscard]] Awaitable<Result<SocketTransport>>
+/// @brief Connect to remote endpoint with timeout.
+/// @param executor Asio executor to use for the connection.
+/// @param host     Remote hostname or IP.
+/// @param port     Remote TCP port.
+/// @param timeout  Connection timeout duration.
+/// @param yield    Boost.Asio stackful coroutine context.
+/// @return Connected SocketTransport on success, SessionError on failure.
+[[nodiscard]] Result<SocketTransport>
 connect_with_timeout(
     boost::asio::any_io_executor executor,
     std::string_view host,
     uint16_t port,
-    std::chrono::milliseconds timeout
+    std::chrono::milliseconds timeout,
+    boost::asio::yield_context yield
 ) noexcept;
 
 } // namespace rlpx::socket

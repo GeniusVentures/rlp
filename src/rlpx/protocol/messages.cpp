@@ -165,26 +165,34 @@ Result<ByteBuffer> DisconnectMessage::encode() const noexcept {
 }
 
 Result<DisconnectMessage> DisconnectMessage::decode(ByteView rlp_data) noexcept {
+    // Many peers send Disconnect with no body (empty payload), an empty list [0xC0],
+    // or a raw single byte rather than a proper RLP list [reason].  All are treated
+    // as reason=0 (DisconnectRequested) so callers always get a valid message.
+    DisconnectMessage msg{ DisconnectReason::kRequested };
+
+    if (rlp_data.empty()) {
+        return msg;  // reason = 0
+    }
+
     rlp::RlpDecoder decoder(detail::to_rlp_view(rlp_data));
-    
-    // Read the list header
+
     auto list_size_result = decoder.ReadListHeaderBytes();
-    if ( !list_size_result ) {
-        return SessionError::kInvalidMessage;
+    if (!list_size_result) {
+        // Not a list — treat first byte as raw reason code (non-standard but seen in the wild)
+        msg.reason = byte_to_reason(static_cast<uint8_t>(rlp_data[0]));
+        return msg;
     }
-    
-    DisconnectMessage msg;
-    
-    // Read reason code as bytes (to handle 0x00 case)
+
+    if (list_size_result.value() == 0) {
+        return msg;  // empty list [] — reason = 0
+    }
+
     rlp::Bytes reason_bytes;
-    auto reason_read_result = decoder.read(reason_bytes);
-    if ( !reason_read_result ) {
-        return SessionError::kInvalidMessage;
+    if (!decoder.read(reason_bytes)) {
+        return msg;  // can't read reason — default to 0
     }
-    
-    uint8_t reason_code = reason_bytes.empty() ? 0 : reason_bytes[0];
-    msg.reason = byte_to_reason(reason_code);
-    
+
+    msg.reason = byte_to_reason(reason_bytes.empty() ? 0 : reason_bytes[0]);
     return msg;
 }
 

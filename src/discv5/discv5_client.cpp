@@ -7,10 +7,8 @@
 
 #include <rlp/rlp_encoder.hpp>
 
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
-#include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/steady_timer.hpp>
 
 #include <chrono>
@@ -71,21 +69,16 @@ VoidResult discv5_client::start() noexcept
     }
 
     // Start the receive loop on the io_context.
-    // M013: co_spawn(..., detached) requires awaitable<void>.
-    asio::co_spawn(io_context_,
-        [this]() -> asio::awaitable<void>
-        {
-            co_await receive_loop();
-        },
-        asio::detached);
+    asio::spawn(io_context_, [this](asio::yield_context yield)
+    {
+        receive_loop(yield);
+    });
 
     // Start the crawler loop.
-    asio::co_spawn(io_context_,
-        [this]() -> asio::awaitable<void>
-        {
-            co_await crawler_loop();
-        },
-        asio::detached);
+    asio::spawn(io_context_, [this](asio::yield_context yield)
+    {
+        crawler_loop(yield);
+    });
 
     // Seed the crawler with configured bootstrap entries.
     auto crawler_start = crawler_.start();
@@ -139,7 +132,7 @@ const NodeId& discv5_client::local_node_id() const noexcept
 // receive_loop
 // ---------------------------------------------------------------------------
 
-asio::awaitable<void> discv5_client::receive_loop()
+void discv5_client::receive_loop(asio::yield_context yield)
 {
     // Receive buffer sized to the maximum valid discv5 packet.
     std::vector<uint8_t> buf(kMaxPacketBytes);
@@ -149,10 +142,10 @@ asio::awaitable<void> discv5_client::receive_loop()
         udp::endpoint sender;
         boost::system::error_code ec;
 
-        const size_t received = co_await socket_.async_receive_from(
+        const size_t received = socket_.async_receive_from(
             asio::buffer(buf),
             sender,
-            asio::redirect_error(asio::use_awaitable, ec));
+            asio::redirect_error(yield, ec));
 
         if (ec)
         {
@@ -179,7 +172,7 @@ asio::awaitable<void> discv5_client::receive_loop()
 // crawler_loop
 // ---------------------------------------------------------------------------
 
-asio::awaitable<void> discv5_client::crawler_loop()
+void discv5_client::crawler_loop(asio::yield_context yield)
 {
     const auto interval = std::chrono::seconds(config_.query_interval_sec);
     asio::steady_timer timer(io_context_);
@@ -199,11 +192,10 @@ asio::awaitable<void> discv5_client::crawler_loop()
 
             const ValidatedPeer peer = next.value();
 
-            // M013: wrap Result-returning coroutine in void lambda.
-            asio::co_spawn(io_context_,
-                [this, peer]() -> asio::awaitable<void>
+            asio::spawn(io_context_,
+                [this, peer](asio::yield_context inner_yield)
                 {
-                    auto result = co_await send_findnode(peer);
+                    auto result = send_findnode(peer, inner_yield);
                     if (!result)
                     {
                         crawler_.mark_failed(peer.node_id);
@@ -214,8 +206,7 @@ asio::awaitable<void> discv5_client::crawler_loop()
                     {
                         crawler_.mark_measured(peer.node_id);
                     }
-                },
-                asio::detached);
+                });
 
             ++queries_issued;
         }
@@ -228,7 +219,7 @@ asio::awaitable<void> discv5_client::crawler_loop()
         // Sleep until next round.
         boost::system::error_code ec;
         timer.expires_after(interval);
-        co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        timer.async_wait(asio::redirect_error(yield, ec));
 
         if (ec && running_.load())
         {
@@ -264,7 +255,7 @@ void discv5_client::handle_packet(
 // send_findnode
 // ---------------------------------------------------------------------------
 
-asio::awaitable<VoidResult> discv5_client::send_findnode(const ValidatedPeer& peer)
+VoidResult discv5_client::send_findnode(const ValidatedPeer& peer, asio::yield_context yield)
 {
     // FINDNODE message body: RLP([req_id(bytes), distances(list of uint)])
     // Distances 0–256 represent XOR bucket distances; querying distance 256
@@ -278,7 +269,7 @@ asio::awaitable<VoidResult> discv5_client::send_findnode(const ValidatedPeer& pe
     // Begin outer list.
     if (!enc.BeginList())
     {
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
     // req_id (4 bytes) — use lower 4 bytes of target udp_port || ip hash as
@@ -292,7 +283,7 @@ asio::awaitable<VoidResult> discv5_client::send_findnode(const ValidatedPeer& pe
     };
     if (!enc.add(rlp::ByteView(req_id.data(), req_id.size())))
     {
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
     // Distances list.
@@ -300,18 +291,18 @@ asio::awaitable<VoidResult> discv5_client::send_findnode(const ValidatedPeer& pe
         !enc.add(static_cast<uint32_t>(kBootstrapDistance)) ||
         !enc.EndList())
     {
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
     if (!enc.EndList())
     {
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
     auto bytes_result = enc.MoveBytes();
     if (!bytes_result)
     {
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
     const rlp::Bytes& payload = bytes_result.value();
@@ -327,19 +318,19 @@ asio::awaitable<VoidResult> discv5_client::send_findnode(const ValidatedPeer& pe
     const udp::endpoint destination(
         asio::ip::make_address(peer.ip), peer.udp_port);
 
-    co_await socket_.async_send_to(
+    socket_.async_send_to(
         asio::buffer(packet),
         destination,
-        asio::redirect_error(asio::use_awaitable, ec));
+        asio::redirect_error(yield, ec));
 
     if (ec)
     {
         logger_->warn("discv5 FINDNODE send to {}:{} failed: {}",
                       peer.ip, peer.udp_port, ec.message());
-        co_return discv5Error::kNetworkSendFailed;
+        return discv5Error::kNetworkSendFailed;
     }
 
-    co_return rlp::outcome::success();
+    return rlp::outcome::success();
 }
 
 } // namespace discv5

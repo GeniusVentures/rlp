@@ -46,21 +46,18 @@ using ValidationResult = rlp::outcome::result<void, eth::StatusValidationError,
 /// @brief Validate a decoded StatusMessage against our expected chain parameters.
 ///
 /// Mirrors go-ethereum's readStatus() checks (handshake.go):
-///   - ProtocolVersion must match @p expected_version
 ///   - NetworkID must match @p expected_network_id
 ///   - Genesis must match @p expected_genesis
-///   - EarliestBlock must be <= LatestBlock (when LatestBlock != 0)
+///   - For ETH/69: EarliestBlock must be <= LatestBlock (when LatestBlock != 0)
 ///
-/// @param msg              The decoded peer Status message.
-/// @param expected_version Negotiated ETH sub-protocol version (e.g. 68).
+/// @param msg                  The decoded peer Status message (variant).
 /// @param expected_network_id  Our chain's network ID.
 /// @param expected_genesis     Our chain's genesis block hash.
 /// @return Success, or the first validation error encountered.
 [[nodiscard]] ValidationResult validate_status(
-    const eth::StatusMessage&  msg,
-    uint8_t                    expected_version,
-    uint64_t                   expected_network_id,
-    const eth::Hash256&        expected_genesis) noexcept;
+    const eth::StatusMessage& msg,
+    uint64_t                  expected_network_id,
+    const eth::Hash256&       expected_genesis) noexcept;
 
 // STATUS
 [[nodiscard]] EncodeResult encode_status(const StatusMessage& msg) noexcept;

@@ -50,6 +50,15 @@ Your default mode is “tiny, surgical insertion into existing code”.
 - This means do **NOT** add debug strings in the code, then compile and run to see if they work.
   - Instead, if there is a bug, the agent should ask the user to debug the code to find the bug's root cause
 
+** When dealing with a bug
+- When I report a bug, or you find one, ask the user for options 
+  - Don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. 
+  - Then, have subagents try to fix the bug and prove it with a passing test.
+
+** Tool preference
+- Prefer the workspace file reader and workspace directory tools over `grep_search` for reading and exploring files.
+- Use `grep_search` only as a last resort when you need to search across many files for a pattern and the workspace tools are insufficient.
+
 ## Important Guidelines
 - Do not commit changes without explicit user permission.
 - When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test.
@@ -61,9 +70,12 @@ Your default mode is “tiny, surgical insertion into existing code”.
 - Always run the linter before committing.
 - Always run the formatter before committing.
 - Always run the build before committing.
-- Always run in interactive mode with the user on a step by step basis
+- Always run in interactive mode with the user on a step-by-step basis
 - Always look in AgentDocs for other instructions.
   - The files can include SPRINT_PLAN.md, Architecture.md, CHECKPOINT.md, AGENT_MISTAKES.md
+- Always make sure to only use C++17 features and below.
+  - For instance boost::coroutines only work in C++20, do NOT use it. 
+  - Make sure not to use other C++ versions' features above C++17
 
 ## Build Commands
 

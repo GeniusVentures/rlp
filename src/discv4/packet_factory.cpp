@@ -2,7 +2,6 @@
 #include "discv4/packet_factory.hpp"
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
-#include <iostream>
 #include <boost/outcome/try.hpp>
 
 #include "discv4/discv4_ping.hpp"
@@ -40,8 +39,6 @@ PacketResult PacketFactory::SendPingAndWait(
     udp::endpoint sender;
     SendPacket( socket, msg, target );
 
-    rlp::ByteView msbBv( msg.data(), msg.size() );
-    std::cout << "Sending PING: " << rlp::hexToString( msbBv ) << "\n\n";
 
     // Receive async
     std::array<uint8_t, 2048> arrayBuffer;
@@ -50,7 +47,6 @@ PacketResult PacketFactory::SendPingAndWait(
 
     if ( !ec )
     {
-        std::cout << "Received " << bytesTransferred << " bytes\n\n";
         std::vector<uint8_t> data( arrayBuffer.data(), arrayBuffer.data() + bytesTransferred );
         callback( data, sender );
     }

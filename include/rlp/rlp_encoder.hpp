@@ -2,7 +2,7 @@
 #define RLP_ENCODER_HPP
 
 #include <vector>
-#include <span> // For span overloads if desired
+#include <boost/core/span.hpp>
 #include "common.hpp"
 #include "intx.hpp"
 #include "endian.hpp"
@@ -35,7 +35,7 @@ class RlpEncoder {
     }
      // Convenience for Spans (similar)
     template <typename T>
-    EncodingOperationResult add(std::span<const T> vec_span) noexcept {
+    EncodingOperationResult add(boost::span<const T> vec_span) noexcept {
         BOOST_OUTCOME_TRY(BeginList());
         for (const auto& item : vec_span) {
             BOOST_OUTCOME_TRY(add(item)); // Recursively call add for each element

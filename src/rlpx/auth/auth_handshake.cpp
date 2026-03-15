@@ -21,6 +21,8 @@
 
 namespace rlpx::auth {
 
+namespace asio = boost::asio;
+
 namespace {
     rlp::base::Logger& auth_log() {
         static auto log = rlp::base::createLogger("rlpx.auth");
@@ -263,14 +265,13 @@ AuthHandshake::AuthHandshake(const HandshakeConfig& config,
     , transport_(std::move(transport)) {
 }
 
-// Note: This is a simplified synchronous version
-// The async version would use Boost.Asio coroutines for socket I/O
-Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
+// Note: Uses Boost.Asio stackful coroutines (yield_context) for socket I/O — C++17 compatible.
+Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexcept {
     // Generate ephemeral keypair
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if ( !keypair_result ) {
         auth_log()->debug("execute: generate_ephemeral_keypair failed");
-        co_return SessionError::kAuthenticationFailed;
+        return SessionError::kAuthenticationFailed;
     }
     auto keypair = keypair_result.value();
 
@@ -278,7 +279,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
     Nonce local_nonce;
     if ( RAND_bytes(local_nonce.data(), kNonceSize) != 1 ) {
         auth_log()->debug("execute: RAND_bytes failed");
-        co_return SessionError::kAuthenticationFailed;
+        return SessionError::kAuthenticationFailed;
     }
 
     HandshakeResult result;
@@ -301,7 +302,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         if ( !auth_msg_result ) {
             auth_log()->debug("execute: create_auth_message failed (code {})",
                               static_cast<int>(auth_msg_result.error()));
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: auth message built ({} bytes), sending", auth_msg_result.value().size());
 
@@ -318,30 +319,30 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         // Store full wire bytes for MAC derivation
         result.key_material.initiator_auth_message = auth_wire;
 
-        auto send_result = co_await transport_.write_all(
-            ByteView(auth_wire.data(), auth_wire.size()));
+        auto send_result = transport_.write_all(
+            ByteView(auth_wire.data(), auth_wire.size()), yield);
         if ( !send_result ) {
             auth_log()->debug("execute: write_all(auth) failed");
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: auth sent ({} bytes wire), waiting for ack length prefix", auth_wire.size());
 
         // ── Initiator: receive ack ──────────────────────────────────────────
         // EIP-8 ack wire: 2-byte len(ack_ciphertext) || ack_ciphertext
-        auto len_result = co_await transport_.read_exact(sizeof(uint16_t));
+        auto len_result = transport_.read_exact(sizeof(uint16_t), yield);
         if ( !len_result ) {
             auth_log()->debug("execute: read_exact(ack length prefix) failed");
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         const auto& len_bytes   = len_result.value();
         const size_t ack_body_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                                   |  static_cast<size_t>(len_bytes[1]);
         auth_log()->debug("execute: ack length prefix received, ack_body_len={}", ack_body_len);
 
-        auto ack_result = co_await transport_.read_exact(ack_body_len);
+        auto ack_result = transport_.read_exact(ack_body_len, yield);
         if ( !ack_result ) {
             auth_log()->debug("execute: read_exact(ack body) failed");
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: ack body received ({} bytes), parsing", ack_body_len);
 
@@ -362,7 +363,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         if ( !parse_result ) {
             auth_log()->debug("execute: parse_ack_message failed (code {})",
                               static_cast<int>(parse_result.error()));
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: ack parsed successfully");
 
@@ -374,24 +375,24 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         result.key_material.recipient_nonce = local_nonce;
 
         // Read 2-byte length prefix
-        auto len_result = co_await transport_.read_exact(sizeof(uint16_t));
+        auto len_result = transport_.read_exact(sizeof(uint16_t), yield);
         if ( !len_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         const auto& len_bytes = len_result.value();
         const size_t auth_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                               |  static_cast<size_t>(len_bytes[1]);
 
-        auto auth_result = co_await transport_.read_exact(auth_len);
+        auto auth_result = transport_.read_exact(auth_len, yield);
         if ( !auth_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
 
         auto parse_result = parse_auth_message(
             ByteView(auth_result.value().data(), auth_result.value().size()),
             config_.local_private_key);
         if ( !parse_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         result.key_material = parse_result.value();
         result.key_material.initiator_auth_message   = auth_result.value();
@@ -406,7 +407,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
             result.key_material.peer_public_key
         );
         if ( !ack_msg_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         result.key_material.recipient_ack_message = ack_msg_result.value();
 
@@ -418,10 +419,10 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         ack_wire.push_back(static_cast<uint8_t>(ack_len & 0xFFU));
         ack_wire.insert(ack_wire.end(), ack_bytes.begin(), ack_bytes.end());
 
-        auto send_result = co_await transport_.write_all(
-            ByteView(ack_wire.data(), ack_wire.size()));
+        auto send_result = transport_.write_all(
+            ByteView(ack_wire.data(), ack_wire.size()), yield);
         if ( !send_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
     }
 
@@ -431,22 +432,25 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
     // ── Hand transport back to caller via HandshakeResult ───────────────────
     result.transport = std::move(transport_);
 
-    co_return result;
+    return result;
 }
 
-Awaitable<AuthResult<AuthKeyMaterial>> AuthHandshake::perform_auth() noexcept {
+AuthResult<AuthKeyMaterial> AuthHandshake::perform_auth(asio::yield_context /*yield*/) noexcept {
     // This method would contain the core auth logic
     // Currently integrated into execute() above
-    co_return AuthError::kInvalidAuthMessage; // Placeholder
+    return AuthError::kInvalidAuthMessage; // Placeholder
 }
 
-Awaitable<Result<void>> AuthHandshake::exchange_hello(
+Result<void> AuthHandshake::exchange_hello(
     ByteView aes_key,
-    ByteView mac_key
+    ByteView mac_key,
+    asio::yield_context /*yield*/
 ) noexcept {
+    (void)aes_key;
+    (void)mac_key;
     // This would perform the Hello message exchange
     // Placeholder for now
-    co_return SessionError::kHandshakeFailed;
+    return SessionError::kHandshakeFailed;
 }
 
 FrameSecrets AuthHandshake::derive_frame_secrets(

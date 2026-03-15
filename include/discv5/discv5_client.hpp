@@ -9,7 +9,7 @@
 #include <vector>
 
 #include <boost/asio.hpp>
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 
 #include <base/logger.hpp>
 #include <discv5/discv5_crawler.hpp>
@@ -118,11 +118,15 @@ private:
     // -----------------------------------------------------------------------
 
     /// @brief Async receive loop — reads UDP packets and dispatches them.
-    boost::asio::awaitable<void> receive_loop();
+    ///
+    /// @param yield  Boost.ASIO stackful coroutine context.
+    void receive_loop(asio::yield_context yield);
 
     /// @brief Async crawler loop — drains the queued peer set and issues
     ///        FINDNODE requests at the configured interval.
-    boost::asio::awaitable<void> crawler_loop();
+    ///
+    /// @param yield  Boost.ASIO stackful coroutine context.
+    void crawler_loop(asio::yield_context yield);
 
     /// @brief Handle a raw incoming UDP packet.
     ///
@@ -137,7 +141,8 @@ private:
     /// @brief Send a FINDNODE request to @p target.
     ///
     /// @param peer    Peer to query.
-    boost::asio::awaitable<VoidResult> send_findnode(const ValidatedPeer& peer);
+    /// @param yield   Boost.ASIO stackful coroutine context.
+    VoidResult send_findnode(const ValidatedPeer& peer, asio::yield_context yield);
 
     // -----------------------------------------------------------------------
     // Members

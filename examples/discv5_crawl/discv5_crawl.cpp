@@ -25,12 +25,10 @@
 // This is an opt-in live test — it requires network access and is NOT
 // wired into the CTest suite.
 
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/redirect_error.hpp>
 
 #include <chrono>
@@ -270,18 +268,16 @@ int main(int argc, char** argv)
             io.stop();
         });
 
-    boost::asio::co_spawn(io,
-        [&io, &client, timeout_sec = args.timeout_sec]() -> boost::asio::awaitable<void>
+    boost::asio::spawn(io,
+        [&io, &client, timeout_sec = args.timeout_sec](boost::asio::yield_context yield)
         {
             boost::asio::steady_timer timer(io);
             timer.expires_after(std::chrono::seconds(timeout_sec));
             boost::system::error_code ec;
-            co_await timer.async_wait(
-                boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+            timer.async_wait(boost::asio::redirect_error(yield, ec));
             client.stop();
             io.stop();
-        },
-        boost::asio::detached);
+        });
 
     io.run();
 

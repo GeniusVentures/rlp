@@ -60,7 +60,10 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   - Use ENet for lightweight UDP networking (C-based, minimal).
   - RLP-encode messages per DevP2P specs (see below for RLP).
   - Start with chain-specific bootnodes (hardcode from chain docs, e.g., Ethereum’s enodes).
-  - Maintain 10-15 peers per chain.
+  - Maintain up to `max_active` concurrent dial attempts per chain (default 25 desktop, 3–5 mobile).
+  - A `DialScheduler` per chain queues discovered peers and recycles dial slots as connections succeed or fail, mirroring go-ethereum's `dialScheduler` pattern (`maxActiveDials = defaultMaxPendingPeers`).
+  - All chain schedulers share a single `boost::asio::io_context` (one thread, cooperative coroutines — no thread-per-chain overhead).
+  - A `WatcherPool` owns a **discv4 singleton** (stays warm across chain switches) and enforces a two-level resource cap: `max_total` (global fd limit) and `max_per_chain` (per-chain dial limit). Sensible defaults: mobile `max_total=12, max_per_chain=3`; desktop `max_total=200, max_per_chain=50`.
 
 #### 2. RLPx Connection (TCP)
 - **Purpose**: Establish secure TCP connections for `eth` subprotocol gossip.
@@ -297,7 +300,12 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   - Hardcode bootnodes (from chain docs).
   - Set chain ID (Ethereum: 1, Polygon: 137, Base: 8453, BSC: 56).
   - Use `eth/66` (or chain-specific version).
-- **Connections**: Run separate Discovery and RLPxSession instances per chain.
+- **Connections**: One `discv4_client` singleton on `WatcherPool` (shared across all chains, stays warm across chain switches). One `DialScheduler` per active chain watcher.
+  - `WatcherPool(max_total, max_per_chain)` — two-level resource cap enforced across all schedulers:
+    - Mobile defaults: `max_total=12, max_per_chain=3` → up to 4 chains simultaneously, 3 fds each
+    - Desktop defaults: `max_total=200, max_per_chain=50`
+  - `start_watcher(chain)` — creates `DialScheduler` for that chain, immediately begins consuming discovered peers
+  - `stop_watcher(chain)` — **async**, no-block: disconnects all active TCP sessions for that chain; coroutines unwind at next yield, fds freed within one io_context cycle; UI never stutters; freed slots immediately available to a new chain watcher
 - **Consensus Rules**:
   - Ethereum: Post-Merge PoS, verify validator signatures.
   - Polygon: PoS, check Heimdall checkpoints.
@@ -305,7 +313,7 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   - BSC: PoSA, check authority signatures or PoW.
 
 ### Challenges and Mitigations
-- **Resource Use**: Limit peers to 10-15 per chain, cache headers in memory (~1MB per 1000 blocks).
+- **Resource Use**: Two-level cap via `WatcherPool(max_total, max_per_chain)`. All coroutines share one `io_context` thread — zero thread overhead per chain. On desktop raise fd limit via `setrlimit(RLIMIT_NOFILE)` at startup. On mobile the low `max_total` keeps fd usage negligible and battery impact minimal. Redundancy is collective via IPFS pubsub — each device only needs a few stable peers per chain.
 - **RLP Complexity**: Implement recursive RLP decoding for lists (blocks, receipts).
 - **Peer Reliability**: Handle dropped connections with reconnect logic; maintain diverse peers.
 - **Chain Quirks**: Test on testnets (Sepolia, Amoy, Base Sepolia, BSC Testnet) for chain-specific behaviors.

@@ -7,13 +7,9 @@
 #include "../rlpx_error.hpp"
 #include "auth_keys.hpp"
 #include "../socket/socket_transport.hpp"
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 
 namespace rlpx::auth {
-
-// Hide Boost types (Law of Demeter)
-template<typename T>
-using Awaitable = boost::asio::awaitable<T>;
 
 /// Plain RLPx v4 fixed wire sizes (ECIES overhead + plaintext)
 /// auth plaintext  = sig(65) + eph_hash(32) + pubkey(64) + nonce(32) + ver(1) = 194
@@ -50,21 +46,22 @@ struct HandshakeResult {
     }
 };
 
-// Authentication handshake coordinator
+/// Authentication handshake coordinator.
 class AuthHandshake {
 public:
     /// @brief Construct handshake with config and an already-connected transport.
-    /// @param config   Crypto config (keys, peer pubkey, client id).
-    /// @param transport  Connected TCP socket — ownership transferred in.
+    /// @param config    Crypto config (keys, peer pubkey, client id).
+    /// @param transport Connected TCP socket — ownership transferred in.
     explicit AuthHandshake(const HandshakeConfig& config,
                            socket::SocketTransport transport) noexcept;
 
-    // Execute full handshake (auth + hello exchange)
-    // Socket operations handled via internal abstraction
-    [[nodiscard]] Awaitable<Result<HandshakeResult>>
-    execute() noexcept;
+    /// @brief Execute full handshake (auth + hello exchange).
+    /// @param yield Boost.Asio stackful coroutine context.
+    /// @return HandshakeResult on success, SessionError on failure.
+    [[nodiscard]] Result<HandshakeResult>
+    execute(boost::asio::yield_context yield) noexcept;
 
-    // State query
+    /// State query.
     [[nodiscard]] bool is_initiator() const noexcept { 
         return config_.peer_public_key.has_value(); 
     }
@@ -77,13 +74,17 @@ public:
     derive_frame_secrets(const AuthKeyMaterial& keys, bool is_initiator) noexcept;
 
 private:
-    // Internal auth phase (sends/receives auth messages)
-    [[nodiscard]] Awaitable<AuthResult<AuthKeyMaterial>>
-    perform_auth() noexcept;
+    /// @brief Internal auth phase (sends/receives auth messages).
+    /// @param yield Boost.Asio stackful coroutine context.
+    [[nodiscard]] AuthResult<AuthKeyMaterial>
+    perform_auth(boost::asio::yield_context yield) noexcept;
 
-    // Internal hello exchange (capability negotiation)
-    [[nodiscard]] Awaitable<Result<void>>
-    exchange_hello(ByteView aes_key, ByteView mac_key) noexcept;
+    /// @brief Internal hello exchange (capability negotiation).
+    /// @param aes_key AES key derived from handshake.
+    /// @param mac_key MAC key derived from handshake.
+    /// @param yield   Boost.Asio stackful coroutine context.
+    [[nodiscard]] Result<void>
+    exchange_hello(ByteView aes_key, ByteView mac_key, boost::asio::yield_context yield) noexcept;
 
 
     HandshakeConfig config_;

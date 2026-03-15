@@ -73,7 +73,7 @@ VoidResult discv5_crawler::start() noexcept
         }
     }
 
-    return rlp::outcome::success();
+    return outcome::success();
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +86,7 @@ VoidResult discv5_crawler::stop() noexcept
     {
         return discv5Error::kCrawlerNotRunning;
     }
-    return rlp::outcome::success();
+    return outcome::success();
 }
 
 // ---------------------------------------------------------------------------
