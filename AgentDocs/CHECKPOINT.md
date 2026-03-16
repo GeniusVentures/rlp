@@ -134,7 +134,7 @@ Follow the **actual go-ethereum discv4 ENR flow** and debug the live path end-to
 4. Verify whether live ENR responses contain an `eth` entry and what fork hash they advertise.
 5. Only after that, adjust the live filter/hash or sequencing with the smallest possible change.
 
----
+Follow the **actual go-ethereum discv4 ENR flow** and debug the live path end-to-end.
 
 ## New Chat Handoff Prompt
 
@@ -173,8 +173,26 @@ Relevant project files:
 - test/discv4/enr_enrichment_test.cpp
 - test/discv4/dial_filter_test.cpp
 ```
+### Reference files
+- `go-ethereum/p2p/discover/v4_udp.go`
+  - `RequestENR`
+  - `ensureBond`
+  - `Resolve`
+- `go-ethereum/eth/protocols/eth/discovery.go`
+  - `NewNodeFilter`
+
+### What the next chat should do
+1. Compare `src/discv4/discv4_client.cpp` against go-ethereum’s `RequestENR` flow.
+2. Trace the live path to determine why `DiscoveredPeer.eth_fork_id` is not usable before filtering.
+3. Verify whether ENR requests are actually sent and matched for live peers.
+4. Verify whether live ENR responses contain an `eth` entry and what fork hash they advertise.
+5. Only after that, adjust the live filter/hash or sequencing with the smallest possible change.
 
 ---
+
+## New Chat Handoff Prompt
+
+Use this to start the next chat:
 
 ## Quick Commands For The Next Chat
 
@@ -200,6 +218,39 @@ ninja
 ## discv5 Implementation — Sprint Checkpoint (2026-03-15)
 
 ### What was built
+```text
+We already completed the ENRRequest/ENRResponse implementation in the rlp project.
+
+What is already done:
+- ENRRequest / ENRResponse wire support is implemented and unit-tested.
+- discv4_client now does bond -> request_enr -> ParseEthForkId -> set DiscoveredPeer.eth_fork_id.
+- DialScheduler::filter_fn and make_fork_id_filter() are implemented.
+- examples/discovery/test_discovery.cpp is already wired to use the ENR pre-dial filter.
+
+Latest live result:
+- ./examples/discovery/test_discovery --log-level warn --timeout 60
+- discovered peers: 24733
+- dialed: 0
+- connected (right chain): 0
+
+So the current bug is no longer "missing filter hookup". The filter is rejecting everything because no usable eth_fork_id is reaching the live dial path.
+
+Please compare our current live ENR flow against go-ethereum’s actual flow in:
+- go-ethereum/p2p/discover/v4_udp.go
+- go-ethereum/eth/protocols/eth/discovery.go
+
+Focus only on the minimal next step: find why no usable eth_fork_id reaches the filter in the live path, and fix that with the smallest possible change.
+
+Relevant project files:
+- AgentDocs/CHECKPOINT.md
+- examples/discovery/test_discovery.cpp
+- src/discv4/discv4_client.cpp
+- include/discv4/discv4_client.hpp
+- include/discv4/dial_scheduler.hpp
+- test/discv4/enr_client_test.cpp
+- test/discv4/enr_enrichment_test.cpp
+- test/discv4/dial_filter_test.cpp
+```
 
 A complete parallel `discv5` peer discovery module was added beside the existing `discv4` stack.  All code lives in new directories; no existing discv4 code was modified.
 
@@ -266,6 +317,23 @@ existing DialScheduler / RLPx path (unchanged)
 
 ```
 /tmp/go-ethereum/   (shallow clone for this session)
+=======
+## Quick Commands For The Next Chat
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja
+
+./test/discv4/discv4_enr_request_test
+./test/discv4/discv4_enr_response_test
+./test/discv4/discv4_enr_client_test
+./test/discv4/discv4_enr_enrichment_test
+./test/discv4/discv4_dial_filter_test
+./test/discv4/discv4_client_test
+./test/discv4/discv4_dial_scheduler_test
+
+./examples/discovery/test_discovery --log-level warn --timeout 60
+./examples/discovery/test_discovery --log-level debug --timeout 60
 ```
 
 Key files read:
