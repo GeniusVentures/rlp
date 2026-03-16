@@ -215,44 +215,21 @@ ninja
 
 ---
 
-## discv5 Implementation — Sprint Checkpoint (2026-03-15)
+## discv5 Implementation — Sprint Checkpoint (2026-03-16)
 
-### What was built
-```text
-We already completed the ENRRequest/ENRResponse implementation in the rlp project.
+### Current implementation state
 
-What is already done:
-- ENRRequest / ENRResponse wire support is implemented and unit-tested.
-- discv4_client now does bond -> request_enr -> ParseEthForkId -> set DiscoveredPeer.eth_fork_id.
-- DialScheduler::filter_fn and make_fork_id_filter() are implemented.
-- examples/discovery/test_discovery.cpp is already wired to use the ENR pre-dial filter.
+A parallel `discv5` peer discovery module is present beside the existing `discv4` stack. The current branch reflects the post-merge state with the local build fixes applied.
 
-Latest live result:
-- ./examples/discovery/test_discovery --log-level warn --timeout 60
-- discovered peers: 24733
-- dialed: 0
-- connected (right chain): 0
+Most importantly, the current `discv5` code is now aligned with the project's C++17 rule and with the same Boost stackful coroutine style used by `discv4`:
 
-So the current bug is no longer "missing filter hookup". The filter is rejecting everything because no usable eth_fork_id is reaching the live dial path.
+- `cmake/CommonBuildParameters.cmake` sets `CMAKE_CXX_STANDARD 17`
+- `src/discv5/CMakeLists.txt` uses `cxx_std_17`
+- `src/discv5/CMakeLists.txt` links `Boost::context` and `Boost::coroutine`, matching `src/discv4/CMakeLists.txt`
+- `src/discv5/discv5_client.cpp` uses `boost::asio::spawn(...)` and `boost::asio::yield_context`
+- No `co_await`, `co_return`, `boost::asio::awaitable`, or `co_spawn` remain in the current `discv5` implementation
 
-Please compare our current live ENR flow against go-ethereum’s actual flow in:
-- go-ethereum/p2p/discover/v4_udp.go
-- go-ethereum/eth/protocols/eth/discovery.go
-
-Focus only on the minimal next step: find why no usable eth_fork_id reaches the filter in the live path, and fix that with the smallest possible change.
-
-Relevant project files:
-- AgentDocs/CHECKPOINT.md
-- examples/discovery/test_discovery.cpp
-- src/discv4/discv4_client.cpp
-- include/discv4/discv4_client.hpp
-- include/discv4/dial_scheduler.hpp
-- test/discv4/enr_client_test.cpp
-- test/discv4/enr_enrichment_test.cpp
-- test/discv4/dial_filter_test.cpp
-```
-
-A complete parallel `discv5` peer discovery module was added beside the existing `discv4` stack.  All code lives in new directories; no existing discv4 code was modified.
+This means the earlier native-coroutine description is stale and should not be used as the current mental model for `discv5`.
 
 #### New files
 
@@ -272,6 +249,8 @@ A complete parallel `discv5` peer discovery module was added beside the existing
 | `test/discv5/discv5_bootnodes_test.cpp` | Bootnode source and chain registry tests |
 | `test/discv5/discv5_crawler_test.cpp` | Deterministic crawler state machine tests |
 | `test/discv5/CMakeLists.txt` | Test executables |
+| `examples/discv5_crawl/discv5_crawl.cpp` | C++ live example / functional-harness entry point for discv5 |
+| `examples/discv5_crawl/CMakeLists.txt` | Example target wiring |
 
 #### Supported chains (bootnode registry)
 
@@ -296,44 +275,77 @@ ValidatedPeer (= discovery::ValidatedPeer)
 existing DialScheduler / RLPx path (unchanged)
 ```
 
+### What is verified today
+
+- ENR URI parsing, base64url decoding, and signature verification are covered by `test/discv5/discv5_enr_test.cpp`
+- Per-chain bootnode registry wiring is covered by `test/discv5/discv5_bootnodes_test.cpp`
+- Crawler queue / dedup / lifecycle state is covered by `test/discv5/discv5_crawler_test.cpp`
+- `examples/CMakeLists.txt` includes `examples/discv5_crawl/`, so the live discv5 example target is part of the examples build
+- `examples/discv5_crawl/discv5_crawl.cpp` is the current C++ entry point intended for functional testing of the live discv5 path
+- `examples/discovery/test_enr_survey.cpp` is the closest existing example of the intended functional-test shape for a live discovery diagnostic binary
+
+### What is not working yet for functional testing
+
+`examples/discv5_crawl/discv5_crawl.cpp` exists and starts the client, but it is not yet a complete functional discovery test in the way `examples/discovery/test_enr_survey.cpp` is for discv4 diagnostics.
+
+The current gaps, verified from the actual source, are:
+
+1. `src/discv5/discv5_client.cpp::handle_packet()` only logs receipt of packets; it does not yet decode WHOAREYOU, handshake, or NODES messages.
+2. `src/discv5/discv5_client.cpp::send_findnode()` currently sends a minimal plaintext FINDNODE datagram, but discv5 needs the real session / handshake path before live peers will treat it as a valid query.
+3. `src/discv5/discv5_crawler.cpp::emit_peer()` exists, but the current client receive path does not yet decode incoming peer records and feed them back into the crawler emission path.
+4. Because of the above, `examples/discv5_crawl/discv5_crawl.cpp` is currently a live harness / smoke entry point, not yet a full end-to-end functional discovery test.
+
 ### Design rules applied
 
 - **M012**: No bare integer literals — every value has a named `constexpr`.
 - **M014**: All wire sizes derived from `sizeof(WireStruct)` — see `StaticHeaderWire`, `IPv4Wire`, `IPv6Wire`, etc.
 - **M011**: No `if/else` string dispatch — used `switch(ChainId)` and `unordered_map<uint64_t, ChainId>`.
-- **M013**: `co_spawn(io, []() -> awaitable<void> { … }, detached)` wrapping pattern.
+- **M019**: Async flow is written with Boost stackful coroutines (`spawn` + `yield_context`) for C++17 compatibility, matching the project rule and the `discv4` pattern.
 - **M018**: `spdlog` via `logger_->info/warn/debug` — no `std::cout`.
 - **M015**: All constants inside `namespace discv5`.
 - **M017**: Every public declaration has a Doxygen `///` comment.
 
-### Next steps
+### Next steps for C++ functional testing
 
-1. Implement full WHOAREYOU/HANDSHAKE session layer (AES-GCM key derivation) for encrypted message exchange.
-2. Decode incoming NODES responses and feed peers back into the crawler queue.
-3. Add `examples/discv5_crawl/` live example binary (see task list below).
-4. Wire `discv5_client` into `eth_watch` as an alternative to `discv4_client`.
+Functional testing for discovery in this repo should follow the same pattern already used by the C++ examples under `examples/`, not shell scripts. The closest working reference is `examples/discovery/test_enr_survey.cpp`.
+
+For `discv5`, the next work should focus on making `examples/discv5_crawl/discv5_crawl.cpp` useful as that same kind of C++ functional test harness.
+
+#### Reference pattern to follow
+
+Use `examples/discovery/test_enr_survey.cpp` as the model:
+
+- it is a standalone C++ example target under `examples/`
+- it is wired from the examples CMake tree like the other discovery example binaries
+- it drives the live protocol from inside C++
+- it collects counters and diagnostic results in memory
+- it prints a structured end-of-run report for manual inspection
+- it does not depend on shell wrappers to perform the functional test itself
+
+#### Minimal remaining work for `examples/discv5_crawl/discv5_crawl.cpp`
+
+1. Implement the minimal discv5 WHOAREYOU / handshake path needed for live peers to accept the query flow.
+2. Decode incoming NODES replies in `src/discv5/discv5_client.cpp`.
+3. Convert decoded peer records into `ValidatedPeer` values and feed them into the crawler path.
+4. Wire successful peer emission to the existing `PeerDiscoveredCallback` so the example can observe real discoveries.
+5. Keep the functional test in C++ under `examples/`.
+
+#### Recommended example-style testing shape
+
+Once the packet path above exists, `examples/discv5_crawl/discv5_crawl.cpp` should behave as a functional survey binary similar in spirit to `examples/discovery/test_enr_survey.cpp`:
+
+- start the `discv5_client`
+- seed from `ChainBootnodeRegistry`
+- run for a bounded timeout inside `boost::asio::io_context`
+- count packets received, peers decoded, peers emitted, and failures/timeouts
+- print a final summary from inside C++
+
+That gives the repo a real `discv5` functional test entry point under `examples/` without depending on shell-driven orchestration.
 
 ### go-ethereum reference used
 
 ```
 /tmp/go-ethereum/   (shallow clone for this session)
-=======
-## Quick Commands For The Next Chat
-
-```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
-ninja
-
-./test/discv4/discv4_enr_request_test
-./test/discv4/discv4_enr_response_test
-./test/discv4/discv4_enr_client_test
-./test/discv4/discv4_enr_enrichment_test
-./test/discv4/discv4_dial_filter_test
-./test/discv4/discv4_client_test
-./test/discv4/discv4_dial_scheduler_test
-
-./examples/discovery/test_discovery --log-level warn --timeout 60
-./examples/discovery/test_discovery --log-level debug --timeout 60
 ```
 
 Key files read:
@@ -344,3 +356,37 @@ Key files read:
 - `p2p/discover/v5wire/msg.go` — FINDNODE / NODES message types
 - `p2p/discover/v5wire/encoding.go` — StaticHeader wire layout
 - `params/bootnodes.go` — Real ENR/enode bootnode strings
+
+---
+
+## discv5 Repair Checkpoint (2026-03-16, current build-blocker)
+
+### Current state
+
+- `src/discv5/discv5_client.cpp` is currently build-broken after a large in-progress edit.
+- The file contains literal patch markers (`+`) in source around `parse_handshake_auth(...)` and around `handshake_packet_count()/nodes_packet_count()`.
+- There are container type mismatches in `make_local_enr_record(...)` where `RlpEncoder::MoveBytes()` values (`rlp::Bytes`) are assigned/returned as `std::vector<uint8_t>` without conversion.
+- The failure is localized to `src/discv5/discv5_client.cpp.o`; this must be repaired in place with tiny edits only.
+
+### Known compiler errors (from latest failed build)
+
+- `no viable conversion from 'std::basic_string<unsigned char>' to 'std::vector<uint8_t>'` (around lines ~767 and ~821)
+- `expected expression` and `expected external declaration` caused by stray `+` markers (around lines ~997, ~1011, ~1154)
+
+### Required repair approach (next chat)
+
+1. Edit `src/discv5/discv5_client.cpp` in place; do not rewrite or replace the file.
+2. Remove only stray literal diff markers and duplicate fragment residue.
+3. Fix only the `rlp::Bytes`/`std::vector<uint8_t>` boundaries with explicit conversions.
+4. Rebuild immediately after each small fix until `src/discv5/discv5_client.cpp.o` compiles.
+5. After compile recovers, run current discv5 tests:
+   - `test/discv5/discv5_enr_test`
+   - `test/discv5/discv5_bootnodes_test`
+   - `test/discv5/discv5_crawler_test`
+   - `test/discv5/discv5_client_test`
+
+### Scope guard
+
+- No refactor, rename, architecture changes, or broad cleanup.
+- Keep behavior unchanged except what is required to restore compile/test health.
+

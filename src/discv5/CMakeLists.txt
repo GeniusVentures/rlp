@@ -17,7 +17,9 @@ target_link_libraries(discv5 PUBLIC
         Boost::boost
         Boost::context
         Boost::coroutine
+        OpenSSL::Crypto
         libsecp256k1::secp256k1
+        rlpx
         logger
 )
 
