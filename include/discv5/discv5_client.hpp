@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <boost/asio.hpp>
@@ -112,6 +114,61 @@ public:
     /// @brief Return the local node identifier (64-byte public key).
     [[nodiscard]] const NodeId& local_node_id() const noexcept;
 
+    /// @brief Returns true when the client has been started and not yet stopped.
+    [[nodiscard]] bool is_running() const noexcept;
+
+    /// @brief Return the local UDP port the socket is currently bound to.
+    ///        Useful in tests when bind_port is 0 (ephemeral OS-assigned port).
+    [[nodiscard]] uint16_t bound_port() const noexcept;
+
+    /// @brief Return the number of non-undersized UDP packets accepted by the receive loop.
+    [[nodiscard]] size_t received_packet_count() const noexcept;
+
+    /// @brief Return the number of undersized UDP packets dropped by the receive loop.
+    [[nodiscard]] size_t dropped_undersized_packet_count() const noexcept;
+
+    /// @brief Return the number of FINDNODE send attempts that failed.
+    [[nodiscard]] size_t send_findnode_failure_count() const noexcept;
+
+    /// @brief Return the number of valid WHOAREYOU packets parsed by the receive path.
+    [[nodiscard]] size_t whoareyou_packet_count() const noexcept;
+
+    /// @brief Return the number of successfully decrypted handshake packets.
+    [[nodiscard]] size_t handshake_packet_count() const noexcept;
+
+    /// @brief Return the number of outbound handshake send attempts.
+    [[nodiscard]] size_t outbound_handshake_attempt_count() const noexcept;
+
+    /// @brief Return the number of outbound handshake send attempts that failed.
+    [[nodiscard]] size_t outbound_handshake_failure_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets rejected during auth parsing.
+    [[nodiscard]] size_t inbound_handshake_reject_auth_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets rejected due to missing/mismatched challenge state.
+    [[nodiscard]] size_t inbound_handshake_reject_challenge_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets rejected during ENR/identity validation.
+    [[nodiscard]] size_t inbound_handshake_reject_record_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets rejected during shared-secret/key derivation.
+    [[nodiscard]] size_t inbound_handshake_reject_crypto_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets rejected due to message decrypt failure.
+    [[nodiscard]] size_t inbound_handshake_reject_decrypt_count() const noexcept;
+
+    /// @brief Return the number of inbound handshake packets observed before validation.
+    [[nodiscard]] size_t inbound_handshake_seen_count() const noexcept;
+
+    /// @brief Return the number of inbound MESSAGE packets observed before validation/decrypt.
+    [[nodiscard]] size_t inbound_message_seen_count() const noexcept;
+
+    /// @brief Return the number of inbound MESSAGE packets that failed decrypt with a matching session.
+    [[nodiscard]] size_t inbound_message_decrypt_fail_count() const noexcept;
+
+    /// @brief Return the number of successfully decoded NODES packets.
+    [[nodiscard]] size_t nodes_packet_count() const noexcept;
+
 private:
     // -----------------------------------------------------------------------
     // Internal coroutines
@@ -144,9 +201,60 @@ private:
     /// @param yield   Boost.ASIO stackful coroutine context.
     VoidResult send_findnode(const ValidatedPeer& peer, asio::yield_context yield);
 
+    /// @brief Send a raw UDP packet to a peer endpoint.
+    VoidResult send_packet(
+        const std::vector<uint8_t>& packet,
+        const ValidatedPeer& peer,
+        asio::yield_context yield);
+
+    /// @brief Send a WHOAREYOU challenge in response to a packet from @p sender.
+    VoidResult send_whoareyou(
+        const udp::endpoint& sender,
+        const std::array<uint8_t, kKeccak256Bytes>& remote_node_addr,
+        const std::array<uint8_t, kGcmNonceBytes>& request_nonce,
+        asio::yield_context yield);
+
+    /// @brief Process a decrypted FINDNODE request and send a NODES response.
+    VoidResult handle_findnode_request(
+        const std::vector<uint8_t>& req_id,
+        const udp::endpoint& sender,
+        asio::yield_context yield);
+
+    /// @brief Build the local ENR record used in handshake/NODES responses.
+    Result<std::vector<uint8_t>> build_local_enr() noexcept;
+
     // -----------------------------------------------------------------------
     // Members
     // -----------------------------------------------------------------------
+
+    struct SessionState
+    {
+        std::array<uint8_t, 16U> write_key{};
+        std::array<uint8_t, 16U> read_key{};
+        std::array<uint8_t, kKeccak256Bytes> remote_node_addr{};
+        NodeId remote_node_id{};
+        std::vector<uint8_t> last_req_id{};
+    };
+
+    struct PendingRequest
+    {
+        ValidatedPeer peer{};
+        std::vector<uint8_t> req_id{};
+        std::array<uint8_t, kGcmNonceBytes> request_nonce{};
+        std::vector<uint8_t> challenge_data{};
+        std::array<uint8_t, kWhoareyouIdNonceBytes> id_nonce{};
+        uint64_t record_seq{};
+        bool have_challenge{false};
+    };
+
+    struct ChallengeState
+    {
+        std::array<uint8_t, kKeccak256Bytes> remote_node_addr{};
+        std::vector<uint8_t> challenge_data{};
+        std::array<uint8_t, kGcmNonceBytes> request_nonce{};
+        std::array<uint8_t, kWhoareyouIdNonceBytes> id_nonce{};
+        uint64_t record_seq{};
+    };
 
     asio::io_context& io_context_;
     discv5Config      config_;
@@ -154,7 +262,27 @@ private:
     discv5_crawler    crawler_;
     Logger            logger_ = createLogger("discv5");
 
-    std::atomic<bool> running_{false};
+    std::unordered_map<std::string, SessionState> sessions_;
+    std::unordered_map<std::string, PendingRequest> pending_requests_;
+    std::unordered_map<std::string, ChallengeState> sent_challenges_;
+
+    std::atomic<bool>   running_{false};
+    std::atomic<size_t> received_packets_{0U};
+    std::atomic<size_t> dropped_undersized_packets_{0U};
+    std::atomic<size_t> send_findnode_failures_{0U};
+    std::atomic<size_t> whoareyou_packets_{0U};
+    std::atomic<size_t> handshake_packets_{0U};
+    std::atomic<size_t> outbound_handshake_attempts_{0U};
+    std::atomic<size_t> outbound_handshake_failures_{0U};
+    std::atomic<size_t> inbound_handshake_reject_auth_{0U};
+    std::atomic<size_t> inbound_handshake_reject_challenge_{0U};
+    std::atomic<size_t> inbound_handshake_reject_record_{0U};
+    std::atomic<size_t> inbound_handshake_reject_crypto_{0U};
+    std::atomic<size_t> inbound_handshake_reject_decrypt_{0U};
+    std::atomic<size_t> inbound_handshake_seen_{0U};
+    std::atomic<size_t> inbound_message_seen_{0U};
+    std::atomic<size_t> inbound_message_decrypt_fail_{0U};
+    std::atomic<size_t> nodes_packets_{0U};
 };
 
 } // namespace discv5
