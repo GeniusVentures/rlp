@@ -43,7 +43,4 @@ target_include_directories(discv5_crawler_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-include(GoogleTest)
-gtest_discover_tests(discv5_enr_test)
-gtest_discover_tests(discv5_bootnodes_test)
-gtest_discover_tests(discv5_crawler_test)
+

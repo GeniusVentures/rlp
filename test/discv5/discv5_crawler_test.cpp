@@ -71,23 +71,23 @@ TEST_F(CrawlerTest, StartReturnsSuccess)
     const auto result = crawler_->start();
     ASSERT_TRUE(result.has_value()) << "start() must succeed";
     EXPECT_TRUE(crawler_->is_running());
-    crawler_->stop();
+    (void)crawler_->stop();
 }
 
 /// @test Double-start returns kCrawlerAlreadyRunning.
 TEST_F(CrawlerTest, DoubleStartReturnsAlreadyRunning)
 {
-    crawler_->start();
+    (void)crawler_->start();
     const auto result = crawler_->start();
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), discv5Error::kCrawlerAlreadyRunning);
-    crawler_->stop();
+    (void)crawler_->stop();
 }
 
 /// @test stop() after start returns success.
 TEST_F(CrawlerTest, StopAfterStartSucceeds)
 {
-    crawler_->start();
+    (void)crawler_->start();
     const auto result = crawler_->stop();
     ASSERT_TRUE(result.has_value());
     EXPECT_FALSE(crawler_->is_running());

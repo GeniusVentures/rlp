@@ -15,6 +15,8 @@ target_include_directories(discv5 PUBLIC
 
 target_link_libraries(discv5 PUBLIC
         Boost::boost
+        Boost::context
+        Boost::coroutine
         libsecp256k1::secp256k1
         logger
 )
