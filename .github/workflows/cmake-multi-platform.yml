@@ -362,3 +362,8 @@ jobs:
       - name: Build rlp
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
         run: cmake --build . --config ${{ matrix.build-type }} -j
+
+      - name: Test rlp (non-mobile)
+        if: ${{ matrix.target != 'Android' && matrix.target != 'iOS' }}
+        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+        run: ctest . -C ${{ matrix.build-type }}
