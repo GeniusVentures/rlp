@@ -212,13 +212,13 @@ static void dial_connect_only(
     const auto& keypair = keypair_result.value();
 
     const rlpx::SessionConnectParams params{
-        .remote_host       = vp.peer.ip,
-        .remote_port       = vp.peer.tcp_port,
-        .local_public_key  = keypair.public_key,
-        .local_private_key = keypair.private_key,
-        .peer_public_key   = vp.pubkey,
-        .client_id         = "rlp-test-discv5-connect",
-        .listen_port       = 0
+        vp.peer.ip,
+        vp.peer.tcp_port,
+        keypair.public_key,
+        keypair.private_key,
+        vp.pubkey,
+        "rlp-test-discv5-connect",
+        0
     };
 
     auto session_result = rlpx::RlpxSession::connect(params, yield);
@@ -252,21 +252,21 @@ static void dial_connect_only(
     {
         const eth::Hash256 genesis = sepolia_genesis();
         eth::StatusMessage69 status69{
-            .protocol_version  = 69,
-            .network_id        = kSepoliaNetworkId,
-            .genesis_hash      = genesis,
-            .fork_id           = fork_id,
-            .earliest_block    = 0,
-            .latest_block      = 0,
-            .latest_block_hash = genesis,
+            69,
+            kSepoliaNetworkId,
+            genesis,
+            fork_id,
+            0,
+            0,
+            genesis,
         };
         eth::StatusMessage status = status69;
         auto encoded = eth::protocol::encode_status(status);
         if (encoded)
         {
             (void)session->post_message(rlpx::framing::Message{
-                .id      = static_cast<uint8_t>(kEthOffset + eth::protocol::kStatusMessageId),
-                .payload = std::move(encoded.value())
+                static_cast<uint8_t>(kEthOffset + eth::protocol::kStatusMessageId),
+                std::move(encoded.value())
             });
         }
     }
@@ -298,8 +298,8 @@ static void dial_connect_only(
         }
 
         (void)session->post_message(rlpx::framing::Message{
-            .id = rlpx::kPongMessageId,
-            .payload = std::move(encoded.value())
+            rlpx::kPongMessageId,
+            std::move(encoded.value())
         });
     });
 
