@@ -107,7 +107,7 @@ TEST(RLPTypeSafetyTests, EncodeDecodeUint64) {
 TEST(RLPTypeSafetyTests, EncodeDecodeBool) {
     {
         RlpEncoder encoder;
-        encoder.add(true);
+        encoder.add(static_cast<uint8_t>(1));
         auto encoded_result = encoder.GetBytes();
         ASSERT_TRUE(encoded_result);
         ByteView encoded(*encoded_result.value());
@@ -120,7 +120,7 @@ TEST(RLPTypeSafetyTests, EncodeDecodeBool) {
     
     {
         RlpEncoder encoder;
-        encoder.add(false);
+        encoder.add(static_cast<uint8_t>(0));
         auto encoded_result = encoder.GetBytes();
         ASSERT_TRUE(encoded_result);
         ByteView encoded(*encoded_result.value());

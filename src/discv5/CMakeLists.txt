@@ -14,13 +14,9 @@ target_include_directories(discv5 PUBLIC
 )
 
 target_link_libraries(discv5 PUBLIC
-        Boost::boost
+        rlpx
         Boost::context
         Boost::coroutine
-        OpenSSL::Crypto
-        libsecp256k1::secp256k1
-        rlpx
-        logger
 )
 
 target_compile_features(discv5 PUBLIC cxx_std_17)

@@ -68,10 +68,9 @@ VoidResult MessageStream::send_message(const MessageSendParams& params, asio::yi
             return SessionError::kInvalidMessage;
         }
         
-        FrameEncryptParams frame_params{
-            .frame_data = message_data,
-            .is_first_frame = true
-        };
+        FrameEncryptParams frame_params{};
+        frame_params.frame_data = message_data;
+        frame_params.is_first_frame = true;
         
         auto encrypted_frame_result = cipher_->encrypt_frame(frame_params);
         if ( !encrypted_frame_result ) {
@@ -134,10 +133,9 @@ Result<Message> MessageStream::receive_message(asio::yield_context yield) noexce
 
 FramingResult<void> MessageStream::send_frame(ByteView frame_data, asio::yield_context yield) noexcept {
     // Encrypt and send frame
-    FrameEncryptParams params{
-        .frame_data = frame_data,
-        .is_first_frame = true
-    };
+    FrameEncryptParams params{};
+    params.frame_data = frame_data;
+    params.is_first_frame = true;
         
         auto encrypted_result = cipher_->encrypt_frame(params);
         if ( !encrypted_result ) {

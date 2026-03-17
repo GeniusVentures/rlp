@@ -17,8 +17,20 @@ PacketResult PacketFactory::SendPingAndWait(
     const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
     const std::string& toIp, uint16_t tUdp, uint16_t tTcp,
     const std::vector<uint8_t>& privKeyHex,
-    SendCallback callback )
+    SendCallback callback,
+    uint16_t* boundPort )
 {
+    // Create socket
+    udp::socket socket( io, udp::v4() );
+    socket.set_option( udp::socket::reuse_address( true ) );
+    socket.bind( udp::endpoint( boost::asio::ip::address_v4::any(), 0 ) );
+
+    const auto localPort = socket.local_endpoint().port();
+    if ( boundPort != nullptr )
+    {
+        *boundPort = localPort;
+    }
+    std::cout << "SendPingAndWait bound local UDP port: " << localPort << "\n";
 
     auto ping = std::make_unique<discv4_ping>( fromIp, fUdp, fTcp, toIp, tUdp, tTcp );
 
@@ -28,11 +40,6 @@ PacketResult PacketFactory::SendPingAndWait(
     {
         return outcome::failure( signResult.error() );
     }
-
-    // Create socket
-    udp::socket socket( io, udp::v4() );
-    socket.set_option( udp::socket::reuse_address( true ) );
-    socket.bind( udp::endpoint( boost::asio::ip::address_v4::any(), 53093 ) );
 
     // Send
     udp::endpoint target( boost::asio::ip::address_v4::from_string( toIp ), tUdp );

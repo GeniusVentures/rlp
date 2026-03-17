@@ -213,6 +213,7 @@ protected:
     void TearDown() override {
         if (client_) {
             client_->stop();
+            client_.reset();
         }
     }
 
@@ -502,6 +503,7 @@ protected:
     void TearDown() override {
         if (client_) {
             client_->stop();
+            client_.reset();
         }
     }
 

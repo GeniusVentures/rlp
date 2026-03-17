@@ -147,7 +147,13 @@ TEST_F(EthProtocolTest, StatusMessageMultipleNetworks) {
         std::cout << "  → Testing " << network.name << " (network_id=" << network.network_id << ")\n";
 
         eth::StatusMessage69 msg69{};
+        msg69.protocol_version = 69;
         msg69.network_id = network.network_id;
+        msg69.genesis_hash = {};
+        msg69.fork_id = {};
+        msg69.earliest_block = 0;
+        msg69.latest_block = 0;
+        msg69.latest_block_hash = {};
         eth::StatusMessage msg{msg69};
 
         auto encoded = eth::protocol::encode_status(msg);

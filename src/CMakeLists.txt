@@ -28,10 +28,17 @@ target_include_directories(rlp PUBLIC
         ${crypto3_INCLUDE_DIR}
 )
 
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)
+
 # Link public dependencies
 target_link_libraries(rlp PUBLIC
         Boost::boost
         libsecp256k1::secp256k1
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        Microsoft.GSL::GSL
+        Snappy::snappy
+        logger
 )
 
 # Ensure C++17 standard
@@ -67,8 +74,6 @@ install(DIRECTORY
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/eth
         FILES_MATCHING PATTERN "*.hpp"
 )
-
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)
 
 # Add RLPx subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx)

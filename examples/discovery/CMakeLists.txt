@@ -10,11 +10,7 @@ include_directories(
 
 target_link_libraries(test_discovery
     PRIVATE
-    rlpx
-    rlp
     discv4
-    logger
-    Boost::boost
     Boost::json
 )
 
@@ -37,22 +33,14 @@ add_executable(test_discv5_connect
 
 target_link_libraries(test_enr_survey
     PRIVATE
-    rlpx
-    rlp
     discv4
-    logger
     Boost::boost
     Boost::json
 )
 
 target_link_libraries(test_discv5_connect
-    PRIVATE
-    rlpx
-    rlp
-    discv4
+    PUBLIC
     discv5
-    logger
-    Boost::boost
     Boost::json
 )
 

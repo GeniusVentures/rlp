@@ -76,6 +76,7 @@ Your default mode is “tiny, surgical insertion into existing code”.
 - Always make sure to only use C++17 features and below.
   - For instance boost::coroutines only work in C++20, do NOT use it. 
   - Make sure not to use other C++ versions' features above C++17
+  - Do NOT use designated initializers (for example, `{.field = value}`); they require C++20 and break MSVC C++17 builds (`C7555`).
 
 ## Build Commands
 

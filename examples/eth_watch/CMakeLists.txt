@@ -11,12 +11,8 @@ include_directories(
 )
 
 target_link_libraries(eth_watch
-    PRIVATE
-    rlpx
-    rlp
+    PUBLIC
     discv4
-    logger
-    Boost::boost
     Boost::json
 )
 
