@@ -46,7 +46,8 @@ public:
         const std::string& fromIp, uint16_t fUdp, uint16_t fTcp,
         const std::string& toIp, uint16_t tUdp, uint16_t tTcp,
         const std::vector<uint8_t>& privKeyHex,
-        SendCallback callback );
+        SendCallback callback,
+        uint16_t* boundPort = nullptr );
 
 private:
     static PacketResult SignAndBuildPacket(

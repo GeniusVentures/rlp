@@ -257,6 +257,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
     asio::io_context io;
     bool pong_received = false;
     bool parsing_successful = false;
+    uint16_t bound_port = 0;
     
     auto callback = [&](const std::vector<uint8_t>& data, const udp::endpoint& endpoint) {
         pong_received = true;
@@ -270,11 +271,10 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
             parsing_successful = true;
             const auto& pong = parse_result.value();
             
-            // Validate PONG structure - the server echoes back the client's actual port
-            // The client binds to port 53093, so that's what should be in the PONG
-            EXPECT_EQ(pong.toEndpoint.udpPort, 53093) 
+            // Validate PONG structure - the server echoes back the client's actual port.
+            EXPECT_EQ(pong.toEndpoint.udpPort, bound_port) 
                 << "PONG should contain the client's actual UDP port";
-            EXPECT_EQ(pong.toEndpoint.tcpPort, 53093)
+            EXPECT_EQ(pong.toEndpoint.tcpPort, bound_port)
                 << "PONG should contain the client's actual TCP port";
 
             // Validate IP address is localhost
@@ -305,8 +305,11 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
         "127.0.0.1", 30303, 30303,  // From address
         "127.0.0.1", mock_port, mock_port,  // To address (mock server)
         priv_key,
-        callback
+        callback,
+        &bound_port
     );
+
+    std::cout << "PingPongLocalExchange using local UDP port: " << bound_port << std::endl;
 
     ASSERT_TRUE(send_result.has_value()) << "SendPingAndWait failed";
     

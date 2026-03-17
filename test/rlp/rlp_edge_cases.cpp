@@ -114,7 +114,7 @@ TEST(RlpEdgeCases, TemplateSequentialInList) {
     encoder.add(static_cast<uint16_t>(1337));
     encoder.add(static_cast<uint32_t>(0xDEADBEEF));
     encoder.add(true);
-    encoder.add(false);
+    encoder.add(static_cast<uint8_t>(0));
     encoder.EndList();
     auto encoded_result = encoder.MoveBytes(); 
     ASSERT_TRUE(encoded_result); 

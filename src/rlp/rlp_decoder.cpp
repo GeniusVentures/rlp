@@ -15,7 +15,10 @@ namespace { // Anonymous namespace for internal helpers
         return DecodingError::kInputTooShort;
     }
 
-    Header h{.list = false, .payload_size_bytes = 0, .header_size_bytes = 0};
+    Header h{};
+    h.list = false;
+    h.payload_size_bytes = 0;
+    h.header_size_bytes = 0;
     const uint8_t b{v[0]};
     const size_t input_len = v.length();
 
