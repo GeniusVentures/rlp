@@ -43,7 +43,13 @@ protected:
     template<typename T>
     T random_integer() {
         static_assert(std::is_integral<T>::value, "T must be integral type");
-        std::uniform_int_distribution<long long> dist(static_cast<long long>(std::numeric_limits<T>::min()), static_cast<long long>(std::numeric_limits<T>::max()));
+        using DistributionType = std::conditional_t<
+            std::is_signed<T>::value,
+            std::conditional_t<(sizeof(T) < sizeof(int)), int, T>,
+            std::conditional_t<(sizeof(T) < sizeof(unsigned int)), unsigned int, T>>;
+        std::uniform_int_distribution<DistributionType> dist(
+            static_cast<DistributionType>(std::numeric_limits<T>::min()),
+            static_cast<DistributionType>(std::numeric_limits<T>::max()));
         return static_cast<T>(dist(rng_));
     }
     
