@@ -366,4 +366,4 @@ jobs:
       - name: Test rlp (non-mobile)
         if: ${{ matrix.target != 'Android' && matrix.target != 'iOS' }}
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
-        run: ctest . -C ${{ matrix.build-type }}
+        run: ctest . -C ${{ matrix.build-type }} --output-on-failure -V
