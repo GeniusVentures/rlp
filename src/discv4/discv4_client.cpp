@@ -28,7 +28,23 @@ static constexpr size_t  kUncompressedPubKey = kUncompressedPubKeySize;
 discv4_client::discv4_client(asio::io_context& io_context, const discv4Config& config)
     : io_context_(io_context)
     , config_(config)
-    , socket_(io_context, udp::endpoint(udp::v4(), config.bind_port)) {
+    , socket_(io_context) {
+    boost::system::error_code ec;
+    const auto bind_address = asio::ip::make_address(config_.bind_ip, ec);
+    if (ec) {
+        throw std::runtime_error("Invalid bind_ip: " + config_.bind_ip + " (" + ec.message() + ")");
+    }
+
+    socket_.open(bind_address.is_v4() ? udp::v4() : udp::v6(), ec);
+    if (ec) {
+        throw std::runtime_error("Failed to open UDP socket: " + ec.message());
+    }
+
+    socket_.bind(udp::endpoint(bind_address, config_.bind_port), ec);
+    if (ec) {
+        throw std::runtime_error("Failed to bind UDP socket to " + config_.bind_ip + ":" +
+                                 std::to_string(config_.bind_port) + " (" + ec.message() + ")");
+    }
 }
 
 discv4_client::~discv4_client() {
