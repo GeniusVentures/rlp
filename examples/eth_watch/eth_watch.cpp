@@ -37,6 +37,11 @@
 
 namespace {
 
+enum class DiscoveryMode {
+    kDiscv4,
+    kDiscv5,
+};
+
 struct Config {
     std::string host;
     uint16_t port = 0;
@@ -49,6 +54,7 @@ struct Config {
     eth::ForkId  fork_id{};   ///< EIP-2124 fork identifier; set per chain
     // Discovery — set when --chain is used; empty when explicit host/port/pubkey given
     std::vector<std::string> bootnode_enodes;
+    DiscoveryMode discovery_mode = DiscoveryMode::kDiscv4;
 };
 
 std::optional<uint8_t> hex_to_nibble(char c) {
@@ -216,6 +222,7 @@ void print_usage(const char* exe) {
     std::cout << "Usage:\n"
               << "  " << exe << " <host> <port> <peer_pubkey_hex> [eth_offset]\n"
               << "  " << exe << " --chain <chain_name>\n"
+              << "  " << exe << " --chain <chain_name> --discovery-mode <discv4|discv5>\n"
               << "\nOptional watch flags (repeatable, must follow connection args):\n"
               << "  --watch-contract <0x20byteHex>   Contract address to filter (omit for any)\n"
               << "  --watch-event    <signature>      Event signature, e.g. Transfer(address,address,uint256)\n"
@@ -685,6 +692,21 @@ int main(int argc, char** argv) {
                     return 1;
                 }
                 next_arg += 2;
+            } else if (arg == "--discovery-mode") {
+                if (next_arg + 1 >= argc) {
+                    std::cout << "--discovery-mode requires a value (discv4|discv5).\n";
+                    return 1;
+                }
+                const std::string_view mode(argv[next_arg + 1]);
+                if (mode == "discv4") {
+                    config->discovery_mode = DiscoveryMode::kDiscv4;
+                } else if (mode == "discv5") {
+                    config->discovery_mode = DiscoveryMode::kDiscv5;
+                } else {
+                    std::cout << "Unknown discovery mode: " << mode << "\n";
+                    return 1;
+                }
+                next_arg += 2;
             } else {
                 std::cout << "Unknown argument: " << arg << "\n";
                 print_usage(argv[0]);
@@ -704,6 +726,12 @@ int main(int argc, char** argv) {
 
         if (!config->bootnode_enodes.empty())
         {
+            if (config->discovery_mode == DiscoveryMode::kDiscv5)
+            {
+                std::cout << "--discovery-mode discv5 is not wired in eth_watch yet; use discv4 for now.\n";
+                return 1;
+            }
+
             // --chain mode: use discv4 to find a real full node, then connect via RLPx
             auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
             if (!keypair_result)

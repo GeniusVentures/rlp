@@ -43,4 +43,18 @@ target_include_directories(discv5_crawler_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+add_executable(discv5_client_test
+    ${CMAKE_CURRENT_LIST_DIR}/discv5_client_test.cpp
+)
+
+target_link_libraries(discv5_client_test PRIVATE
+    discv5
+    rlp
+    GTest::gtest_main
+)
+
+target_include_directories(discv5_client_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 

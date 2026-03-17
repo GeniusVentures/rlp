@@ -29,6 +29,21 @@ namespace {
         return log;
     }
 
+    constexpr size_t kMaxEip8HandshakePacketSize = 2048U;
+
+    std::string pubkey_hex(gsl::span<const uint8_t, kPublicKeySize> pubkey)
+    {
+        static constexpr char kHex[] = "0123456789abcdef";
+        std::string out;
+        out.reserve(kPublicKeySize * 2U);
+        for (uint8_t b : pubkey)
+        {
+            out.push_back(kHex[(b >> 4U) & 0x0FU]);
+            out.push_back(kHex[b & 0x0FU]);
+        }
+        return out;
+    }
+
 // Create auth message (initiator -> responder)
 // Format: 2-byte-len-prefix || ECIES(RLP(authMsgV4) || random_padding)
 // Matches go-ethereum sealEIP8 / makeAuthMsg exactly.
@@ -131,13 +146,14 @@ AuthResult<ByteBuffer> create_auth_message(
 // Parse auth message (responder)
 AuthResult<AuthKeyMaterial> parse_auth_message(
     ByteView encrypted_auth,
-    gsl::span<const uint8_t, kPrivateKeySize> local_private_key
+    gsl::span<const uint8_t, kPrivateKeySize> local_private_key,
+    ByteView shared_mac_data
 ) noexcept {
     // Decrypt with ECIES
     EciesDecryptParams params{
         .ciphertext = encrypted_auth,
         .recipient_private_key = local_private_key,
-        .shared_mac_data = {}
+        .shared_mac_data = shared_mac_data
     };
 
     auto auth_body_result = EciesCipher::decrypt(params);
@@ -267,6 +283,12 @@ AuthHandshake::AuthHandshake(const HandshakeConfig& config,
 
 // Note: Uses Boost.Asio stackful coroutines (yield_context) for socket I/O — C++17 compatible.
 Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexcept {
+    const std::string remote_addr = transport_.remote_address();
+    const uint16_t remote_port = transport_.remote_port();
+    const std::string remote_pubkey_hex = config_.peer_public_key.has_value()
+        ? pubkey_hex(config_.peer_public_key.value())
+        : std::string{};
+
     // Generate ephemeral keypair
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if ( !keypair_result ) {
@@ -331,12 +353,24 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
         // EIP-8 ack wire: 2-byte len(ack_ciphertext) || ack_ciphertext
         auto len_result = transport_.read_exact(sizeof(uint16_t), yield);
         if ( !len_result ) {
-            auth_log()->debug("execute: read_exact(ack length prefix) failed");
+            auth_log()->debug("execute: peer {}:{} pubkey={} read_exact(ack length prefix) failed",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex);
             return SessionError::kAuthenticationFailed;
         }
         const auto& len_bytes   = len_result.value();
         const size_t ack_body_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                                   |  static_cast<size_t>(len_bytes[1]);
+        if (ack_body_len > kMaxEip8HandshakePacketSize) {
+            auth_log()->debug("execute: peer {}:{} pubkey={} ack length {} exceeds EIP-8 max {}",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex,
+                              ack_body_len,
+                              kMaxEip8HandshakePacketSize);
+            return SessionError::kAuthenticationFailed;
+        }
         auth_log()->debug("execute: ack length prefix received, ack_body_len={}", ack_body_len);
 
         auto ack_result = transport_.read_exact(ack_body_len, yield);
@@ -382,6 +416,15 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
         const auto& len_bytes = len_result.value();
         const size_t auth_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                               |  static_cast<size_t>(len_bytes[1]);
+        if (auth_len > kMaxEip8HandshakePacketSize) {
+            auth_log()->debug("execute: peer {}:{} pubkey={} auth length {} exceeds EIP-8 max {}",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex,
+                              auth_len,
+                              kMaxEip8HandshakePacketSize);
+            return SessionError::kAuthenticationFailed;
+        }
 
         auto auth_result = transport_.read_exact(auth_len, yield);
         if ( !auth_result ) {
@@ -390,7 +433,8 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
 
         auto parse_result = parse_auth_message(
             ByteView(auth_result.value().data(), auth_result.value().size()),
-            config_.local_private_key);
+            config_.local_private_key,
+            len_bytes);
         if ( !parse_result ) {
             return SessionError::kAuthenticationFailed;
         }

@@ -390,3 +390,170 @@ Key files read:
 - No refactor, rename, architecture changes, or broad cleanup.
 - Keep behavior unchanged except what is required to restore compile/test health.
 
+---
+
+## discv5 Functional Checkpoint (2026-03-16, post-repair)
+
+### Current state
+
+- The previous `src/discv5/discv5_client.cpp` build breakage is resolved.
+- `discv5_client` and `discv5_crawl` now build and run in `build/OSX/Debug`.
+- `test/discv5/discv5_client_test` is green after the in-place repairs and test expectation alignment.
+- The `discv5_crawl` live harness now reaches callback peer emissions from decoded `NODES` responses.
+
+### Key technical fix that unlocked live discovery
+
+- Outbound encrypted packet construction had an AAD/header mismatch bug:
+  - code previously encoded a header to produce AAD,
+  - encrypted against that AAD,
+  - then re-encoded a new header before send.
+- This was fixed by appending ciphertext to the originally encoded header packet (same AAD/header bytes), without re-encoding.
+- The fix was applied in:
+  - session `FINDNODE` message send path,
+  - handshake send path,
+  - `NODES` response send path.
+
+### Additional parity/diagnostic updates applied
+
+- `discv5` target links `rlpx` (required for `rlpx::crypto::Ecdh::generate_ephemeral_keypair()`).
+- `WHOAREYOU` `record_seq` is now sent as `0`.
+- Handshake ENR attachment is conditional on remote `record_seq` state.
+- `discv5_crawl` now initializes local discv5 keypair (`cfg.private_key` / `cfg.public_key`) before start.
+- Detailed handshake/message diagnostics are now gated behind `--log-level trace`.
+- Per-peer discovery callback logs in `discv5_crawl` are reduced from `info` to `debug`.
+
+### Latest observed functional outcome
+
+- `discv5_crawl --chain ethereum --timeout 3 --log-level info` shows:
+  - non-zero `callback discoveries`,
+  - non-zero `nodes packets`,
+  - `run status: callback_emissions_seen`.
+
+This confirms the current discv5 harness performs real live discovery and peer emission.
+
+### Next steps
+
+1. Add/extend a Sepolia functional connect harness that uses `discv5` discovery and proves at least 3 right-chain connections.
+2. Keep `eth_watch` unchanged until the Sepolia connect milestone is stable.
+3. After that, add an opt-in discv5 discovery mode to `examples/eth_watch/eth_watch.cpp` and validate event flow with a sent transaction.
+
+---
+
+## discv5 Sepolia Connect Checkpoint (2026-03-17)
+
+### Commands run and observed outcomes
+
+1. Pure callback mode, no fork filter:
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja test_discv5_connect
+./examples/discovery/test_discv5_connect --timeout 20 --connections 1 --log-level debug --seeded off --require-fork off --enqueue-bootstrap-candidates off
+```
+
+Observed result:
+
+- `dialed: 73`
+- `connect failed: 69`
+- `connected (discv5): 0`
+- `filtered bad peers: 11`
+- `candidates seen: 84`
+- `discovered peers: 73`
+
+The failures were almost entirely pre-ETH and happened during RLPx auth / ack reception:
+
+- `read_exact(ack length prefix) failed`
+- `ack length 4911 exceeds EIP-8 max 2048`
+
+2. Fork-filtered mode:
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja test_discv5_connect
+./examples/discovery/test_discv5_connect --timeout 20 --connections 1 --log-level debug --seeded off --require-fork on --enqueue-bootstrap-candidates off
+```
+
+Observed result:
+
+- `dialed: 0`
+- `connect failed: 0`
+- `candidates seen: 0`
+- `discovered peers: 0`
+
+This confirms the `--require-fork on` failure is upstream of dialing.
+
+### Verified Sepolia fork-hash status
+
+- `examples/chains.json` contains `"sepolia": "268956b6"`.
+- `examples/chain_config.hpp` loads this value from `chains.json` and falls back only if the file/key is missing.
+- `examples/discovery/test_discv5_connect.cpp` uses fallback `{ 0x26, 0x89, 0x56, 0xb6 }`.
+- `AgentDocs/SEPOLIA_TEST_PARAMS.md` documents current Sepolia fork hash as `26 89 56 b6`.
+
+Live confirmation from the existing ENR survey harness:
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+ninja test_enr_survey
+./examples/discovery/test_enr_survey --timeout 20 --log-level info
+```
+
+Observed result:
+
+- `Peers WITH eth_fork_id: 522`
+- Sepolia expected hash `26 89 56 b6` was present in live ENR data
+
+Conclusion: the current Sepolia fork hash used by the harness is correct.
+
+### Current discv5-specific failure identified
+
+The current `discv5` path is discovering peers, but the discovered callback path is not surfacing `eth_fork_id`.
+
+Verified with:
+
+```bash
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
+./examples/discv5_crawl/discv5_crawl --chain sepolia --timeout 20 --log-level debug
+```
+
+Observed result:
+
+- `callback discoveries   : 84`
+- `discovered  : 84`
+- `wrong_chain : 0`
+- `no_eth_entry: 0`
+- every debug discovery line printed `eth_fork=no`
+
+Example lines from the run:
+
+- `Discovered peer 1  150.241.96.23:9222  eth_fork=no`
+- `Discovered peer 2  65.21.79.59:13000  eth_fork=no`
+- `Discovered peer 53  138.68.123.152:30303  eth_fork=no`
+
+This means:
+
+1. the current Sepolia fork hash is not the reason `--require-fork on` yields zero peers,
+2. the current `discv5` connect path is effectively filtering on missing fork metadata,
+3. the next bug is why the current `discv5` discovery path produces peers with no `eth_fork_id`, even though the discv4 ENR survey proves Sepolia `eth` entries do exist live.
+
+### devp2p cross-checks from failing tuples
+
+The exact failing tuples from `test_discv5_connect` were checked with workspace `go-ethereum` `devp2p rlpx ping`.
+
+Observed examples:
+
+- `65.21.79.59:13000` → `message too big`
+- `185.159.108.216:4001` → `message too big`
+- `150.241.96.23:9222` → `connection reset by peer`
+
+This confirms that at least some pure-mode failing tuples are genuinely bad RLPx targets as dialed, not uniquely rejected by the local client.
+
+### Next step for the next chat
+
+Do not chase the Sepolia fork hash any further.
+
+Focus on the actual current gap:
+
+1. trace why the `discv5` discovered peers all show `eth_fork=no`,
+2. determine whether the incoming discv5 ENRs truly lack the `eth` entry or whether `discv5` ENR decoding is not surfacing it,
+3. only after that, revisit fork-filtered dialing.
+

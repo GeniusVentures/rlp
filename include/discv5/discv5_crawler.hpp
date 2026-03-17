@@ -124,6 +124,14 @@ public:
     /// @param peers  Peers to consider as FINDNODE candidates.
     void process_found_peers(const std::vector<ValidatedPeer>& peers) noexcept;
 
+    /// @brief Accept peers decoded from a live NODES response.
+    ///
+    /// Queues new peers for further crawling and also forwards them through
+    /// the normal discovered-peer callback path.
+    ///
+    /// @param peers  Peers decoded from a live response packet.
+    void ingest_discovered_peers(const std::vector<ValidatedPeer>& peers) noexcept;
+
     /// @brief Return a snapshot of current activity counters (thread-safe).
     [[nodiscard]] CrawlerStats stats() const noexcept;
 

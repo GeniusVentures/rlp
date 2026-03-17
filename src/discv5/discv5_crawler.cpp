@@ -127,6 +127,45 @@ void discv5_crawler::process_found_peers(const std::vector<ValidatedPeer>& peers
 }
 
 // ---------------------------------------------------------------------------
+// ingest_discovered_peers
+// ---------------------------------------------------------------------------
+
+void discv5_crawler::ingest_discovered_peers(const std::vector<ValidatedPeer>& peers) noexcept
+{
+    for (const auto& peer : peers)
+    {
+        bool already_discovered = false;
+        bool already_queued = false;
+
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            const std::string key = node_key(peer.node_id);
+            already_discovered = (discovered_ids_.count(key) != 0U);
+
+            already_queued = std::any_of(
+                queued_peers_.begin(), queued_peers_.end(),
+                [&key](const ValidatedPeer& qp)
+                {
+                    return node_key(qp.node_id) == key;
+                });
+
+            if (!already_discovered && !already_queued)
+            {
+                queued_peers_.push_back(peer);
+            }
+        }
+
+        if (already_discovered)
+        {
+            ++stat_duplicates_;
+            continue;
+        }
+
+        emit_peer(peer);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // stats
 // ---------------------------------------------------------------------------
 

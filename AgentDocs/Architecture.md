@@ -379,7 +379,7 @@ src/discv5/
   discv5_enr.cpp              — base64url, RLP, secp256k1 signature verify
   discv5_bootnodes.cpp        — per-chain seed lists (Ethereum/Polygon/BSC/Base)
   discv5_crawler.cpp          — enqueue/dedup/emit
-  discv5_client.cpp           — co_spawn receive + crawler loops, FINDNODE send
+  discv5_client.cpp           — Boost.Asio spawn/yield_context receive + crawler loops, FINDNODE send
   CMakeLists.txt
 
 test/discv5/
@@ -389,9 +389,17 @@ test/discv5/
   CMakeLists.txt
 
 examples/discv5_crawl/
-  discv5_crawl.cpp            — live example binary
+  discv5_crawl.cpp            — live C++ example / functional test harness entry point
   CMakeLists.txt
 ```
+
+### Functional testing note
+
+Discovery functional testing in this repository is done through C++ example programs under `examples/`, not shell wrappers.
+
+The working discv4 reference pattern is `examples/discovery/test_enr_survey.cpp`: a standalone C++ example that drives a bounded live run, gathers counters in memory, and prints a structured report at the end.
+
+`examples/discv5_crawl/discv5_crawl.cpp` should be treated as the corresponding discv5 functional-testing entry point. At the current checkpoint it is still a partial live harness because the packet receive path does not yet decode the full discv5 WHOAREYOU / handshake / NODES flow. Once that path is implemented, this example should provide the same kind of end-of-run C++ diagnostic summary as `test_enr_survey.cpp`.
 
 ### Wire-format structs (M014)
 
@@ -424,6 +432,7 @@ All packet-size constants are derived from `sizeof(WireStruct)`, never bare lite
 
 ### Next sprint
 
-1. WHOAREYOU / HANDSHAKE session layer (AES-GCM key derivation).
-2. Decode incoming NODES responses and feed the crawler queue.
-3. Wire discv5_client as an alternative to discv4_client inside eth_watch.
+1. Implement the minimal WHOAREYOU / HANDSHAKE session layer required for live discv5 peers to accept queries.
+2. Decode incoming NODES responses and feed decoded peers back into the crawler / callback path.
+3. Make `examples/discv5_crawl/discv5_crawl.cpp` behave like a real example-based functional test, following the same C++ pattern already used by `examples/discovery/test_enr_survey.cpp`: bounded run, in-memory counters, final structured report.
+4. Once the example proves live peer discovery end-to-end, wire `discv5_client` as an alternative to `discv4_client` inside `eth_watch`.

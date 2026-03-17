@@ -1,17 +1,5 @@
 # Quick Commands Reference
 
-## One-Liner Tests
-
-### Sepolia Testnet (Recommended for Testing)
-```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp && ./test_eth_watch.sh sepolia
-```
-
-### Ethereum Mainnet
-```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp && ./test_eth_watch.sh mainnet
-```
-
 ## Manual Steps
 
 ### Step 1: Get a Live Peer

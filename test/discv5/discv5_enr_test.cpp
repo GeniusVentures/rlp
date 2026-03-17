@@ -211,10 +211,10 @@ TEST_F(EnrParserTest, GoEthereumENRToValidatedPeer)
 
 // ---------------------------------------------------------------------------
 // Invalid signature test vector
-// (from go-ethereum parseNodeTests — known bad signature)
+// (from go-ethereum parseNodeTests — malformed short signature field)
 // ---------------------------------------------------------------------------
 
-/// @test ENR with invalid signature returns kEnrSignatureInvalid.
+/// @test ENR with short signature field returns kEnrSignatureWrongSize.
 TEST_F(EnrParserTest, InvalidSignatureVector)
 {
     // From go-ethereum urlv4_test.go: this record has a bad signature.
@@ -224,8 +224,8 @@ TEST_F(EnrParserTest, InvalidSignatureVector)
 
     const auto result = EnrParser::parse(kBadSigEnr);
     ASSERT_FALSE(result.has_value()) << "Expected parse failure for bad signature";
-    EXPECT_EQ(result.error(), discv5Error::kEnrSignatureInvalid)
-        << "Expected kEnrSignatureInvalid, got: " << to_string(result.error());
+    EXPECT_EQ(result.error(), discv5Error::kEnrSignatureWrongSize)
+        << "Expected kEnrSignatureWrongSize, got: " << to_string(result.error());
 }
 
 // ---------------------------------------------------------------------------

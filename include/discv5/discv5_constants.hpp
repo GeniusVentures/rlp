@@ -105,6 +105,9 @@ static constexpr size_t   kGcmNonceBytes         = 12U;
 /// @brief Byte length of the masking IV that precedes the static header.
 static constexpr size_t   kMaskingIvBytes        = 16U;
 
+/// @brief Byte length of the WHOAREYOU id-nonce field.
+static constexpr size_t   kWhoareyouIdNonceBytes = 16U;
+
 /// @brief Minimum valid discv5 packet size (go-ethereum minPacketSize).
 static constexpr size_t   kMinPacketBytes        = 63U;
 
@@ -283,6 +286,18 @@ struct StaticHeaderWire
 
 /// @brief Byte count of the static header (derived from wire struct, NOT a magic literal).
 static constexpr size_t kStaticHeaderBytes = sizeof(StaticHeaderWire);
+
+/// @brief WHOAREYOU auth-data layout: id-nonce + highest ENR sequence.
+#pragma pack(push, 1)
+struct WhoareyouAuthDataWire
+{
+    uint8_t  id_nonce[kWhoareyouIdNonceBytes];  ///< 16-byte identity challenge nonce
+    uint64_t record_seq;                        ///< Highest known ENR sequence (big-endian)
+};
+#pragma pack(pop)
+
+/// @brief Byte count of WHOAREYOU auth data.
+static constexpr size_t kWhoareyouAuthDataBytes = sizeof(WhoareyouAuthDataWire);
 
 /// @brief Total fixed bytes at the front of every discv5 packet:
 ///        masking IV + static header.

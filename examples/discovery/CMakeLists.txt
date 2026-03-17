@@ -31,6 +31,10 @@ add_executable(test_enr_survey
     test_enr_survey.cpp
 )
 
+add_executable(test_discv5_connect
+    test_discv5_connect.cpp
+)
+
 target_link_libraries(test_enr_survey
     PRIVATE
     rlpx
@@ -41,8 +45,20 @@ target_link_libraries(test_enr_survey
     Boost::json
 )
 
+target_link_libraries(test_discv5_connect
+    PRIVATE
+    rlpx
+    rlp
+    discv4
+    discv5
+    logger
+    Boost::boost
+    Boost::json
+)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(test_enr_survey PRIVATE -fno-sanitize=address)
+    target_compile_options(test_discv5_connect PRIVATE -fno-sanitize=address)
 endif()
 
 # Copy chains.json from examples/ alongside both discovery binaries at build time.
@@ -52,5 +68,12 @@ add_custom_command(TARGET test_discovery POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/../chains.json
         $<TARGET_FILE_DIR:test_discovery>/chains.json
     COMMENT "Copying chains.json to discovery binary directory"
+)
+
+add_custom_command(TARGET test_discv5_connect POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/../chains.json
+        $<TARGET_FILE_DIR:test_discv5_connect>/chains.json
+    COMMENT "Copying chains.json to discv5 connect binary directory"
 )
 
