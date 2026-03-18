@@ -38,6 +38,8 @@ target_link_libraries(rlp PUBLIC
         OpenSSL::Crypto
         Microsoft.GSL::GSL
         Snappy::snappy
+        Boost::context
+        Boost::coroutine
         logger
 )
 

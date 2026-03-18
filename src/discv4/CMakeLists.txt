@@ -19,8 +19,6 @@ target_include_directories(discv4 PUBLIC
 # Link public dependencies
 target_link_libraries(discv4 PUBLIC
     rlpx
-    Boost::context
-    Boost::coroutine
 )
 
 # Ensure C++17 standard

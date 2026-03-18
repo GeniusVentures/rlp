@@ -15,8 +15,6 @@ target_include_directories(discv5 PUBLIC
 
 target_link_libraries(discv5 PUBLIC
         rlpx
-        Boost::context
-        Boost::coroutine
 )
 
 target_compile_features(discv5 PUBLIC cxx_std_17)
