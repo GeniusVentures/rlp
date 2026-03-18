@@ -36,7 +36,7 @@
 #include <discv4/bootnodes_test.hpp>
 #include <discv4/discv4_client.hpp>
 #include <rlpx/crypto/ecdh.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 
 #include <spdlog/spdlog.h>
 

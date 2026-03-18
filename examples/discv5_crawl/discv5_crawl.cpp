@@ -44,7 +44,7 @@
 #include <discv5/discv5_bootnodes.hpp>
 #include <discv5/discv5_constants.hpp>
 #include <rlpx/crypto/ecdh.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 
 // ---------------------------------------------------------------------------
 // Helpers

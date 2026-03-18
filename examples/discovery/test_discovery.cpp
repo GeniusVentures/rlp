@@ -45,7 +45,7 @@
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/rlpx_error.hpp>
 #include <rlpx/rlpx_session.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 
 #include <spdlog/spdlog.h>
 

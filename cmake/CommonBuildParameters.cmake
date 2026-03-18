@@ -144,7 +144,8 @@ install(TARGETS ${PROJECT_NAME} EXPORT RLPTargets
 )
 
 install(
-        EXPORT RLPTargets
+        EXPORT rlp
+        FILE rlpTargets.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
         NAMESPACE rlp::
 )
@@ -161,18 +162,18 @@ configure_package_config_file(${PROJECT_ROOT}/cmake/config.cmake.in
 
 # generate the version file for the config file
 write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/RLPConfigVersion.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake"
         VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}"
         COMPATIBILITY AnyNewerVersion
 )
 
 # install the configuration file
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/RLPConfigVersion.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
 )
 
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/RLPConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
 )
