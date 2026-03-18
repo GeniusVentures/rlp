@@ -13,12 +13,13 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 - **Protocol**: Implement discv4 (simpler) or Discv5 (used by some newer chains). Messages include:
   - `PING`/`PONG`: Check peer availability.
   - `FIND_NODE`/`NEIGHBORS`: Query and receive peer lists.
+- **Current repo status**: The maintained implementation uses `Boost.Asio` UDP sockets and endpoint/address abstractions. The older ENet/raw-socket sketch below is historical and should not be used as the implementation model.
 - **C++ Code**:
   ```cpp
-  #include <enet/enet.h> // ENet for UDP networking
+  #include <boost/asio/io_context.hpp>
+  #include <boost/asio/ip/udp.hpp>
   #include <vector>
   #include <string>
-  #include <openssl/sha.h> // For keccak256
 
   struct Node {
       std::string ip;
@@ -28,27 +29,31 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 
   class Discovery {
   public:
-      Discovery() {
-          enet_initialize();
-          host_ = enet_host_create(nullptr, 1, 2, 0, 0); // UDP host
+      Discovery()
+          : socket_(io_, boost::asio::ip::udp::v4())
+      {
       }
-      ~Discovery() { enet_host_destroy(host_); enet_deinitialize(); }
 
       void SendPing(const Node& target) {
           std::vector<uint8_t> packet = EncodePing();
-          ENetAddress addr{inet_addr(target.ip.c_str()), target.port};
-          ENetPeer* peer = enet_host_connect(host_, &addr, 2, 0);
-          ENetPacket* enet_packet = enet_packet_create(packet.data(), packet.size(), ENET_PACKET_FLAG_RELIABLE);
-          enet_peer_send(peer, 0, enet_packet);
+          boost::system::error_code ec;
+          const auto address = boost::asio::ip::make_address(target.ip, ec);
+          if (ec) {
+              return;
+          }
+
+          const boost::asio::ip::udp::endpoint endpoint(address, target.port);
+          socket_.send_to(boost::asio::buffer(packet), endpoint, 0, ec);
       }
 
-      void HandlePacket(ENetEvent& event) {
+      void HandlePacket() {
           // Decode packet (PING, PONG, FIND_NODE, NEIGHBORS)
           // Update peer list if NEIGHBORS received
       }
 
   private:
-      ENetHost* host_;
+      boost::asio::io_context io_;
+      boost::asio::ip::udp::socket socket_;
       std::vector<uint8_t> EncodePing() {
           // RLP-encode PING: [version, from, to, expiration, enr_seq]
           // Return serialized bytes
@@ -57,7 +62,7 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   };
   ```
 - **Notes**:
-  - Use ENet for lightweight UDP networking (C-based, minimal).
+  - Use Boost.Asio for cross-platform UDP networking.
   - RLP-encode messages per DevP2P specs (see below for RLP).
   - Start with chain-specific bootnodes (hardcode from chain docs, e.g., Ethereum’s enodes).
   - Maintain up to `max_active` concurrent dial attempts per chain (default 25 desktop, 3–5 mobile).
@@ -68,22 +73,22 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 #### 2. RLPx Connection (TCP)
 - **Purpose**: Establish secure TCP connections for `eth` subprotocol gossip.
 - **Protocol**: RLPx uses ECIES for handshakes (encryption/auth) and multiplexes subprotocols.
+- **Current repo status**: The maintained transport path is `src/rlpx/socket/socket_transport.cpp`, which already uses Boost.Asio TCP sockets and timeout handling. The raw POSIX sketch below is historical and should not be used as the implementation model.
 - **C++ Code**:
   ```cpp
+  #include <boost/asio/connect.hpp>
+  #include <boost/asio/ip/tcp.hpp>
   #include <openssl/ec.h> // For ECIES
   #include <openssl/evp.h>
-  #include <sys/socket.h>
-  #include <netinet/in.h>
   #include <vector>
 
   class RLPxSession {
   public:
-      RLPxSession(const Node& peer) : peer_(peer) {
-          sock_ = socket(AF_INET, SOCK_STREAM, 0);
-          sockaddr_in addr;
-          addr.sin_addr.s_addr = inet_addr(peer.ip.c_str());
-          addr.sin_port = htons(peer.port);
-          connect(sock_, (sockaddr*)&addr, sizeof(addr));
+      RLPxSession(boost::asio::io_context& io, const Node& peer)
+          : socket_(io), peer_(peer) {
+          boost::asio::ip::tcp::resolver resolver(io);
+          auto endpoints = resolver.resolve(peer.ip, std::to_string(peer.port));
+          boost::asio::connect(socket_, endpoints);
           PerformHandshake();
       }
 
@@ -96,17 +101,17 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 
       void SendHello() {
           std::vector<uint8_t> hello = EncodeHello();
-          send(sock_, hello.data(), hello.size(), 0);
+          boost::asio::write(socket_, boost::asio::buffer(hello));
       }
 
       void ReceiveMessage() {
           std::vector<uint8_t> buffer(1024);
-          int len = recv(sock_, buffer.data(), buffer.size(), 0);
+          const std::size_t len = socket_.read_some(boost::asio::buffer(buffer));
           // Decrypt and decode RLP message (e.g., HELLO, STATUS)
       }
 
   private:
-      int sock_;
+      boost::asio::ip::tcp::socket socket_;
       Node peer_;
       std::vector<uint8_t> EncodeHello() {
           // RLP-encode HELLO: [protocolVersion, clientId, capabilities, port, id]
@@ -328,7 +333,7 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 6. Verify block headers for consensus (canonical chain).
 7. Log/process matched transactions/logs.
 
-This C++ implementation ensures decentralized monitoring of your smart contracts across EVM chains using RLPx and `eth` gossip, with minimal dependencies (ENet, OpenSSL). If you need specific message formats or chain bootnodes, let me know!
+This C++ implementation ensures decentralized monitoring of your smart contracts across EVM chains using Boost.Asio-based discovery/RLPx transport plus OpenSSL-backed crypto. If you need specific message formats or chain bootnodes, let me know!
 
 
 

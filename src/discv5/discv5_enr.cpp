@@ -13,8 +13,10 @@
 
 #include <secp256k1.h>
 
-#include <arpa/inet.h>
+#include <algorithm>
 #include <array>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
 #include <cstring>
 #include <sstream>
 
@@ -451,21 +453,14 @@ Result<std::string> EnrParser::decode_ipv4(const std::vector<uint8_t>& bytes) no
     IPv4Wire ip{};
     std::memcpy(&ip, bytes.data(), sizeof(IPv4Wire));
 
-    uint32_t addr = 0U;
-    addr |= static_cast<uint32_t>(ip.msb) << kIPv4MsbShift;
-    addr |= static_cast<uint32_t>(ip.b1)  << kIPv4Octet1Shift;
-    addr |= static_cast<uint32_t>(ip.b2)  << kIPv4Octet2Shift;
-    addr |= static_cast<uint32_t>(ip.lsb) << kIPv4LsbShift;
+    const boost::asio::ip::address_v4::bytes_type address_bytes{
+        ip.msb,
+        ip.b1,
+        ip.b2,
+        ip.lsb
+    };
 
-    const uint32_t network_order = htonl(addr);
-
-    char buf[INET_ADDRSTRLEN]{};
-    if (inet_ntop(AF_INET, &network_order, buf, sizeof(buf)) == nullptr)
-    {
-        return discv5Error::kEnrInvalidIp;
-    }
-
-    return std::string(buf);
+    return boost::asio::ip::address_v4(address_bytes).to_string();
 }
 
 Result<std::string> EnrParser::decode_ipv6(const std::vector<uint8_t>& bytes) noexcept
@@ -475,17 +470,14 @@ Result<std::string> EnrParser::decode_ipv6(const std::vector<uint8_t>& bytes) no
         return discv5Error::kEnrInvalidIp6;
     }
 
-    // Use IPv6Wire struct: its bytes[] field is passed directly to inet_ntop.
+    // Use IPv6Wire struct and convert it via Boost.Asio.
     IPv6Wire ip6{};
     std::memcpy(ip6.bytes, bytes.data(), sizeof(IPv6Wire));
 
-    char buf[INET6_ADDRSTRLEN]{};
-    if (inet_ntop(AF_INET6, ip6.bytes, buf, sizeof(buf)) == nullptr)
-    {
-        return discv5Error::kEnrInvalidIp6;
-    }
+    boost::asio::ip::address_v6::bytes_type address_bytes{};
+    std::copy(std::begin(ip6.bytes), std::end(ip6.bytes), address_bytes.begin());
 
-    return std::string(buf);
+    return boost::asio::ip::address_v6(address_bytes).to_string();
 }
 
 Result<uint16_t> EnrParser::decode_port(const std::vector<uint8_t>& bytes) noexcept

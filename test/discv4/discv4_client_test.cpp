@@ -8,21 +8,12 @@
 #include <discv4/discv4_client.hpp>
 #include <gtest/gtest.h>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
 #include <atomic>
+#include <array>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/system/error_code.hpp>
 #include <chrono>
 #include <thread>
 
@@ -30,58 +21,22 @@ namespace {
 
 using boost::asio::ip::udp;
 
-#ifdef _WIN32
-using SocketHandle = SOCKET;
-constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
-inline int close_socket(SocketHandle sockfd) { return ::closesocket(sockfd); }
-
-struct WinsockInit {
-    WinsockInit() {
-        WSADATA data{};
-        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
-        EXPECT_EQ(rc, 0) << "WSAStartup() failed";
-    }
-    ~WinsockInit() { ::WSACleanup(); }
-};
-#else
-using SocketHandle = int;
-constexpr SocketHandle kInvalidSocket = -1;
-inline int close_socket(SocketHandle sockfd) { return ::close(sockfd); }
-#endif
-
 /// @brief A minimal UDP listener that records the first datagram it receives.
-///        Uses a plain blocking socket in a background thread — no shared_ptrs
-///        that could race with the test's io_context.
+///        Uses a dedicated Boost.Asio socket so the test stays cross-platform.
 class UdpListener {
 public:
     explicit UdpListener(uint16_t port)
+        : socket_(io_)
     {
-#ifdef _WIN32
-    static WinsockInit winsock_init;
-    (void)winsock_init;
-#endif
+        boost::system::error_code ec;
+        socket_.open(udp::v4(), ec);
+        EXPECT_FALSE(ec) << "open() failed";
 
-        // Bind a UDP socket synchronously so port() is valid immediately.
-        sockfd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-    EXPECT_NE(sockfd_, kInvalidSocket) << "socket() failed";
+        socket_.bind(udp::endpoint(udp::v4(), port), ec);
+        EXPECT_FALSE(ec) << "bind() failed on port " << port;
 
-        struct timeval tv{};
-        tv.tv_sec  = 0;
-        tv.tv_usec = 100000;  // 100 ms receive timeout so the thread can poll running_
-    ::setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO,
-             reinterpret_cast<const char*>(&tv), sizeof(tv));
-
-        sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port        = htons(port);
-        EXPECT_EQ(::bind(sockfd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0)
-            << "bind() failed on port " << port;
-
-        sockaddr_in bound{};
-        socklen_t   len = sizeof(bound);
-        ::getsockname(sockfd_, reinterpret_cast<sockaddr*>(&bound), &len);
-        port_ = ntohs(bound.sin_port);
+        port_ = socket_.local_endpoint(ec).port();
+        EXPECT_FALSE(ec) << "local_endpoint() failed";
     }
 
     ~UdpListener() { stop(); }
@@ -89,28 +44,28 @@ public:
     /// @brief Start listening in a background thread.
     void start()
     {
-        running_ = true;
-        thread_  = std::thread([this] {
-            std::array<uint8_t, 2048> buf{};
-            while (running_) {
-#ifdef _WIN32
-                int n = ::recv(sockfd_, reinterpret_cast<char*>(buf.data()), static_cast<int>(buf.size()), 0);
-#else
-                ssize_t n = ::recv(sockfd_, buf.data(), buf.size(), 0);
-#endif
-                if (n > 0) { received_ = true; }
-            }
+        socket_.async_receive_from(
+            boost::asio::buffer(buffer_),
+            sender_endpoint_,
+            [this](const boost::system::error_code& ec, std::size_t bytes_received)
+            {
+                if (!ec && bytes_received > 0U) {
+                    received_ = true;
+                }
+            });
+
+        thread_ = std::thread([this] {
+            io_.run();
         });
     }
 
     /// @brief Stop the listener.
     void stop()
     {
-        running_ = false;
-        if (sockfd_ != kInvalidSocket) {
-            close_socket(sockfd_);
-            sockfd_ = kInvalidSocket;
-        }
+        boost::system::error_code ec;
+        socket_.cancel(ec);
+        socket_.close(ec);
+        io_.stop();
         if (thread_.joinable()) { thread_.join(); }
     }
 
@@ -120,11 +75,13 @@ public:
     uint16_t port() const { return port_; }
 
 private:
-    SocketHandle        sockfd_{kInvalidSocket};
-    uint16_t            port_{0};
-    std::atomic<bool>   received_{false};
-    std::atomic<bool>   running_{false};
-    std::thread         thread_;
+    boost::asio::io_context io_;
+    udp::socket socket_;
+    udp::endpoint sender_endpoint_{};
+    std::array<uint8_t, 2048> buffer_{};
+    uint16_t port_{0};
+    std::atomic<bool> received_{false};
+    std::thread thread_;
 };
 
 /// @brief Build a minimal discv4Config with a generated keypair.

@@ -1,4 +1,54 @@
-# Checkpoint — 2026-03-14
+# Checkpoint Log
+
+## Networking portability update — 2026-03-17
+
+### What changed
+
+- The maintained UDP/TCP networking paths are now consistently Boost.Asio-based across production code and local test harnesses.
+- The remaining non-cross-platform address conversion helpers were removed from:
+  - `include/discv4/discv4_ping.hpp`
+  - `src/discv5/discv5_enr.cpp`
+  - the legacy helper path in `include/discv4/discovery.hpp`
+- The remaining raw UDP test sockets were replaced with Boost.Asio sockets in:
+  - `test/discv4/discv4_client_test.cpp`
+  - `test/discv4/enr_client_test.cpp`
+  - `test/discv4/enr_enrichment_test.cpp`
+  - `test/discv5/discv5_client_test.cpp`
+
+### Current networking status
+
+- `src/discv4/discv4_client.cpp` already used Boost.Asio UDP sockets and remains the maintained discv4 transport path.
+- `src/discv5/discv5_client.cpp` already used Boost.Asio UDP sockets and remains the maintained discv5 transport path.
+- `src/rlpx/socket/socket_transport.cpp` already used Boost.Asio TCP sockets and remains the maintained RLPx transport path.
+- No maintained `src/` or `test/` networking path now depends on POSIX `inet_*`, `sockaddr_in`, `sendto`, or `recvfrom` helpers.
+
+### Verified build/test coverage for this update
+
+The following targets were rebuilt successfully:
+
+- `discv4_client_test`
+- `discv4_enr_client_test`
+- `discv4_enr_enrichment_test`
+- `discv4_protocol_test`
+- `discv5_client_test`
+- `discv5_enr_test`
+
+The following test executables were run successfully:
+
+- `./test_bin/discv4_client_test`
+- `./test_bin/discv4_enr_client_test`
+- `./test_bin/discv4_enr_enrichment_test`
+- `./test_bin/discv4_protocol_test`
+- `./test_bin/discv5_client_test`
+- `./test_bin/discv5_enr_test`
+
+### Immediate doc consequence
+
+- Any older architecture or testing note that still suggests ENet, raw POSIX sockets, or `include/rlp/PeerDiscovery/discovery.hpp` as the active discovery implementation path is stale and should not be used.
+
+---
+
+## ENR / discv4 filter checkpoint — 2026-03-14
 
 ## Current Status
 - The **ENRRequest / ENRResponse** wire path is implemented and unit-tested.

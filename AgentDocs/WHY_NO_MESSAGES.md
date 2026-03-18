@@ -96,19 +96,20 @@ geth --http --http.api admin,web3,eth,net --http.addr 127.0.0.1
 
 Then query for its discovered peers and connect to them.
 
-### Option 3: Implement discv4 Properly
+### Option 3: Use the maintained discovery harnesses
 
-Complete the discv4 protocol implementation in:
+The maintained discovery implementation lives under the current `discv4_client` / `DialScheduler` path, with live harnesses under:
 ```
-/include/rlp/PeerDiscovery/discovery.hpp
+examples/discovery/test_discovery.cpp
+examples/discovery/test_enr_survey.cpp
 ```
 
-This would enable automatic peer discovery from bootstrap nodes.
+Use those binaries to exercise automatic peer discovery from bootstrap nodes instead of the old `discovery.hpp` sketch.
 
 ## Next Steps
 
 1. **Short-term**: Use real peer node enodes for testing
-2. **Medium-term**: Complete discv4 implementation for automatic discovery
+2. **Medium-term**: Continue improving the existing `discv4_client` + scheduler discovery flow
 3. **Long-term**: Add peer caching, K-Bucket routing, persistence
 
 ## References

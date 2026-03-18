@@ -14,19 +14,20 @@
 #include "discv4/discv4_constants.hpp"
 #include <rlp/rlp_encoder.hpp>
 
-#include <arpa/inet.h>
 #include <atomic>
 #include <array>
+#include <algorithm>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/system/error_code.hpp>
 #include <chrono>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 namespace {
+
+using boost::asio::ip::udp;
 
 // ---------------------------------------------------------------------------
 // Helpers — same pattern as enr_client_test.cpp
@@ -109,20 +110,16 @@ TEST( EnrEnrichmentTest, PeerCallbackReceivesEthForkId )
     constexpr uint16_t kPeerPort = 30480U;
 
     // Bind the simulated peer socket.
-    int peer_fd = ::socket( AF_INET, SOCK_DGRAM, 0 );
-    ASSERT_GE( peer_fd, 0 );
+    boost::asio::io_context peer_io;
+    udp::socket peer_socket( peer_io );
     {
-        struct timeval tv{};
-        tv.tv_sec = 1;
-        ::setsockopt( peer_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) );
+        boost::system::error_code ec;
+        peer_socket.open( udp::v4(), ec );
+        ASSERT_FALSE( ec ) << "open() failed";
 
-        sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port        = htons( kPeerPort );
-        if ( ::bind( peer_fd, reinterpret_cast<sockaddr*>( &addr ), sizeof( addr ) ) != 0 )
+        peer_socket.bind( udp::endpoint( udp::v4(), kPeerPort ), ec );
+        if ( ec )
         {
-            ::close( peer_fd );
             GTEST_SKIP() << "Port " << kPeerPort << " unavailable";
         }
     }
@@ -156,17 +153,19 @@ TEST( EnrEnrichmentTest, PeerCallbackReceivesEthForkId )
         } );
 
     // Peer thread: receive ENRRequest, reply with known ForkId.
-    std::thread peer_thread( [peer_fd, client_port, &expected_fork]()
+    std::thread peer_thread( [&peer_socket, client_port, &expected_fork]()
     {
         std::array<uint8_t, 2048U> buf{};
-        sockaddr_in sender{};
-        socklen_t   len = sizeof( sender );
+        udp::endpoint sender_endpoint;
+        boost::system::error_code ec;
 
-        ssize_t n = ::recvfrom( peer_fd, buf.data(), buf.size(), 0,
-                                reinterpret_cast<sockaddr*>( &sender ), &len );
-        if ( n < static_cast<ssize_t>( discv4::kWireHashSize ) )
+        const std::size_t n = peer_socket.receive_from(
+            boost::asio::buffer( buf ),
+            sender_endpoint,
+            0,
+            ec );
+        if ( ec || n < discv4::kWireHashSize )
         {
-            ::close( peer_fd );
             return;
         }
 
@@ -175,10 +174,8 @@ TEST( EnrEnrichmentTest, PeerCallbackReceivesEthForkId )
         std::copy( buf.begin(), buf.begin() + discv4::kWireHashSize, reply_tok.begin() );
 
         const auto response = make_fork_id_enr_response( reply_tok, expected_fork );
-        sender.sin_port = htons( client_port );
-        ::sendto( peer_fd, response.data(), response.size(), 0,
-                  reinterpret_cast<sockaddr*>( &sender ), sizeof( sender ) );
-        ::close( peer_fd );
+        sender_endpoint.port( client_port );
+        peer_socket.send_to( boost::asio::buffer( response ), sender_endpoint, 0, ec );
     } );
 
     io.run_for( std::chrono::milliseconds( 800U ) );

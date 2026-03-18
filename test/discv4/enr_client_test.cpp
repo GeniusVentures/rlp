@@ -13,16 +13,15 @@
 #include "discv4/discv4_constants.hpp"
 #include <rlp/rlp_encoder.hpp>
 
-#include <arpa/inet.h>
 #include <atomic>
 #include <array>
+#include <algorithm>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/system/error_code.hpp>
 #include <chrono>
-#include <netinet/in.h>
-#include <sys/socket.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -37,45 +36,45 @@ class UdpListener
 {
 public:
     explicit UdpListener( uint16_t port )
+        : socket_( io_ )
     {
-        sockfd_ = ::socket( AF_INET, SOCK_DGRAM, 0 );
-        EXPECT_GE( sockfd_, 0 );
+        boost::system::error_code ec;
+        socket_.open( udp::v4(), ec );
+        EXPECT_FALSE( ec ) << "open() failed";
 
-        struct timeval tv{};
-        tv.tv_usec = 100000; // 100 ms poll
-        ::setsockopt( sockfd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) );
+        socket_.bind( udp::endpoint( udp::v4(), port ), ec );
+        EXPECT_FALSE( ec ) << "bind() failed on port " << port;
 
-        sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port        = htons( port );
-        EXPECT_EQ( ::bind( sockfd_, reinterpret_cast<sockaddr*>( &addr ), sizeof( addr ) ), 0 );
-
-        sockaddr_in bound{};
-        socklen_t   len = sizeof( bound );
-        ::getsockname( sockfd_, reinterpret_cast<sockaddr*>( &bound ), &len );
-        port_ = ntohs( bound.sin_port );
+        port_ = socket_.local_endpoint( ec ).port();
+        EXPECT_FALSE( ec ) << "local_endpoint() failed";
     }
 
     ~UdpListener() { stop(); }
 
     void start()
     {
-        running_ = true;
-        thread_  = std::thread( [this] {
-            std::array<uint8_t, 2048U> buf{};
-            while ( running_ )
+        socket_.async_receive_from(
+            boost::asio::buffer( buffer_ ),
+            sender_endpoint_,
+            [this]( const boost::system::error_code& ec, std::size_t bytes_received )
             {
-                ssize_t n = ::recv( sockfd_, buf.data(), buf.size(), 0 );
-                if ( n > 0 ) { received_ = true; }
-            }
+                if ( !ec && bytes_received > 0U )
+                {
+                    received_ = true;
+                }
+            } );
+
+        thread_ = std::thread( [this] {
+            io_.run();
         } );
     }
 
     void stop()
     {
-        running_ = false;
-        if ( sockfd_ >= 0 ) { ::close( sockfd_ ); sockfd_ = -1; }
+        boost::system::error_code ec;
+        socket_.cancel( ec );
+        socket_.close( ec );
+        io_.stop();
         if ( thread_.joinable() ) { thread_.join(); }
     }
 
@@ -83,11 +82,13 @@ public:
     uint16_t port()     const { return port_; }
 
 private:
-    int               sockfd_{-1};
-    uint16_t          port_{0U};
+    boost::asio::io_context io_;
+    udp::socket socket_;
+    udp::endpoint sender_endpoint_{};
+    std::array<uint8_t, 2048U> buffer_{};
+    uint16_t port_{0U};
     std::atomic<bool> received_{false};
-    std::atomic<bool> running_{false};
-    std::thread       thread_;
+    std::thread thread_;
 };
 
 // ---------------------------------------------------------------------------
@@ -215,21 +216,16 @@ TEST( EnrClientTest, RequestEnrCompletesOnValidResponse )
     constexpr uint16_t kPeerPort = 30472U;
 
     // --- Peer-side socket ---
-    int peer_fd = ::socket( AF_INET, SOCK_DGRAM, 0 );
-    ASSERT_GE( peer_fd, 0 );
+    boost::asio::io_context peer_io;
+    udp::socket peer_socket( peer_io );
     {
-        struct timeval tv{};
-        tv.tv_sec = 1;
-        ::setsockopt( peer_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof( tv ) );
+        boost::system::error_code ec;
+        peer_socket.open( udp::v4(), ec );
+        ASSERT_FALSE( ec ) << "open() failed";
 
-        sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port        = htons( kPeerPort );
-        int r = ::bind( peer_fd, reinterpret_cast<sockaddr*>( &addr ), sizeof( addr ) );
-        if ( r != 0 )
+        peer_socket.bind( udp::endpoint( udp::v4(), kPeerPort ), ec );
+        if ( ec )
         {
-            ::close( peer_fd );
             GTEST_SKIP() << "Port " << kPeerPort << " unavailable — skipping loopback test";
         }
     }
@@ -250,17 +246,19 @@ TEST( EnrClientTest, RequestEnrCompletesOnValidResponse )
         } );
 
     // Peer thread: receive ENRRequest, extract hash, send back ENRResponse.
-    std::thread peer_thread( [peer_fd, client_port]()
+    std::thread peer_thread( [&peer_socket, client_port]()
     {
         std::array<uint8_t, 2048U> buf{};
-        sockaddr_in sender_addr{};
-        socklen_t   sender_len = sizeof( sender_addr );
+        udp::endpoint sender_endpoint;
+        boost::system::error_code ec;
 
-        ssize_t n = ::recvfrom( peer_fd, buf.data(), buf.size(), 0,
-                                reinterpret_cast<sockaddr*>( &sender_addr ), &sender_len );
-        if ( n < static_cast<ssize_t>( discv4::kWireHashSize ) )
+        const std::size_t n = peer_socket.receive_from(
+            boost::asio::buffer( buf ),
+            sender_endpoint,
+            0,
+            ec );
+        if ( ec || n < discv4::kWireHashSize )
         {
-            ::close( peer_fd );
             return;
         }
 
@@ -271,10 +269,8 @@ TEST( EnrClientTest, RequestEnrCompletesOnValidResponse )
         // Build ENRResponse wire packet addressed back to the client.
         const auto response_wire = make_enr_response_wire( reply_tok );
 
-        sender_addr.sin_port = htons( client_port );
-        ::sendto( peer_fd, response_wire.data(), response_wire.size(), 0,
-                  reinterpret_cast<sockaddr*>( &sender_addr ), sizeof( sender_addr ) );
-        ::close( peer_fd );
+        sender_endpoint.port( client_port );
+        peer_socket.send_to( boost::asio::buffer( response_wire ), sender_endpoint, 0, ec );
     } );
 
     io.run_for( std::chrono::milliseconds( 800U ) );

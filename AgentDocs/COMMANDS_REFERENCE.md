@@ -25,7 +25,7 @@ echo "Host: $HOST, Port: $PORT, Pubkey: $PUBKEY"
 
 ### Step 3: Connect
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ./eth_watch "$HOST" "$PORT" "$PUBKEY"
 ```
 
@@ -33,26 +33,26 @@ cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/buil
 
 ### Clean build
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ninja clean && ninja eth_watch
 ```
 
 ### Run all tests
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ninja test
 ```
 
 ### Run specific test
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ./rlp_decoder_tests
 ```
 
 ### Using bootstrap nodes (for reference)
 ```bash
 # These won't send block data, but will connect
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ./eth_watch --chain sepolia    # Uses bootstrap node (no messages)
 ./eth_watch --chain mainnet    # Uses bootstrap node (no messages)
 ./eth_watch --chain polygon    # Uses bootstrap node (no messages)
@@ -75,7 +75,7 @@ cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/buil
 ## File Locations
 
 ```
-Project Root: /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/
+Project Root: /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/
 
 Key Files:
 - ./test_eth_watch.sh               (Automated test)

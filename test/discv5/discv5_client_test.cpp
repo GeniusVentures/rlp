@@ -12,12 +12,12 @@
 #include <nil/crypto3/hash/keccak.hpp>
 #include <openssl/evp.h>
 
-#include <arpa/inet.h>
 #include <array>
+#include <algorithm>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/udp.hpp>
+#include <boost/system/error_code.hpp>
 #include <chrono>
-#include <sys/socket.h>
-#include <unistd.h>
 
 namespace
 {
@@ -153,48 +153,40 @@ static std::vector<uint8_t> make_whoareyou_packet(
 /// @brief Send a UDP datagram to the provided localhost port.
 static void send_udp_packet(uint16_t port, size_t size)
 {
-    const int sockfd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    ASSERT_GE(sockfd, 0) << "socket() failed";
+    boost::asio::io_context io;
+    boost::asio::ip::udp::socket socket(io);
+    boost::system::error_code ec;
+    socket.open(boost::asio::ip::udp::v4(), ec);
+    ASSERT_FALSE(ec) << "open() failed";
 
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    const boost::asio::ip::udp::endpoint endpoint(
+        boost::asio::ip::address_v4::loopback(),
+        port);
 
     std::vector<uint8_t> buffer(size, 0x42U);
-    const ssize_t sent = ::sendto(
-        sockfd,
-        buffer.data(),
-        buffer.size(),
-        0,
-        reinterpret_cast<const sockaddr*>(&addr),
-        sizeof(addr));
+    const std::size_t sent = socket.send_to(boost::asio::buffer(buffer), endpoint, 0, ec);
 
-    EXPECT_EQ(sent, static_cast<ssize_t>(buffer.size())) << "sendto() failed";
-    EXPECT_EQ(::close(sockfd), 0) << "close() failed";
+    EXPECT_FALSE(ec) << "send_to() failed";
+    EXPECT_EQ(sent, buffer.size()) << "send_to() wrote a short datagram";
 }
 
 /// @brief Send a UDP datagram with explicit payload bytes to the provided localhost port.
 static void send_udp_packet_bytes(uint16_t port, const std::vector<uint8_t>& buffer)
 {
-    const int sockfd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    ASSERT_GE(sockfd, 0) << "socket() failed";
+    boost::asio::io_context io;
+    boost::asio::ip::udp::socket socket(io);
+    boost::system::error_code ec;
+    socket.open(boost::asio::ip::udp::v4(), ec);
+    ASSERT_FALSE(ec) << "open() failed";
 
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    const boost::asio::ip::udp::endpoint endpoint(
+        boost::asio::ip::address_v4::loopback(),
+        port);
 
-    const ssize_t sent = ::sendto(
-        sockfd,
-        buffer.data(),
-        buffer.size(),
-        0,
-        reinterpret_cast<const sockaddr*>(&addr),
-        sizeof(addr));
+    const std::size_t sent = socket.send_to(boost::asio::buffer(buffer), endpoint, 0, ec);
 
-    EXPECT_EQ(sent, static_cast<ssize_t>(buffer.size())) << "sendto() failed";
-    EXPECT_EQ(::close(sockfd), 0) << "close() failed";
+    EXPECT_FALSE(ec) << "send_to() failed";
+    EXPECT_EQ(sent, buffer.size()) << "send_to() wrote a short datagram";
 }
 
 } // namespace
