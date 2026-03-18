@@ -5,7 +5,7 @@
 // Reference: go-ethereum/p2p/rlpx/rlpx.go
 
 #include <rlpx/framing/frame_cipher.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <nil/crypto3/hash/algorithm/hash.hpp>
 #include <nil/crypto3/hash/keccak.hpp>
 #include <nil/crypto3/hash/accumulators/hash.hpp>

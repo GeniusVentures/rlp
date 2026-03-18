@@ -6,7 +6,7 @@
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/crypto/kdf.hpp>
 #include <rlpx/crypto/hmac.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
 #include <secp256k1.h>

@@ -1,21 +1,21 @@
-add_library(logger
-    ../../include/base/logger.hpp
-    logger.cpp
+add_library(rlp_logger
+    ../../include/base/rlp-logger.hpp
+    rlp-logger.cpp
 )
 
-target_include_directories(logger
+target_include_directories(rlp_logger
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../../include>
         $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(logger
+target_link_libraries(rlp_logger
     PUBLIC
     spdlog::spdlog
     fmt::fmt
 )
 
-install(TARGETS logger EXPORT rlp
+install(TARGETS rlp_logger EXPORT rlp
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

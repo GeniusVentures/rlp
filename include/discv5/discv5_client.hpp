@@ -13,7 +13,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/spawn.hpp>
 
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <discv5/discv5_crawler.hpp>
 #include <discv5/discv5_error.hpp>
 #include <discv5/discv5_types.hpp>

@@ -37,7 +37,7 @@ target_link_libraries(rlp PUBLIC
         Snappy::snappy
         Boost::context
         Boost::coroutine
-        logger
+        rlp_logger
 )
 
 # Ensure C++17 standard

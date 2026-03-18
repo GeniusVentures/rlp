@@ -8,7 +8,7 @@
 #include "discv4/discv4_pong.hpp"
 #include "discv4/discv4_enr_request.hpp"
 #include "discv4/discv4_enr_response.hpp"
-#include "base/logger.hpp"
+#include "base/rlp-logger.hpp"
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <secp256k1.h>

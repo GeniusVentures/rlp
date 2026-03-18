@@ -33,8 +33,6 @@ if(EXISTS "${Protobuf_PROTOC_EXECUTABLE}")
     set_target_properties(protobuf::protoc PROPERTIES IMPORTED_LOCATION ${Protobuf_PROTOC_EXECUTABLE})
 endif()
 
-include(build/cmake/functions.cmake)
-
 find_package(OpenSSL REQUIRED)
 include_directories(${OPENSSL_INCLUDE_DIR})
 include_directories(${GSL_INCLUDE_DIR})

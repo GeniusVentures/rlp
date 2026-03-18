@@ -11,7 +11,7 @@
 #include "discv4/discv4_error.hpp"
 #include <rlp/result.hpp>
 #include <rlpx/rlpx_error.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <array>
 #include <chrono>
 #include <functional>

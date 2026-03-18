@@ -3,7 +3,7 @@
 
 #include <rlpx/auth/ecies_cipher.hpp>
 #include <rlpx/crypto/ecdh.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <secp256k1.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>

@@ -14,7 +14,7 @@
 #include <discv4/dial_history.hpp>
 #include <discv4/discv4_client.hpp>
 #include <rlpx/rlpx_session.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 
 namespace discv4 {
 

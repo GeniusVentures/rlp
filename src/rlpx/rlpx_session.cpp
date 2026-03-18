@@ -6,7 +6,7 @@
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/socket/socket_transport.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
