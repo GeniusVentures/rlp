@@ -66,7 +66,7 @@ install(FILES
         ../include/discv4/discovery.hpp
         ../include/discv4/packet_factory.hpp
         ../include/discv4/discv4_packet.hpp
-        ../include/discv4/discv4Ping.cpp
+        ../include/discv4/discv4_ping.hpp
         ../include/discv4/discv4_pong.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp
 )

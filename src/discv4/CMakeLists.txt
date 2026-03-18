@@ -19,6 +19,8 @@ target_include_directories(discv4 PUBLIC
 # Link public dependencies
 target_link_libraries(discv4 PUBLIC
     rlpx
+    Boost::context
+    Boost::coroutine
 )
 
 # Ensure C++17 standard
@@ -29,9 +31,9 @@ install(FILES
         # discv4 Peer Discovery
         ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discovery.hpp
         ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/packet_factory.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4Packet.hpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4Ping.cpp
-        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4Pong.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4_packet.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4_ping.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/../include/discv4/discv4_pong.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/discv4
 )
 
