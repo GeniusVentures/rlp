@@ -33,6 +33,10 @@ set(OPENSSL_INCLUDE_DIR "${OPENSSL_DIR}/include" CACHE PATH "Path to OpenSSL inc
 find_package(OpenSSL REQUIRED)
 
 # --------------------------------------------------------
+# Crypto3 include dir
+set(crypto3_INCLUDE_DIR "${ZKLLVM_BUILD_DIR}/zkLLVM/include")
+
+# --------------------------------------------------------
 # Set config of Microsoft GSL (header-only library)
 set(GSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Microsoft.GSL/include")
 include_directories(${GSL_INCLUDE_DIR})

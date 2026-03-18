@@ -17,6 +17,8 @@ project(rlp
         LANGUAGES C CXX
 )
 
+include(GNUInstallDirs)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -36,6 +38,7 @@ include(build/cmake/functions.cmake)
 find_package(OpenSSL REQUIRED)
 include_directories(${OPENSSL_INCLUDE_DIR})
 include_directories(${GSL_INCLUDE_DIR})
+find_package(libsecp256k1 CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS date_time filesystem random regex system thread log log_setup program_options json context coroutine)
@@ -54,6 +57,7 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/generated" DESTINATION "${CMAKE_I
 set(rlp_CONFIG_DESTINATION_DIR "lib/cmake/rlp")
 install(EXPORT rlp
         FILE rlpTargets.cmake
+        NAMESPACE rlp::
         DESTINATION ${rlp_CONFIG_DESTINATION_DIR}
 )
 
@@ -62,7 +66,7 @@ include(CMakePackageConfigHelpers)
 # generate the config file that is includes the exports
 configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.cmake.in
         "${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake"
-        INSTALL_DESTINATION "lib/cmake/examples"
+        INSTALL_DESTINATION ${rlp_CONFIG_DESTINATION_DIR}
         NO_SET_AND_CHECK_MACRO
         NO_CHECK_REQUIRED_COMPONENTS_MACRO
 )
@@ -77,5 +81,6 @@ write_basic_package_version_file(
 # install the configuration file
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake
         DESTINATION ${rlp_CONFIG_DESTINATION_DIR}
 )

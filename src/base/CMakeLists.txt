@@ -15,7 +15,7 @@ target_link_libraries(logger
     fmt::fmt
 )
 
-install(TARGETS logger EXPORT RLPTargets
+install(TARGETS logger EXPORT rlp
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

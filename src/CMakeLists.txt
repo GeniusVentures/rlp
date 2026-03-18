@@ -14,11 +14,9 @@ add_library(rlp STATIC
 )
 
 # Set config of crypto3
-set(crypto3_INCLUDE_DIR "${ZKLLVM_BUILD_DIR}/zkLLVM/include")
 include_directories(${crypto3_INCLUDE_DIR})
 
 # Set config of secp256k1 project
-set(libsecp256k1_DIR "${_THIRDPARTY_BUILD_DIR}/libsecp256k1/lib/cmake/libsecp256k1")
 find_package(libsecp256k1 CONFIG REQUIRED)
 
 # Specify public include directory for BUILD interface
@@ -36,7 +34,6 @@ target_link_libraries(rlp PUBLIC
         libsecp256k1::secp256k1
         OpenSSL::SSL
         OpenSSL::Crypto
-        Microsoft.GSL::GSL
         Snappy::snappy
         Boost::context
         Boost::coroutine
@@ -45,6 +42,16 @@ target_link_libraries(rlp PUBLIC
 
 # Ensure C++17 standard
 target_compile_features(rlp PUBLIC cxx_std_17)
+
+# Install the core library and attach it to the export set consumed by
+# the top-level install(EXPORT rlp ...) call.
+install(TARGETS rlp
+        EXPORT rlp
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
 
 # Explicitly install public headers to the base include directory
 install(FILES
