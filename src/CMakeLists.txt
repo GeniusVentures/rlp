@@ -25,7 +25,7 @@ find_package(libsecp256k1 CONFIG REQUIRED)
 target_include_directories(rlp PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../include>
         $<INSTALL_INTERFACE:include>
-        ${crypto3_INCLUDE_DIR}
+        $<BUILD_INTERFACE:${crypto3_INCLUDE_DIR}>
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)

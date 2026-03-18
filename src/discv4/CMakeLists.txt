@@ -13,7 +13,7 @@ add_library(discv4 STATIC
 target_include_directories(discv4 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
         $<INSTALL_INTERFACE:include>
-        ${crypto3_INCLUDE_DIR}
+        $<BUILD_INTERFACE:${crypto3_INCLUDE_DIR}>
 )
 
 # Link public dependencies
