@@ -154,7 +154,7 @@ include(CMakePackageConfigHelpers)
 
 # generate the config file that is includes the exports
 configure_package_config_file(${PROJECT_ROOT}/cmake/config.cmake.in
-        "${CMAKE_CURRENT_BINARY_DIR}/RLPConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake"
         INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
         NO_SET_AND_CHECK_MACRO
         NO_CHECK_REQUIRED_COMPONENTS_MACRO
