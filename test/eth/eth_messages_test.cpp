@@ -213,6 +213,38 @@ TEST(EthMessagesEth68, StatusEth68RoundTrip) {
     EXPECT_EQ(result->fork_id.next_fork, original.fork_id.next_fork);
 }
 
+TEST(EthMessagesEth68, StatusEth66Through68RoundTripPreservesProtocolVersion) {
+    const std::array<uint8_t, 3> kSupportedVersions{ 66U, 67U, 68U };
+
+    for (const uint8_t version : kSupportedVersions) {
+        eth::StatusMessage68 original;
+        original.protocol_version = version;
+        original.network_id = 11155111;
+        original.td = intx::uint256{0x42};
+        original.blockhash = make_filled<eth::Hash256>(static_cast<uint8_t>(0xA0U + version));
+        original.genesis_hash = make_filled<eth::Hash256>(static_cast<uint8_t>(0x10U + version));
+        original.fork_id.fork_hash = {0xed, 0x88, 0xb5, 0xfd};
+        original.fork_id.next_fork = 0U;
+
+        eth::StatusMessage wrapped = original;
+        auto encoded = eth::protocol::encode_status(wrapped);
+        ASSERT_TRUE(encoded.has_value()) << "encode_status failed for ETH/" << static_cast<int>(version);
+
+        auto decoded = eth::protocol::decode_status(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+        ASSERT_TRUE(decoded.has_value()) << "decode_status failed for ETH/" << static_cast<int>(version);
+
+        const auto* result = std::get_if<eth::StatusMessage68>(&decoded.value());
+        ASSERT_NE(result, nullptr) << "Expected StatusMessage68 variant for ETH/" << static_cast<int>(version);
+        EXPECT_EQ(result->protocol_version, version);
+        EXPECT_EQ(result->network_id, original.network_id);
+        EXPECT_EQ(result->td, original.td);
+        EXPECT_EQ(result->blockhash, original.blockhash);
+        EXPECT_EQ(result->genesis_hash, original.genesis_hash);
+        EXPECT_EQ(result->fork_id.fork_hash, original.fork_id.fork_hash);
+        EXPECT_EQ(result->fork_id.next_fork, original.fork_id.next_fork);
+    }
+}
+
 TEST(EthMessagesEth68, StatusEth68ValidateCommonFields) {
     eth::StatusMessage68 msg68;
     msg68.protocol_version = 68;

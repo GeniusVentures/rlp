@@ -132,7 +132,7 @@ public:
     }
 
     /// @brief Return the negotiated ETH subprotocol version from HELLO capability matching.
-    /// @return 68 or 69 when a common ETH capability was negotiated; 0 otherwise.
+    /// @return 66, 67, 68, or 69 when a common ETH capability was negotiated; 0 otherwise.
     [[nodiscard]] uint8_t negotiated_eth_version() const noexcept
     {
         return negotiated_eth_version_;

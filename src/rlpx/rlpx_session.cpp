@@ -36,7 +36,7 @@ uint8_t negotiate_eth_version(const std::vector<protocol::Capability>& capabilit
             continue;
         }
 
-        if ((capability.version == 68U || capability.version == 69U) && capability.version > negotiated_version)
+        if ((capability.version >= 66U && capability.version <= 69U) && capability.version > negotiated_version)
         {
             negotiated_version = capability.version;
         }
@@ -187,8 +187,13 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     protocol::HelloMessage hello;
     hello.protocol_version = kProtocolVersion;
     hello.client_id        = std::string(params.client_id);
-    // Advertise both ETH/68 and ETH/69 — peers negotiate the highest common version.
-    hello.capabilities     = { protocol::Capability{ "eth", 68 }, protocol::Capability{ "eth", 69 } };
+    // Advertise ETH/66-69 — peers negotiate the highest common version.
+    hello.capabilities     = {
+        protocol::Capability{ "eth", 66 },
+        protocol::Capability{ "eth", 67 },
+        protocol::Capability{ "eth", 68 },
+        protocol::Capability{ "eth", 69 }
+    };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),
               params.local_public_key.end(),
