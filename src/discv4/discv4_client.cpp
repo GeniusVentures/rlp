@@ -447,7 +447,7 @@ discv4::Result<discv4_enr_response> discv4_client::request_enr(
     timer->async_wait( asio::redirect_error( yield, ec ) );
     pending_replies_.erase( key );
 
-    if ( ec == boost::asio::error::operation_aborted )
+    if ( ec == boost::asio::error::operation_aborted && !enr_slot->record_rlp.empty() )
     {
         // Timer cancelled by handle_enr_response — response was received.
         return *enr_slot;
@@ -507,7 +507,7 @@ discv4::Result<discv4_pong> discv4_client::ping(
     timer->async_wait(asio::redirect_error(yield, ec));
     pending_replies_.erase(key);
 
-    if (ec == boost::asio::error::operation_aborted)
+    if (ec == boost::asio::error::operation_aborted && pong_slot->expiration != 0)
     {
         // Timer was cancelled by handle_pong — PONG was received.
         bonded_set_.insert(ip + ":" + std::to_string(port));
