@@ -287,16 +287,41 @@ void run_watch(std::string host,
     auto session = std::move(session_result.value());
 
     SPDLOG_LOGGER_DEBUG(log, "run_watch: HELLO from peer: {}", session->peer_info().client_id);
+    const uint8_t negotiated_eth_version = session->negotiated_eth_version();
+    if (negotiated_eth_version == 0U)
     {
-        eth::StatusMessage69 status69;
-        status69.protocol_version = 69;
-        status69.network_id = network_id;
-        status69.genesis_hash = genesis_hash;
-        status69.fork_id = fork_id;
-        status69.earliest_block = 0;
-        status69.latest_block = 0;
-        status69.latest_block_hash = genesis_hash;
-        eth::StatusMessage status = status69;
+        SPDLOG_LOGGER_ERROR(log, "run_watch: peer did not negotiate a supported ETH capability");
+        (void)session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
+        on_done();
+        return;
+    }
+
+    {
+        eth::StatusMessage status;
+        if (negotiated_eth_version == 68U)
+        {
+            eth::StatusMessage68 status68;
+            status68.protocol_version = negotiated_eth_version;
+            status68.network_id = network_id;
+            status68.genesis_hash = genesis_hash;
+            status68.fork_id = fork_id;
+            status68.td = 0;
+            status68.blockhash = genesis_hash;
+            status = status68;
+        }
+        else
+        {
+            eth::StatusMessage69 status69;
+            status69.protocol_version = negotiated_eth_version;
+            status69.network_id = network_id;
+            status69.genesis_hash = genesis_hash;
+            status69.fork_id = fork_id;
+            status69.earliest_block = 0;
+            status69.latest_block = 0;
+            status69.latest_block_hash = genesis_hash;
+            status = status69;
+        }
+
         auto encoded = eth::protocol::encode_status(status);
         if (encoded) {
             rlpx::framing::Message status_msg{};
@@ -306,7 +331,9 @@ void run_watch(std::string host,
             if (!post_result) {
                 SPDLOG_LOGGER_ERROR(log, "run_watch: failed to post ETH Status message");
             } else {
-                SPDLOG_LOGGER_DEBUG(log, "run_watch: ETH Status posted (network_id={})", network_id);
+                SPDLOG_LOGGER_DEBUG(log, "run_watch: ETH/{} Status posted (network_id={})",
+                                    static_cast<int>(negotiated_eth_version),
+                                    network_id);
             }
         } else {
             SPDLOG_LOGGER_ERROR(log, "run_watch: failed to encode ETH Status message");
@@ -447,7 +474,7 @@ void run_watch(std::string host,
         if (!post_result) { return; }
     });
 
-    session->set_generic_handler([session, eth_offset, network_id, genesis_hash, watch_svc,
+    session->set_generic_handler([session, eth_offset, network_id, genesis_hash, negotiated_eth_version, watch_svc,
                                    status_received, status_timeout, on_connected](const rlpx::protocol::Message& msg) {
         (void)session;
         static auto gh_log = rlp::base::createLogger("eth_watch");
@@ -470,6 +497,14 @@ void run_watch(std::string host,
             }
             const auto& status = decoded.value();
             const auto common = eth::get_common_fields(status);
+            if (common.protocol_version != negotiated_eth_version) {
+                SPDLOG_LOGGER_WARN(gh_log, "ETH Status: protocol version mismatch (peer={}, negotiated={})",
+                                   common.protocol_version,
+                                   static_cast<int>(negotiated_eth_version));
+                status_timeout->cancel();
+                (void)session->disconnect(rlpx::DisconnectReason::kSubprotocolError);
+                return;
+            }
             auto valid = eth::protocol::validate_status(status, network_id, genesis_hash);
             if (!valid) {
                 using E = eth::StatusValidationError;

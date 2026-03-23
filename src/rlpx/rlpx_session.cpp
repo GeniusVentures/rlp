@@ -23,6 +23,30 @@ namespace rlpx {
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
 
+namespace {
+
+uint8_t negotiate_eth_version(const std::vector<protocol::Capability>& capabilities) noexcept
+{
+    uint8_t negotiated_version = 0U;
+
+    for (const auto& capability : capabilities)
+    {
+        if (capability.name != "eth")
+        {
+            continue;
+        }
+
+        if ((capability.version == 68U || capability.version == 69U) && capability.version > negotiated_version)
+        {
+            negotiated_version = capability.version;
+        }
+    }
+
+    return negotiated_version;
+}
+
+} // namespace
+
 // Message channel for lock-free communication
 class RlpxSession::MessageChannel {
 public:
@@ -83,6 +107,7 @@ RlpxSession::RlpxSession(RlpxSession&& other) noexcept
     : state_(other.state_.load(std::memory_order_acquire))
     , stream_(std::move(other.stream_))
     , peer_info_(std::move(other.peer_info_))
+    , negotiated_eth_version_(other.negotiated_eth_version_)
     , is_initiator_(other.is_initiator_)
     , send_channel_(std::move(other.send_channel_))
     , recv_channel_(std::move(other.recv_channel_))
@@ -94,6 +119,7 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
         state_.store(other.state_.load(std::memory_order_acquire), std::memory_order_release);
         stream_ = std::move(other.stream_);
         peer_info_ = std::move(other.peer_info_);
+        negotiated_eth_version_ = other.negotiated_eth_version_;
         is_initiator_ = other.is_initiator_;
         send_channel_ = std::move(other.send_channel_);
         recv_channel_ = std::move(other.recv_channel_);
@@ -198,11 +224,14 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
         if (peer_hello) {
             session->peer_info_.client_id     = peer_hello.value().client_id;
             session->peer_info_.listen_port   = peer_hello.value().listen_port;
+            session->negotiated_eth_version_  = negotiate_eth_version(peer_hello.value().capabilities);
             static auto log = rlp::base::createLogger("rlpx.session");
             SPDLOG_LOGGER_DEBUG(log, "connect: peer HELLO ok, client='{}' port={} caps={}",
                 peer_hello.value().client_id,
                 peer_hello.value().listen_port,
                 peer_hello.value().capabilities.size());
+            SPDLOG_LOGGER_DEBUG(log, "connect: negotiated eth version={}",
+                static_cast<int>(session->negotiated_eth_version_));
 
             // RLPx spec: enable Snappy compression if both sides advertise p2p version >= 5.
             if (peer_hello.value().protocol_version >= kProtocolVersion) {

@@ -131,6 +131,13 @@ public:
         return peer_info_;
     }
 
+    /// @brief Return the negotiated ETH subprotocol version from HELLO capability matching.
+    /// @return 68 or 69 when a common ETH capability was negotiated; 0 otherwise.
+    [[nodiscard]] uint8_t negotiated_eth_version() const noexcept
+    {
+        return negotiated_eth_version_;
+    }
+
     // Access to cipher secrets if needed (grouped values)
     [[nodiscard]] const auth::FrameSecrets& cipher_secrets() const noexcept;
 
@@ -162,6 +169,7 @@ private:
     
     // Peer metadata - stored as member for const reference access
     PeerInfo peer_info_;
+    uint8_t negotiated_eth_version_{0U};
     bool is_initiator_;
 
     // Message channels (lock-free, hidden Boost types)
