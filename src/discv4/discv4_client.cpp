@@ -422,11 +422,7 @@ discv4::Result<discv4_enr_response> discv4_client::request_enr(
                signed_packet.value().begin() + kWireHashSize,
                sent_hash.begin() );
 
-    const udp::endpoint destination( asio::ip::make_address( ip ), port );
-    auto send_result = send_packet( signed_packet.value(), destination, yield );
-    if ( !send_result ) { return discv4Error::kNetworkSendFailed; }
-
-    // Register pending reply — mirrors the ping() pattern.
+    // Register pending reply before sending — mirrors go-ethereum's RequestENR flow.
     const std::string key      = reply_key( ip, port, kPacketTypeEnrResponse );
     auto              timer    = std::make_shared<asio::steady_timer>( io_context_ );
     auto              enr_slot = std::make_shared<discv4_enr_response>();
@@ -438,6 +434,14 @@ discv4::Result<discv4_enr_response> discv4_client::request_enr(
     pending_replies_[key] = std::move( entry );
 
     timer->expires_after( config_.ping_timeout );
+
+    const udp::endpoint destination( asio::ip::make_address( ip ), port );
+    auto send_result = send_packet( signed_packet.value(), destination, yield );
+    if ( !send_result )
+    {
+        pending_replies_.erase( key );
+        return discv4Error::kNetworkSendFailed;
+    }
 
     boost::system::error_code ec;
     timer->async_wait( asio::redirect_error( yield, ec ) );
@@ -484,16 +488,20 @@ discv4::Result<discv4_pong> discv4_client::ping(
     auto signed_packet = sign_packet(payload);
     if (!signed_packet) { return discv4Error::kSigningFailed; }
 
-    udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = send_packet(signed_packet.value(), destination, yield);
-    if (!send_result) { return discv4Error::kNetworkSendFailed; }
-
-    // Register pending reply matcher — mirrors go-ethereum's sendPing replyMatcher.
+    // Register pending reply matcher before sending — mirrors go-ethereum's sendPing replyMatcher.
     const std::string key  = reply_key(ip, port, kPacketTypePong);
     auto timer      = std::make_shared<asio::steady_timer>(io_context_);
     auto pong_slot  = std::make_shared<discv4_pong>();
     pending_replies_[key] = PendingReply{ timer, pong_slot, nullptr, {} };
     timer->expires_after(config_.ping_timeout);
+
+    udp::endpoint destination(asio::ip::make_address(ip), port);
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
+    if (!send_result)
+    {
+        pending_replies_.erase(key);
+        return discv4Error::kNetworkSendFailed;
+    }
 
     boost::system::error_code ec;
     timer->async_wait(asio::redirect_error(yield, ec));
@@ -536,15 +544,19 @@ rlpx::VoidResult discv4_client::find_node(
     auto signed_packet = sign_packet(payload);
     if (!signed_packet) { return rlp::outcome::success(); }
 
-    const udp::endpoint destination(asio::ip::make_address(ip), port);
-    auto send_result = send_packet(signed_packet.value(), destination, yield);
-    if (!send_result) { return rlp::outcome::success(); }
-
-    // Register pending reply matcher for NEIGHBOURS — mirrors go-ethereum's pending() call.
+    // Register pending reply matcher for NEIGHBOURS before sending — mirrors go-ethereum's pending() call.
     const std::string key   = reply_key(ip, port, kPacketTypeNeighbours);
     auto timer = std::make_shared<asio::steady_timer>(io_context_);
     pending_replies_[key] = PendingReply{ timer, nullptr, nullptr, {} };
     timer->expires_after(config_.ping_timeout); // reuse ping_timeout as findnode reply timeout
+
+    const udp::endpoint destination(asio::ip::make_address(ip), port);
+    auto send_result = send_packet(signed_packet.value(), destination, yield);
+    if (!send_result)
+    {
+        pending_replies_.erase(key);
+        return rlp::outcome::success();
+    }
 
     boost::system::error_code ec;
     timer->async_wait(asio::redirect_error(yield, ec));

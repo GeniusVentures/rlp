@@ -23,6 +23,8 @@ examples/*.log
 .idea/**/dictionaries
 .idea/**/shelf
 
+# github copilot
+.idea/**/copilot*
 # AWS User-specific
 .idea/**/aws.xml
 

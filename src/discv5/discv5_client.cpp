@@ -1653,6 +1653,12 @@ size_t discv5_client::nodes_packet_count() const noexcept
      }
 
      auto pending_it = pending_requests_.find(key);
+     if (pending_it != pending_requests_.end() && !pending_it->second.have_challenge)
+     {
+         pending_requests_.erase(pending_it);
+         pending_it = pending_requests_.end();
+     }
+
      if (pending_it == pending_requests_.end())
      {
          PendingRequest pending;
@@ -1686,10 +1692,6 @@ size_t discv5_client::nodes_packet_count() const noexcept
          return send_packet(packet_result.value(), peer, yield);
      }
 
-     if (!pending_it->second.have_challenge)
-     {
-         return rlp::outcome::success();
-     }
 
       ++outbound_handshake_attempts_;
 
