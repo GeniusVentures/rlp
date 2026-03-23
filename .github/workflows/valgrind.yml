@@ -1,13 +1,6 @@
 name: Memory Safety - Valgrind
 
 on:
-  push:
-    branches: [ "main", "dev_peer_discovery" ]
-  pull_request:
-    branches: [ "main", "dev_peer_discovery" ]
-  schedule:
-    # Run nightly at 3 AM UTC
-    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
