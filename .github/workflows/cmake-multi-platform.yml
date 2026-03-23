@@ -21,9 +21,43 @@ on:
         description: "Release tag"
         required: false
         type: string
+      android:
+        description: "Build Android targets"
+        required: false
+        type: boolean
+        default: true
+      ios:
+        description: "Build iOS targets"
+        required: false
+        type: boolean
+        default: true
+      osx:
+        description: "Build OSX targets"
+        required: false
+        type: boolean
+        default: true
+      linux:
+        description: "Build Linux targets"
+        required: false
+        type: boolean
+        default: true
+      windows:
+        description: "Build Windows targets"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
+    if: >-
+      ${{
+        github.event_name != 'workflow_dispatch' ||
+        (matrix.target == 'Android' && inputs.android) ||
+        (matrix.target == 'iOS' && inputs.ios) ||
+        (matrix.target == 'OSX' && inputs.osx) ||
+        (matrix.target == 'Linux' && inputs.linux) ||
+        (matrix.target == 'Windows' && inputs.windows)
+      }}
     env:
       GRPC_BUILD_ENABLE_CCACHE: "ON"
       GH_TOKEN: ${{ secrets.GNUS_TOKEN_1 }}
