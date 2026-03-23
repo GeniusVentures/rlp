@@ -37,7 +37,12 @@ discv4_client::discv4_client(asio::io_context& io_context, const discv4Config& c
         throw std::runtime_error("Invalid bind_ip: " + config_.bind_ip + " (" + ec.message() + ")");
     }
 
-    socket_.open(bind_address.is_v4() ? udp::v4() : udp::v6(), ec);
+    if (!bind_address.is_v4()) {
+        throw std::runtime_error(
+            "discv4 bind_ip must be IPv4 until discv4 handlers are IPv6-safe: " + config_.bind_ip);
+    }
+
+    socket_.open(udp::v4(), ec);
     if (ec) {
         throw std::runtime_error("Failed to open UDP socket: " + ec.message());
     }

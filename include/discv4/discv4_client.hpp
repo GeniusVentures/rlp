@@ -45,6 +45,9 @@ struct DiscoveredPeer {
 
 // Discovery client configuration
 struct discv4Config {
+    /// @brief Local UDP bind address.
+    /// @note Discovery v4 is currently IPv4-only in this implementation.
+    ///       Packet handlers and wire endpoint parsing still assume 4-byte IPv4 addresses.
     std::string bind_ip = "0.0.0.0";
     uint16_t bind_port = 30303;
     uint16_t tcp_port = 30303;

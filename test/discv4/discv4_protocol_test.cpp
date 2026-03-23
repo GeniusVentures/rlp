@@ -235,6 +235,19 @@ TEST_F(discv4ClientTest, ClientCreation) {
     std::cout << "  ✓ discv4_client instantiated\n";
 }
 
+TEST_F(discv4ClientTest, ClientRejectsIPv6BindAddress) {
+    std::cout << "\n[TEST] ClientRejectsIPv6BindAddress - Rejecting IPv6 bind_ip until handlers are IPv6-safe\n";
+
+    config_.bind_ip = "::1";
+
+    EXPECT_THROW(
+        {
+            client_ = std::make_unique<discv4::discv4_client>(io_context_, config_);
+        },
+        std::runtime_error)
+        << "discv4_client must reject IPv6 bind_ip while discv4 packet handling is IPv4-only";
+}
+
 TEST_F(discv4ClientTest, ClientStartStop) {
     std::cout << "\n[TEST] ClientStartStop - Testing client lifecycle\n";
 
