@@ -1,13 +1,6 @@
 name: Fuzz Testing
 
 on:
-  push:
-    branches: [ "main", "dev_peer_discovery" ]
-  pull_request:
-    branches: [ "main", "dev_peer_discovery" ]
-  schedule:
-    # Run nightly fuzzing for longer duration at 4 AM UTC
-    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       duration:
