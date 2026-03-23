@@ -51,20 +51,20 @@ struct PeerInfo {
 };
 
 /// RLPx session managing encrypted P2P communication.
-class RlpxSession {
+class RlpxSession : public std::enable_shared_from_this<RlpxSession> {
 public:
     /// @brief Factory for outbound connections.
     /// @param params Session connection parameters.
     /// @param yield  Boost.Asio stackful coroutine context.
     /// @return Constructed session on success, SessionError on failure.
-    [[nodiscard]] static Result<std::unique_ptr<RlpxSession>>
+    [[nodiscard]] static Result<std::shared_ptr<RlpxSession>>
     connect(const SessionConnectParams& params, boost::asio::yield_context yield) noexcept;
 
     /// @brief Factory for inbound connections.
     /// @param params Session accept parameters.
     /// @param yield  Boost.Asio stackful coroutine context.
     /// @return Constructed session on success, SessionError on failure.
-    [[nodiscard]] static Result<std::unique_ptr<RlpxSession>>
+    [[nodiscard]] static Result<std::shared_ptr<RlpxSession>>
     accept(const SessionAcceptParams& params, boost::asio::yield_context yield) noexcept;
 
     ~RlpxSession();

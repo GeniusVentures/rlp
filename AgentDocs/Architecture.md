@@ -13,12 +13,13 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 - **Protocol**: Implement discv4 (simpler) or Discv5 (used by some newer chains). Messages include:
   - `PING`/`PONG`: Check peer availability.
   - `FIND_NODE`/`NEIGHBORS`: Query and receive peer lists.
+- **Current repo status**: The maintained implementation uses `Boost.Asio` UDP sockets and endpoint/address abstractions. The older ENet/raw-socket sketch below is historical and should not be used as the implementation model.
 - **C++ Code**:
   ```cpp
-  #include <enet/enet.h> // ENet for UDP networking
+  #include <boost/asio/io_context.hpp>
+  #include <boost/asio/ip/udp.hpp>
   #include <vector>
   #include <string>
-  #include <openssl/sha.h> // For keccak256
 
   struct Node {
       std::string ip;
@@ -28,27 +29,31 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 
   class Discovery {
   public:
-      Discovery() {
-          enet_initialize();
-          host_ = enet_host_create(nullptr, 1, 2, 0, 0); // UDP host
+      Discovery()
+          : socket_(io_, boost::asio::ip::udp::v4())
+      {
       }
-      ~Discovery() { enet_host_destroy(host_); enet_deinitialize(); }
 
       void SendPing(const Node& target) {
           std::vector<uint8_t> packet = EncodePing();
-          ENetAddress addr{inet_addr(target.ip.c_str()), target.port};
-          ENetPeer* peer = enet_host_connect(host_, &addr, 2, 0);
-          ENetPacket* enet_packet = enet_packet_create(packet.data(), packet.size(), ENET_PACKET_FLAG_RELIABLE);
-          enet_peer_send(peer, 0, enet_packet);
+          boost::system::error_code ec;
+          const auto address = boost::asio::ip::make_address(target.ip, ec);
+          if (ec) {
+              return;
+          }
+
+          const boost::asio::ip::udp::endpoint endpoint(address, target.port);
+          socket_.send_to(boost::asio::buffer(packet), endpoint, 0, ec);
       }
 
-      void HandlePacket(ENetEvent& event) {
+      void HandlePacket() {
           // Decode packet (PING, PONG, FIND_NODE, NEIGHBORS)
           // Update peer list if NEIGHBORS received
       }
 
   private:
-      ENetHost* host_;
+      boost::asio::io_context io_;
+      boost::asio::ip::udp::socket socket_;
       std::vector<uint8_t> EncodePing() {
           // RLP-encode PING: [version, from, to, expiration, enr_seq]
           // Return serialized bytes
@@ -57,30 +62,33 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   };
   ```
 - **Notes**:
-  - Use ENet for lightweight UDP networking (C-based, minimal).
+  - Use Boost.Asio for cross-platform UDP networking.
   - RLP-encode messages per DevP2P specs (see below for RLP).
   - Start with chain-specific bootnodes (hardcode from chain docs, e.g., Ethereum’s enodes).
-  - Maintain 10-15 peers per chain.
+  - Maintain up to `max_active` concurrent dial attempts per chain (default 25 desktop, 3–5 mobile).
+  - A `DialScheduler` per chain queues discovered peers and recycles dial slots as connections succeed or fail, mirroring go-ethereum's `dialScheduler` pattern (`maxActiveDials = defaultMaxPendingPeers`).
+  - All chain schedulers share a single `boost::asio::io_context` (one thread, cooperative coroutines — no thread-per-chain overhead).
+  - A `WatcherPool` owns a **discv4 singleton** (stays warm across chain switches) and enforces a two-level resource cap: `max_total` (global fd limit) and `max_per_chain` (per-chain dial limit). Sensible defaults: mobile `max_total=12, max_per_chain=3`; desktop `max_total=200, max_per_chain=50`.
 
 #### 2. RLPx Connection (TCP)
 - **Purpose**: Establish secure TCP connections for `eth` subprotocol gossip.
 - **Protocol**: RLPx uses ECIES for handshakes (encryption/auth) and multiplexes subprotocols.
+- **Current repo status**: The maintained transport path is `src/rlpx/socket/socket_transport.cpp`, which already uses Boost.Asio TCP sockets and timeout handling. The raw POSIX sketch below is historical and should not be used as the implementation model.
 - **C++ Code**:
   ```cpp
+  #include <boost/asio/connect.hpp>
+  #include <boost/asio/ip/tcp.hpp>
   #include <openssl/ec.h> // For ECIES
   #include <openssl/evp.h>
-  #include <sys/socket.h>
-  #include <netinet/in.h>
   #include <vector>
 
   class RLPxSession {
   public:
-      RLPxSession(const Node& peer) : peer_(peer) {
-          sock_ = socket(AF_INET, SOCK_STREAM, 0);
-          sockaddr_in addr;
-          addr.sin_addr.s_addr = inet_addr(peer.ip.c_str());
-          addr.sin_port = htons(peer.port);
-          connect(sock_, (sockaddr*)&addr, sizeof(addr));
+      RLPxSession(boost::asio::io_context& io, const Node& peer)
+          : socket_(io), peer_(peer) {
+          boost::asio::ip::tcp::resolver resolver(io);
+          auto endpoints = resolver.resolve(peer.ip, std::to_string(peer.port));
+          boost::asio::connect(socket_, endpoints);
           PerformHandshake();
       }
 
@@ -93,17 +101,17 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 
       void SendHello() {
           std::vector<uint8_t> hello = EncodeHello();
-          send(sock_, hello.data(), hello.size(), 0);
+          boost::asio::write(socket_, boost::asio::buffer(hello));
       }
 
       void ReceiveMessage() {
           std::vector<uint8_t> buffer(1024);
-          int len = recv(sock_, buffer.data(), buffer.size(), 0);
+          const std::size_t len = socket_.read_some(boost::asio::buffer(buffer));
           // Decrypt and decode RLP message (e.g., HELLO, STATUS)
       }
 
   private:
-      int sock_;
+      boost::asio::ip::tcp::socket socket_;
       Node peer_;
       std::vector<uint8_t> EncodeHello() {
           // RLP-encode HELLO: [protocolVersion, clientId, capabilities, port, id]
@@ -297,7 +305,12 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   - Hardcode bootnodes (from chain docs).
   - Set chain ID (Ethereum: 1, Polygon: 137, Base: 8453, BSC: 56).
   - Use `eth/66` (or chain-specific version).
-- **Connections**: Run separate Discovery and RLPxSession instances per chain.
+- **Connections**: One `discv4_client` singleton on `WatcherPool` (shared across all chains, stays warm across chain switches). One `DialScheduler` per active chain watcher.
+  - `WatcherPool(max_total, max_per_chain)` — two-level resource cap enforced across all schedulers:
+    - Mobile defaults: `max_total=12, max_per_chain=3` → up to 4 chains simultaneously, 3 fds each
+    - Desktop defaults: `max_total=200, max_per_chain=50`
+  - `start_watcher(chain)` — creates `DialScheduler` for that chain, immediately begins consuming discovered peers
+  - `stop_watcher(chain)` — **async**, no-block: disconnects all active TCP sessions for that chain; coroutines unwind at next yield, fds freed within one io_context cycle; UI never stutters; freed slots immediately available to a new chain watcher
 - **Consensus Rules**:
   - Ethereum: Post-Merge PoS, verify validator signatures.
   - Polygon: PoS, check Heimdall checkpoints.
@@ -305,7 +318,7 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
   - BSC: PoSA, check authority signatures or PoW.
 
 ### Challenges and Mitigations
-- **Resource Use**: Limit peers to 10-15 per chain, cache headers in memory (~1MB per 1000 blocks).
+- **Resource Use**: Two-level cap via `WatcherPool(max_total, max_per_chain)`. All coroutines share one `io_context` thread — zero thread overhead per chain. On desktop raise fd limit via `setrlimit(RLIMIT_NOFILE)` at startup. On mobile the low `max_total` keeps fd usage negligible and battery impact minimal. Redundancy is collective via IPFS pubsub — each device only needs a few stable peers per chain.
 - **RLP Complexity**: Implement recursive RLP decoding for lists (blocks, receipts).
 - **Peer Reliability**: Handle dropped connections with reconnect logic; maintain diverse peers.
 - **Chain Quirks**: Test on testnets (Sepolia, Amoy, Base Sepolia, BSC Testnet) for chain-specific behaviors.
@@ -320,7 +333,111 @@ To monitor transactions and event logs for specific smart contracts on EVM-compa
 6. Verify block headers for consensus (canonical chain).
 7. Log/process matched transactions/logs.
 
-This C++ implementation ensures decentralized monitoring of your smart contracts across EVM chains using RLPx and `eth` gossip, with minimal dependencies (ENet, OpenSSL). If you need specific message formats or chain bootnodes, let me know!
+This C++ implementation ensures decentralized monitoring of your smart contracts across EVM chains using Boost.Asio-based discovery/RLPx transport plus OpenSSL-backed crypto. If you need specific message formats or chain bootnodes, let me know!
 
 
 
+
+---
+
+## discv5 Module (added 2026-03-15)
+
+A parallel discovery stack that locates Ethereum-compatible peers via the discv5 protocol (EIP-8020).  It is deliberately additive — the existing discv4 stack and all RLPx/ETH code remain unchanged.
+
+### High-level data flow
+
+```
+BootnodeSource (ENR or enode URIs)
+       │
+       ▼
+discv5_crawler
+  ├── queued_peers_    — next FINDNODE targets
+  ├── measured_ids_    — nodes that replied
+  ├── failed_ids_      — nodes that timed out
+  └── discovered_ids_  — dedup set
+       │
+       │  PeerDiscoveredCallback (ValidatedPeer)
+       ▼
+discovery::ValidatedPeer  ← shared with discv4 via include/discovery/discovered_peer.hpp
+       │
+       ▼
+DialScheduler / RLPx session (existing, unchanged)
+```
+
+### New files
+
+```
+include/
+  discovery/
+    discovered_peer.hpp       — shared NodeId / ForkId / ValidatedPeer
+  discv5/
+    discv5_constants.hpp      — all domain sizes + wire POD structs
+    discv5_error.hpp          — discv5Error enum
+    discv5_types.hpp          — EnrRecord, discv5Config, callbacks
+    discv5_enr.hpp            — EnrParser (decode, verify, to_validated_peer)
+    discv5_bootnodes.hpp      — IBootnodeSource, ChainBootnodeRegistry
+    discv5_crawler.hpp        — peer queue state machine
+    discv5_client.hpp         — UDP socket + async loops
+
+src/discv5/
+  discv5_error.cpp
+  discv5_enr.cpp              — base64url, RLP, secp256k1 signature verify
+  discv5_bootnodes.cpp        — per-chain seed lists (Ethereum/Polygon/BSC/Base)
+  discv5_crawler.cpp          — enqueue/dedup/emit
+  discv5_client.cpp           — Boost.Asio spawn/yield_context receive + crawler loops, FINDNODE send
+  CMakeLists.txt
+
+test/discv5/
+  discv5_enr_test.cpp         — go-ethereum test vectors
+  discv5_bootnodes_test.cpp   — registry and source tests
+  discv5_crawler_test.cpp     — deterministic state machine tests
+  CMakeLists.txt
+
+examples/discv5_crawl/
+  discv5_crawl.cpp            — live C++ example / functional test harness entry point
+  CMakeLists.txt
+```
+
+### Functional testing note
+
+Discovery functional testing in this repository is done through C++ example programs under `examples/`, not shell wrappers.
+
+The working discv4 reference pattern is `examples/discovery/test_enr_survey.cpp`: a standalone C++ example that drives a bounded live run, gathers counters in memory, and prints a structured report at the end.
+
+`examples/discv5_crawl/discv5_crawl.cpp` should be treated as the corresponding discv5 functional-testing entry point. At the current checkpoint it is still a partial live harness because the packet receive path does not yet decode the full discv5 WHOAREYOU / handshake / NODES flow. Once that path is implemented, this example should provide the same kind of end-of-run C++ diagnostic summary as `test_enr_survey.cpp`.
+
+### Wire-format structs (M014)
+
+All packet-size constants are derived from `sizeof(WireStruct)`, never bare literals:
+
+| Struct | Size | Constant |
+|---|---|---|
+| `IPv4Wire` | 4 B | `kIPv4Bytes` |
+| `IPv6Wire` | 16 B | `kIPv6Bytes` |
+| `MaskingIvWire` | 16 B | `kMaskingIvBytes` |
+| `GcmNonceWire` | 12 B | `kGcmNonceBytes` |
+| `StaticHeaderWire` | 23 B | `kStaticHeaderBytes` |
+| `EnrSigWire` | 64 B | `kEnrSigBytes` |
+| `CompressedPubKeyWire` | 33 B | `kCompressedKeyBytes` |
+| `UncompressedPubKeyWire` | 65 B | `kUncompressedKeyBytes` |
+
+### Supported chains (ChainBootnodeRegistry)
+
+| Chain | ID | Source format |
+|---|---|---|
+| Ethereum mainnet | 1 | ENR (go-ethereum V5Bootnodes) |
+| Ethereum Sepolia | 11155111 | enode (go-ethereum SepoliaBootnodes) |
+| Ethereum Holesky | 17000 | enode (go-ethereum HoleskyBootnodes) |
+| Polygon mainnet | 137 | enode (docs.polygon.technology) |
+| Polygon Amoy | 80002 | enode (docs.polygon.technology) |
+| BSC mainnet | 56 | enode (bnb-chain/bsc params/config.go) |
+| BSC testnet | 97 | enode (bnb-chain/bsc params/config.go) |
+| Base mainnet | 8453 | OP Stack — inject at runtime |
+| Base Sepolia | 84532 | OP Stack — inject at runtime |
+
+### Next sprint
+
+1. Implement the minimal WHOAREYOU / HANDSHAKE session layer required for live discv5 peers to accept queries.
+2. Decode incoming NODES responses and feed decoded peers back into the crawler / callback path.
+3. Make `examples/discv5_crawl/discv5_crawl.cpp` behave like a real example-based functional test, following the same C++ pattern already used by `examples/discovery/test_enr_survey.cpp`: bounded run, in-memory counters, final structured report.
+4. Once the example proves live peer discovery end-to-end, wire `discv5_client` as an alternative to `discv4_client` inside `eth_watch`.

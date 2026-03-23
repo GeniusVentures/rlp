@@ -231,45 +231,6 @@ want to test, from your own wallet. GNUS contract addresses:
 In one terminal, start the watcher before sending transactions so events are caught
 live:
 
-```bash
-# All 4 mainnets
-./test_eth_watch.sh
-
-# All 4 testnets
-./test_eth_watch.sh gnus-all-testnets
-
-# Single chain
-./test_eth_watch.sh polygon
-```
-
-#### 4. Send test transactions
-
-In a second terminal, send a GNUS Transfer from the test wallet:
-
-```bash
-# Testnets
-source .env && ./send_test_transactions.sh testnets
-
-# Mainnets
-source .env && ./send_test_transactions.sh
-
-# Specific chains
-source .env && ./send_test_transactions.sh sepolia polygon-amoy
-```
-
-Optional env var overrides:
-
-```bash
-# Send to a different address
-TO_ADDRESS=0x... source .env && ./send_test_transactions.sh testnets
-
-# Use your own RPC endpoint
-RPC_SEPOLIA=https://my-node.example.com source .env && ./send_test_transactions.sh sepolia
-
-# Extend the watch window (default 60s)
-WATCH_TIMEOUT=120 ./test_eth_watch.sh gnus-all-testnets
-```
-
 #### What a successful run looks like
 
 ```

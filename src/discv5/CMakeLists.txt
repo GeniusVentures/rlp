@@ -1,0 +1,34 @@
+# discv5 peer discovery library
+add_library(discv5 STATIC
+        ${CMAKE_CURRENT_LIST_DIR}/discv5_error.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv5_enr.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv5_bootnodes.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv5_crawler.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/discv5_client.cpp
+)
+
+target_include_directories(discv5 PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../include>
+        $<INSTALL_INTERFACE:include>
+        $<BUILD_INTERFACE:${crypto3_INCLUDE_DIR}>
+)
+
+target_link_libraries(discv5 PUBLIC
+        rlpx
+        Boost::context
+        Boost::coroutine
+)
+
+target_compile_features(discv5 PUBLIC cxx_std_17)
+
+install(DIRECTORY
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include/discv5/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/discv5
+        FILES_MATCHING PATTERN "*.hpp"
+)
+
+install(DIRECTORY
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../include/discovery/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/discovery
+        FILES_MATCHING PATTERN "*.hpp"
+)

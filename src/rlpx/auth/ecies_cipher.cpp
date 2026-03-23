@@ -3,7 +3,7 @@
 
 #include <rlpx/auth/ecies_cipher.hpp>
 #include <rlpx/crypto/ecdh.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <secp256k1.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -138,17 +138,18 @@ AuthResult<ByteBuffer> EciesCipher::encrypt(const EciesEncryptParams& params) no
 
 AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) noexcept {
     // Wire: ephemeral_pub(65) || iv(16) || ciphertext(N) || mac(32)
-    constexpr size_t kMinSize = kUncompressedPubKeySize + kAesBlockSize + 32; // +32 for mac
-    if (params.ciphertext.size() < kMinSize) {
+    constexpr size_t kMinSize = kEciesOverheadSize;
+    const size_t ciphertext_size = static_cast<size_t>(params.ciphertext.size());
+    if (ciphertext_size < kMinSize) {
         return AuthError::kEciesDecryptFailed;
     }
 
     const ByteView ephemeral_pub_bytes = params.ciphertext.subspan(0, kUncompressedPubKeySize);
     const ByteView iv                  = params.ciphertext.subspan(kUncompressedPubKeySize, kAesBlockSize);
     const size_t   ct_offset           = kUncompressedPubKeySize + kAesBlockSize;
-    const size_t   ct_len              = params.ciphertext.size() - kMinSize;
+    const size_t   ct_len              = ciphertext_size - kMinSize;
     const ByteView ciphertext          = params.ciphertext.subspan(ct_offset, ct_len);
-    const ByteView mac                 = params.ciphertext.subspan(ct_offset + ct_len, 32);
+    const ByteView mac                 = params.ciphertext.subspan(ct_offset + ct_len, kEciesMacSize);
 
     // Parse ephemeral public key (skip 0x04 prefix)
     PublicKey ephemeral_pub{};
@@ -170,7 +171,7 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
     mac_input.insert(mac_input.end(), params.shared_mac_data.begin(), params.shared_mac_data.end());
     const auto expected_mac = hmac_sha256(ByteView(keys.mac_key.data(), keys.mac_key.size()), mac_input);
 
-    if (std::memcmp(mac.data(), expected_mac.data(), 32) != 0) {
+    if (std::memcmp(mac.data(), expected_mac.data(), kEciesMacSize) != 0) {
         ecies_log()->debug("decrypt: MAC mismatch");
         return AuthError::kEciesDecryptFailed;
     }
@@ -179,7 +180,7 @@ AuthResult<ByteBuffer> EciesCipher::decrypt(const EciesDecryptParams& params) no
 }
 
 size_t EciesCipher::estimate_encrypted_size(size_t plaintext_size) noexcept {
-    return kUncompressedPubKeySize + kAesBlockSize + plaintext_size + 32;
+    return kUncompressedPubKeySize + kAesBlockSize + plaintext_size + kEciesMacSize;
 }
 
 AuthResult<SharedSecret> EciesCipher::compute_shared_secret(

@@ -28,10 +28,10 @@ static std::vector<uint8_t> from_hex(std::string_view hex) {
 } // namespace
 
 // ---------------------------------------------------------------------------
-// go-ethereum ETH/68 wire-format vector tests
+// go-ethereum ETH/69 wire-format vector tests
 //
-// go-ethereum StatusPacket (eth/68):
-//   type StatusPacket struct {
+// go-ethereum StatusPacket (eth/69):
+//   type StatusPacket69 struct {
 //       ProtocolVersion uint32
 //       NetworkID       uint64
 //       Genesis         common.Hash   // 32 bytes
@@ -41,15 +41,15 @@ static std::vector<uint8_t> from_hex(std::string_view hex) {
 //       LatestBlockHash common.Hash   // 32 bytes
 //   }
 //
-// Vector: ProtocolVersion=68, NetworkID=11155111 (Sepolia),
+// Vector: ProtocolVersion=69, NetworkID=11155111 (Sepolia),
 //         Genesis=32×0x00, ForkID={Hash=[0xf0,0xfb,0x06,0xe5], Next=0},
 //         EarliestBlock=0, LatestBlock=1000, LatestBlockHash=32×0x00
 //
 // Computed with Python rlp_encode; matches go-ethereum RLP struct encoding.
 // ---------------------------------------------------------------------------
-static constexpr std::string_view kStatusEth68WireHex =
+static constexpr std::string_view kStatusEth69WireHex =
     "f852"
-    "44"                // ProtocolVersion = 68
+    "45"                // ProtocolVersion = 69
     "83aa36a7"          // NetworkID = 11155111
     "a0" "0000000000000000000000000000000000000000000000000000000000000000"  // Genesis
     "c6" "84f0fb06e5" "80"  // ForkID: [hash=f0fb06e5, next=0]
@@ -57,47 +57,50 @@ static constexpr std::string_view kStatusEth68WireHex =
     "8203e8"            // LatestBlock = 1000
     "a0" "0000000000000000000000000000000000000000000000000000000000000000"; // LatestBlockHash
 
-TEST(EthMessagesGoEthVectors, StatusEth68DecodeFromWireBytes) {
-    auto wire = from_hex(kStatusEth68WireHex);
+TEST(EthMessagesGoEthVectors, StatusEth69DecodeFromWireBytes) {
+    auto wire = from_hex(kStatusEth69WireHex);
     auto result = eth::protocol::decode_status(rlp::ByteView(wire.data(), wire.size()));
-    ASSERT_TRUE(result.has_value()) << "decode_status() failed on go-ethereum ETH/68 wire bytes";
+    ASSERT_TRUE(result.has_value()) << "decode_status() failed on go-ethereum ETH/69 wire bytes";
 
-    EXPECT_EQ(result.value().protocol_version, 68u);
-    EXPECT_EQ(result.value().network_id, 11155111u);
+    const auto* msg69 = std::get_if<eth::StatusMessage69>(&result.value());
+    ASSERT_NE(msg69, nullptr) << "Expected StatusMessage69 variant";
+    EXPECT_EQ(msg69->protocol_version, 69u);
+    EXPECT_EQ(msg69->network_id, 11155111u);
     eth::Hash256 zero_hash{};
-    EXPECT_EQ(result.value().genesis_hash, zero_hash);
-    EXPECT_EQ(result.value().fork_id.fork_hash[0], 0xf0u);
-    EXPECT_EQ(result.value().fork_id.fork_hash[1], 0xfbu);
-    EXPECT_EQ(result.value().fork_id.fork_hash[2], 0x06u);
-    EXPECT_EQ(result.value().fork_id.fork_hash[3], 0xe5u);
-    EXPECT_EQ(result.value().fork_id.next_fork, 0u);
-    EXPECT_EQ(result.value().earliest_block, 0u);
-    EXPECT_EQ(result.value().latest_block, 1000u);
-    EXPECT_EQ(result.value().latest_block_hash, zero_hash);
+    EXPECT_EQ(msg69->genesis_hash, zero_hash);
+    EXPECT_EQ(msg69->fork_id.fork_hash[0], 0xf0u);
+    EXPECT_EQ(msg69->fork_id.fork_hash[1], 0xfbu);
+    EXPECT_EQ(msg69->fork_id.fork_hash[2], 0x06u);
+    EXPECT_EQ(msg69->fork_id.fork_hash[3], 0xe5u);
+    EXPECT_EQ(msg69->fork_id.next_fork, 0u);
+    EXPECT_EQ(msg69->earliest_block, 0u);
+    EXPECT_EQ(msg69->latest_block, 1000u);
+    EXPECT_EQ(msg69->latest_block_hash, zero_hash);
 }
 
-TEST(EthMessagesGoEthVectors, StatusEth68EncodeMatchesWireFormat) {
-    eth::StatusMessage msg;
-    msg.protocol_version = 68;
-    msg.network_id = 11155111;
-    msg.genesis_hash.fill(0x00);
-    msg.fork_id.fork_hash = {0xf0, 0xfb, 0x06, 0xe5};
-    msg.fork_id.next_fork = 0;
-    msg.earliest_block = 0;
-    msg.latest_block = 1000;
-    msg.latest_block_hash.fill(0x00);
+TEST(EthMessagesGoEthVectors, StatusEth69EncodeMatchesWireFormat) {
+    eth::StatusMessage69 msg69;
+    msg69.protocol_version = 69;
+    msg69.network_id = 11155111;
+    msg69.genesis_hash.fill(0x00);
+    msg69.fork_id.fork_hash = {0xf0, 0xfb, 0x06, 0xe5};
+    msg69.fork_id.next_fork = 0;
+    msg69.earliest_block = 0;
+    msg69.latest_block = 1000;
+    msg69.latest_block_hash.fill(0x00);
 
-    auto result = eth::protocol::encode_status(msg);
+    eth::StatusMessage status = msg69;
+    auto result = eth::protocol::encode_status(status);
     ASSERT_TRUE(result.has_value()) << "encode_status() failed";
 
-    auto expected = from_hex(kStatusEth68WireHex);
+    auto expected = from_hex(kStatusEth69WireHex);
     EXPECT_EQ(result.value(), expected)
-        << "Encoded ETH/68 Status does not match go-ethereum wire format.\n"
+        << "Encoded ETH/69 Status does not match go-ethereum wire format.\n"
         << "  got " << result.value().size() << " bytes, expected " << expected.size();
 }
 
-TEST(EthMessagesGoEthVectors, StatusEth68RoundTripPreservesWireFormat) {
-    auto wire = from_hex(kStatusEth68WireHex);
+TEST(EthMessagesGoEthVectors, StatusEth69RoundTripPreservesWireFormat) {
+    auto wire = from_hex(kStatusEth69WireHex);
     auto decoded = eth::protocol::decode_status(rlp::ByteView(wire.data(), wire.size()));
     ASSERT_TRUE(decoded.has_value());
 
@@ -108,8 +111,8 @@ TEST(EthMessagesGoEthVectors, StatusEth68RoundTripPreservesWireFormat) {
 
 
 TEST(EthMessagesTest, StatusRoundtrip) {
-    eth::StatusMessage original;
-    original.protocol_version = 68;
+    eth::StatusMessage69 original;
+    original.protocol_version = 69;
     original.network_id = 11155111;
     original.genesis_hash = make_filled<eth::Hash256>(0x20);
     original.fork_id.fork_hash = make_filled<std::array<uint8_t, 4>>(0x01);
@@ -118,21 +121,130 @@ TEST(EthMessagesTest, StatusRoundtrip) {
     original.latest_block = 5000000;
     original.latest_block_hash = make_filled<eth::Hash256>(0x10);
 
-    auto encoded = eth::protocol::encode_status(original);
+    eth::StatusMessage wrapped = original;
+    auto encoded = eth::protocol::encode_status(wrapped);
     ASSERT_TRUE(encoded.has_value());
 
     auto decoded = eth::protocol::decode_status(rlp::ByteView(encoded.value().data(), encoded.value().size()));
     ASSERT_TRUE(decoded.has_value());
 
-    const auto& result = decoded.value();
-    EXPECT_EQ(result.protocol_version, original.protocol_version);
-    EXPECT_EQ(result.network_id, original.network_id);
-    EXPECT_EQ(result.genesis_hash, original.genesis_hash);
-    EXPECT_EQ(result.fork_id.fork_hash, original.fork_id.fork_hash);
-    EXPECT_EQ(result.fork_id.next_fork, original.fork_id.next_fork);
-    EXPECT_EQ(result.earliest_block, original.earliest_block);
-    EXPECT_EQ(result.latest_block, original.latest_block);
-    EXPECT_EQ(result.latest_block_hash, original.latest_block_hash);
+    const auto* result = std::get_if<eth::StatusMessage69>(&decoded.value());
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->protocol_version, original.protocol_version);
+    EXPECT_EQ(result->network_id, original.network_id);
+    EXPECT_EQ(result->genesis_hash, original.genesis_hash);
+    EXPECT_EQ(result->fork_id.fork_hash, original.fork_id.fork_hash);
+    EXPECT_EQ(result->fork_id.next_fork, original.fork_id.next_fork);
+    EXPECT_EQ(result->earliest_block, original.earliest_block);
+    EXPECT_EQ(result->latest_block, original.latest_block);
+    EXPECT_EQ(result->latest_block_hash, original.latest_block_hash);
+}
+
+// ---------------------------------------------------------------------------
+// ETH/68 tests — wire: [version, networkid, td, blockhash, genesis, forkid]
+// ---------------------------------------------------------------------------
+
+TEST(EthMessagesEth68, StatusEth68DecodeFromWireBytes) {
+    eth::Hash256 blockhash{};
+    blockhash.fill(0xAA);
+    eth::Hash256 genesis{};
+    std::array<uint8_t, 4> fork_hash = {0xed, 0x88, 0xb5, 0xfd};
+
+    rlp::RlpEncoder enc;
+    (void)enc.BeginList();
+    (void)enc.add(uint8_t{68});
+    (void)enc.add(uint64_t{11155111});
+    (void)enc.add(intx::uint256{0});
+    (void)enc.add(rlp::ByteView(blockhash.data(), 32));
+    (void)enc.add(rlp::ByteView(genesis.data(), 32));
+    (void)enc.BeginList();
+    (void)enc.add(rlp::ByteView(fork_hash.data(), 4));
+    (void)enc.add(uint64_t{0});
+    (void)enc.EndList();
+    (void)enc.EndList();
+
+    auto bytes_result = enc.GetBytes();
+    ASSERT_TRUE(bytes_result.has_value());
+    auto wire = std::vector<uint8_t>(bytes_result.value()->begin(), bytes_result.value()->end());
+
+    auto result = eth::protocol::decode_status(rlp::ByteView(wire.data(), wire.size()));
+    ASSERT_TRUE(result.has_value()) << "decode_status() failed on ETH/68 wire bytes";
+
+    const auto* msg68 = std::get_if<eth::StatusMessage68>(&result.value());
+    ASSERT_NE(msg68, nullptr) << "Expected StatusMessage68 variant";
+    EXPECT_EQ(msg68->protocol_version, 68u);
+    EXPECT_EQ(msg68->network_id, 11155111u);
+    EXPECT_EQ(msg68->td, intx::uint256{0});
+    EXPECT_EQ(msg68->blockhash, blockhash);
+    eth::Hash256 zero_hash{};
+    EXPECT_EQ(msg68->genesis_hash, zero_hash);
+    EXPECT_EQ(msg68->fork_id.fork_hash[0], 0xedu);
+    EXPECT_EQ(msg68->fork_id.fork_hash[1], 0x88u);
+    EXPECT_EQ(msg68->fork_id.fork_hash[2], 0xb5u);
+    EXPECT_EQ(msg68->fork_id.fork_hash[3], 0xfdu);
+    EXPECT_EQ(msg68->fork_id.next_fork, 0u);
+}
+
+TEST(EthMessagesEth68, StatusEth68RoundTrip) {
+    eth::StatusMessage68 original;
+    original.protocol_version = 68;
+    original.network_id = 11155111;
+    original.td = intx::uint256{0x1234abcd};
+    original.blockhash = make_filled<eth::Hash256>(0xBB);
+    original.genesis_hash = make_filled<eth::Hash256>(0x00);
+    original.fork_id.fork_hash = {0xed, 0x88, 0xb5, 0xfd};
+    original.fork_id.next_fork = 0;
+
+    eth::StatusMessage wrapped = original;
+    auto encoded = eth::protocol::encode_status(wrapped);
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = eth::protocol::decode_status(rlp::ByteView(encoded.value().data(), encoded.value().size()));
+    ASSERT_TRUE(decoded.has_value());
+
+    const auto* result = std::get_if<eth::StatusMessage68>(&decoded.value());
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->protocol_version, original.protocol_version);
+    EXPECT_EQ(result->network_id, original.network_id);
+    EXPECT_EQ(result->td, original.td);
+    EXPECT_EQ(result->blockhash, original.blockhash);
+    EXPECT_EQ(result->genesis_hash, original.genesis_hash);
+    EXPECT_EQ(result->fork_id.fork_hash, original.fork_id.fork_hash);
+    EXPECT_EQ(result->fork_id.next_fork, original.fork_id.next_fork);
+}
+
+TEST(EthMessagesEth68, StatusEth68ValidateCommonFields) {
+    eth::StatusMessage68 msg68;
+    msg68.protocol_version = 68;
+    msg68.network_id = 11155111;
+    msg68.genesis_hash = make_filled<eth::Hash256>(0xAB);
+    msg68.fork_id.fork_hash = {0x01, 0x02, 0x03, 0x04};
+    msg68.fork_id.next_fork = 42;
+
+    eth::StatusMessage status = msg68;
+    const auto common = eth::get_common_fields(status);
+    EXPECT_EQ(common.protocol_version, 68u);
+    EXPECT_EQ(common.network_id, 11155111u);
+    EXPECT_EQ(common.genesis_hash, msg68.genesis_hash);
+    EXPECT_EQ(common.fork_id.fork_hash, msg68.fork_id.fork_hash);
+    EXPECT_EQ(common.fork_id.next_fork, 42u);
+}
+
+TEST(EthMessagesEth68, StatusEth69ValidateCommonFields) {
+    eth::StatusMessage69 msg69;
+    msg69.protocol_version = 69;
+    msg69.network_id = 1;
+    msg69.genesis_hash = make_filled<eth::Hash256>(0xCD);
+    msg69.fork_id.fork_hash = {0x05, 0x06, 0x07, 0x08};
+    msg69.fork_id.next_fork = 99;
+
+    eth::StatusMessage status = msg69;
+    const auto common = eth::get_common_fields(status);
+    EXPECT_EQ(common.protocol_version, 69u);
+    EXPECT_EQ(common.network_id, 1u);
+    EXPECT_EQ(common.genesis_hash, msg69.genesis_hash);
+    EXPECT_EQ(common.fork_id.fork_hash, msg69.fork_id.fork_hash);
+    EXPECT_EQ(common.fork_id.next_fork, 99u);
 }
 
 TEST(EthMessagesTest, NewBlockHashesRoundtrip) {
@@ -385,27 +497,26 @@ TEST(EthMessagesTest, PooledTransactionsRoundtripEth66Envelope) {
 //
 // go-ethereum readStatus() checks (in order):
 //   1. NetworkID must match
-//   2. ProtocolVersion must match negotiated version
-//   3. Genesis must match
-//   4. ForkID filter (not yet implemented — requires chain config)
-//   5. EarliestBlock <= LatestBlock (when LatestBlock != 0)
+//   2. Genesis must match
+//   3. ForkID filter (not yet implemented — requires chain config)
+//   4. For ETH/69: EarliestBlock <= LatestBlock (when LatestBlock != 0)
 // ---------------------------------------------------------------------------
 
 namespace {
 
-/// @brief Build a valid Sepolia ETH/68 StatusMessage for use in validation tests.
+/// @brief Build a valid Sepolia ETH/69 StatusMessage for use in validation tests.
 eth::StatusMessage make_valid_status()
 {
-    eth::StatusMessage msg;
-    msg.protocol_version  = 68;
-    msg.network_id        = 11155111;  // Sepolia
-    msg.genesis_hash.fill(0xAB);
-    msg.fork_id.fork_hash = {0xf0, 0xfb, 0x06, 0xe5};
-    msg.fork_id.next_fork = 0;
-    msg.earliest_block    = 0;
-    msg.latest_block      = 1'000'000;
-    msg.latest_block_hash.fill(0xCD);
-    return msg;
+    eth::StatusMessage69 msg69;
+    msg69.protocol_version  = 69;
+    msg69.network_id        = 11155111;  // Sepolia
+    msg69.genesis_hash.fill(0xAB);
+    msg69.fork_id.fork_hash = {0xf0, 0xfb, 0x06, 0xe5};
+    msg69.fork_id.next_fork = 0;
+    msg69.earliest_block    = 0;
+    msg69.latest_block      = 1'000'000;
+    msg69.latest_block_hash.fill(0xCD);
+    return eth::StatusMessage{msg69};
 }
 
 } // anonymous namespace
@@ -414,19 +525,9 @@ eth::StatusMessage make_valid_status()
 TEST(StatusValidationTest, ValidStatus_Passes)
 {
     auto msg = make_valid_status();
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
+    const auto common = eth::get_common_fields(msg);
+    auto result = eth::protocol::validate_status(msg, 11155111, common.genesis_hash);
     EXPECT_TRUE(result.has_value()) << "Valid status must pass validation";
-}
-
-/// @brief ProtocolVersion mismatch → kProtocolVersionMismatch.
-///        go-ethereum: errProtocolVersionMismatch
-TEST(StatusValidationTest, WrongProtocolVersion_Fails)
-{
-    auto msg = make_valid_status();
-    msg.protocol_version = 67;  // peer claims 67, we negotiated 68
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error(), eth::StatusValidationError::kProtocolVersionMismatch);
 }
 
 /// @brief NetworkID mismatch → kNetworkIDMismatch.
@@ -434,9 +535,10 @@ TEST(StatusValidationTest, WrongProtocolVersion_Fails)
 TEST(StatusValidationTest, WrongNetworkID_Fails)
 {
     auto msg = make_valid_status();
-    msg.network_id = 1;  // mainnet, not Sepolia
-    eth::Hash256 genesis = msg.genesis_hash;
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, genesis);
+    std::get<eth::StatusMessage69>(msg).network_id = 1;  // mainnet, not Sepolia
+    eth::Hash256 genesis;
+    genesis.fill(0xAB);
+    auto result = eth::protocol::validate_status(msg, 11155111, genesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kNetworkIDMismatch);
 }
@@ -448,7 +550,7 @@ TEST(StatusValidationTest, WrongGenesis_Fails)
     auto msg = make_valid_status();
     eth::Hash256 our_genesis;
     our_genesis.fill(0x11);  // different from msg.genesis_hash (0xAB)
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, our_genesis);
+    auto result = eth::protocol::validate_status(msg, 11155111, our_genesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kGenesisMismatch);
 }
@@ -458,9 +560,10 @@ TEST(StatusValidationTest, WrongGenesis_Fails)
 TEST(StatusValidationTest, InvalidBlockRange_EarliestGreaterThanLatest_Fails)
 {
     auto msg = make_valid_status();
-    msg.earliest_block = 500'000;
-    msg.latest_block   = 100'000;  // earlier than earliest
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
+    std::get<eth::StatusMessage69>(msg).earliest_block = 500'000;
+    std::get<eth::StatusMessage69>(msg).latest_block   = 100'000;  // earlier than earliest
+    const auto common = eth::get_common_fields(msg);
+    auto result = eth::protocol::validate_status(msg, 11155111, common.genesis_hash);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kInvalidBlockRange);
 }
@@ -469,9 +572,10 @@ TEST(StatusValidationTest, InvalidBlockRange_EarliestGreaterThanLatest_Fails)
 TEST(StatusValidationTest, EarliestEqualsLatest_Passes)
 {
     auto msg = make_valid_status();
-    msg.earliest_block = 500'000;
-    msg.latest_block   = 500'000;
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
+    std::get<eth::StatusMessage69>(msg).earliest_block = 500'000;
+    std::get<eth::StatusMessage69>(msg).latest_block   = 500'000;
+    const auto common = eth::get_common_fields(msg);
+    auto result = eth::protocol::validate_status(msg, 11155111, common.genesis_hash);
     EXPECT_TRUE(result.has_value());
 }
 
@@ -481,9 +585,10 @@ TEST(StatusValidationTest, EarliestEqualsLatest_Passes)
 TEST(StatusValidationTest, LatestBlockZero_SkipsRangeCheck_Passes)
 {
     auto msg = make_valid_status();
-    msg.earliest_block = 0;
-    msg.latest_block   = 0;
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
+    std::get<eth::StatusMessage69>(msg).earliest_block = 0;
+    std::get<eth::StatusMessage69>(msg).latest_block   = 0;
+    const auto common = eth::get_common_fields(msg);
+    auto result = eth::protocol::validate_status(msg, 11155111, common.genesis_hash);
     EXPECT_TRUE(result.has_value());
 }
 
@@ -491,25 +596,14 @@ TEST(StatusValidationTest, LatestBlockZero_SkipsRangeCheck_Passes)
 TEST(StatusValidationTest, NetworkIDCheckedBeforeGenesis)
 {
     auto msg = make_valid_status();
-    msg.network_id = 999;           // wrong network
-    msg.genesis_hash.fill(0x00);    // also wrong genesis
+    std::get<eth::StatusMessage69>(msg).network_id = 999;           // wrong network
+    std::get<eth::StatusMessage69>(msg).genesis_hash.fill(0x00);    // also wrong genesis
     eth::Hash256 our_genesis;
     our_genesis.fill(0xAB);
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, our_genesis);
+    auto result = eth::protocol::validate_status(msg, 11155111, our_genesis);
     ASSERT_FALSE(result.has_value());
     // network_id is checked first — must not report genesis mismatch
     EXPECT_EQ(result.error(), eth::StatusValidationError::kNetworkIDMismatch);
-}
-
-/// @brief Protocol version checked before network ID (order matches go-ethereum).
-TEST(StatusValidationTest, ProtocolVersionCheckedBeforeNetworkID)
-{
-    auto msg = make_valid_status();
-    msg.protocol_version = 66;  // wrong version
-    msg.network_id       = 999; // also wrong
-    auto result = eth::protocol::validate_status(msg, 68, 11155111, msg.genesis_hash);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error(), eth::StatusValidationError::kProtocolVersionMismatch);
 }
 
 // ---------------------------------------------------------------------------

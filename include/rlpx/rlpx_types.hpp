@@ -45,8 +45,25 @@ inline constexpr size_t kAesBlockSize    = sizeof(AesBlock);
 inline constexpr size_t kMacSize         = sizeof(MacDigestWire);
 inline constexpr size_t kFrameHeaderSize = sizeof(FrameHeaderWire);
 
+/// ECIES / EIP-8 wire constants.
+inline constexpr size_t kEciesMacSize          = kHmacSha256Size;
+inline constexpr size_t kEciesOverheadSize     = kUncompressedPubKeySize + kAesBlockSize + kEciesMacSize;
+inline constexpr size_t kEip8LengthPrefixSize  = sizeof(uint16_t);
+inline constexpr size_t kEip8AuthPaddingSize   = 100;
+inline constexpr size_t kMaxEip8HandshakePacketSize = 2048U;
+
 /// Number of bytes used to encode the frame length inside the frame header.
 inline constexpr size_t kFrameLengthSize = 3;
+inline constexpr size_t kFrameHeaderDataOffset   = kFrameLengthSize;
+inline constexpr size_t kFrameHeaderWithMacSize  = kFrameHeaderSize + kMacSize;
+inline constexpr size_t kFramePaddingAlignment   = kAesBlockSize;
+inline constexpr size_t kFrameLengthMsbOffset    = 0;
+inline constexpr size_t kFrameLengthMiddleOffset = 1;
+inline constexpr size_t kFrameLengthLsbOffset    = 2;
+inline constexpr size_t kFrameLengthMsbShift     = 16U;
+inline constexpr size_t kFrameLengthMiddleShift  = 8U;
+inline constexpr size_t kFrameLengthLsbShift     = 0U;
+inline constexpr std::array<uint8_t, kFrameLengthSize> kFrameHeaderStaticRlpBytes = { 0xC2U, 0x80U, 0x80U };
 
 /// RLPx auth message wire constants
 /// Recoverable ECDSA compact signature: 64 bytes data + 1 byte recovery id.

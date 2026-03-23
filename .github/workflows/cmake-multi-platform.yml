@@ -367,3 +367,7 @@ jobs:
         if: ${{ matrix.target != 'Android' && matrix.target != 'iOS' }}
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
         run: ctest . -C ${{ matrix.build-type }} --output-on-failure -V
+
+      - name: Install rlp
+        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+        run: cmake --install . --config ${{ matrix.build-type }}

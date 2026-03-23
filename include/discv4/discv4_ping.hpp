@@ -6,6 +6,10 @@
 #include "discv4/discv4_constants.hpp"
 #include "rlp/rlp_encoder.hpp"
 
+#include <algorithm>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/system/error_code.hpp>
+
 namespace discv4 {
 
 class discv4_ping : public discv4_packet
@@ -14,14 +18,20 @@ public:
     struct Endpoint
     {
         rlp::ByteView ipBv;
-        uint8_t ipBytes[4];
+        uint8_t ipBytes[4]{};
         uint16_t udpPort = 0;
         uint16_t tcpPort = 0;
 
         Endpoint() = default;
         Endpoint( const std::string& ipStr, uint16_t udp, uint16_t tcp )
         {
-            inet_pton( AF_INET, ipStr.c_str(), ipBytes );
+            boost::system::error_code ec;
+            const auto address = boost::asio::ip::make_address_v4( ipStr, ec );
+            if ( !ec )
+            {
+                const auto bytes = address.to_bytes();
+                std::copy( bytes.begin(), bytes.end(), ipBytes );
+            }
             ipBv = rlp::ByteView( ipBytes, sizeof( ipBytes ) );
             udpPort = udp;
             tcpPort = tcp;

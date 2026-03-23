@@ -83,18 +83,19 @@ protected:
 TEST_F(EthProtocolTest, StatusMessageRoundtrip) {
     std::cout << "\n[TEST] StatusMessageRoundtrip - Testing ETH Status message encode/decode\n";
 
-    eth::StatusMessage original{};
-    original.protocol_version = 68;
-    original.network_id = 1;  // Mainnet
-    original.genesis_hash = make_filled<eth::Hash256>(0xbb);
-    original.fork_id.fork_hash = make_filled<std::array<uint8_t, 4>>(0xcc);
-    original.fork_id.next_fork = 20000000;
-    original.earliest_block = 0;
-    original.latest_block = 1000;
-    original.latest_block_hash = make_filled<eth::Hash256>(0xaa);
+    eth::StatusMessage69 original_msg{};
+    original_msg.protocol_version = 69;
+    original_msg.network_id = 1;
+    original_msg.genesis_hash = make_filled<eth::Hash256>(0xbb);
+    original_msg.fork_id.fork_hash = make_filled<std::array<uint8_t, 4>>(0xcc);
+    original_msg.fork_id.next_fork = 20000000;
+    original_msg.earliest_block = 0;
+    original_msg.latest_block = 1000;
+    original_msg.latest_block_hash = make_filled<eth::Hash256>(0xaa);
+    eth::StatusMessage original{original_msg};
 
-    std::cout << "  → Encoding Status message (protocol=" << (int)original.protocol_version
-              << ", network=" << original.network_id << ")\n";
+    std::cout << "  → Encoding Status message (protocol=" << (int)original_msg.protocol_version
+              << ", network=" << original_msg.network_id << ")\n";
 
     // Encode
     auto encoded = eth::protocol::encode_status(original);
@@ -111,14 +112,16 @@ TEST_F(EthProtocolTest, StatusMessageRoundtrip) {
 
     // Verify all fields match
     const auto& result = decoded.value();
-    EXPECT_EQ(result.protocol_version, original.protocol_version);
-    EXPECT_EQ(result.network_id, original.network_id);
-    EXPECT_EQ(result.genesis_hash, original.genesis_hash);
-    EXPECT_EQ(result.fork_id.fork_hash, original.fork_id.fork_hash);
-    EXPECT_EQ(result.fork_id.next_fork, original.fork_id.next_fork);
-    EXPECT_EQ(result.earliest_block, original.earliest_block);
-    EXPECT_EQ(result.latest_block, original.latest_block);
-    EXPECT_EQ(result.latest_block_hash, original.latest_block_hash);
+    const auto common = eth::get_common_fields(result);
+    const auto& result69 = std::get<eth::StatusMessage69>(result);
+    EXPECT_EQ(common.protocol_version, original_msg.protocol_version);
+    EXPECT_EQ(common.network_id, original_msg.network_id);
+    EXPECT_EQ(common.genesis_hash, original_msg.genesis_hash);
+    EXPECT_EQ(common.fork_id.fork_hash, original_msg.fork_id.fork_hash);
+    EXPECT_EQ(common.fork_id.next_fork, original_msg.fork_id.next_fork);
+    EXPECT_EQ(result69.earliest_block, original_msg.earliest_block);
+    EXPECT_EQ(result69.latest_block, original_msg.latest_block);
+    EXPECT_EQ(result69.latest_block_hash, original_msg.latest_block_hash);
 
     std::cout << "  ✓ All fields match after roundtrip\n";
 }
@@ -143,14 +146,15 @@ TEST_F(EthProtocolTest, StatusMessageMultipleNetworks) {
     for (const auto& network : networks) {
         std::cout << "  → Testing " << network.name << " (network_id=" << network.network_id << ")\n";
 
-        eth::StatusMessage msg{};
-        msg.protocol_version = 68;
-        msg.network_id = network.network_id;
-        msg.genesis_hash = {};
-        msg.fork_id = {};
-        msg.earliest_block = 0;
-        msg.latest_block = 0;
-        msg.latest_block_hash = {};
+        eth::StatusMessage69 msg69{};
+        msg69.protocol_version = 69;
+        msg69.network_id = network.network_id;
+        msg69.genesis_hash = {};
+        msg69.fork_id = {};
+        msg69.earliest_block = 0;
+        msg69.latest_block = 0;
+        msg69.latest_block_hash = {};
+        eth::StatusMessage msg{msg69};
 
         auto encoded = eth::protocol::encode_status(msg);
         ASSERT_TRUE(encoded.has_value())
@@ -162,7 +166,7 @@ TEST_F(EthProtocolTest, StatusMessageMultipleNetworks) {
         ASSERT_TRUE(decoded.has_value())
             << "Failed to decode Status for " << network.name;
 
-        EXPECT_EQ(decoded.value().network_id, network.network_id)
+        EXPECT_EQ(eth::get_common_fields(decoded.value()).network_id, network.network_id)
             << "Network ID mismatch for " << network.name;
     }
 

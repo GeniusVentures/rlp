@@ -79,8 +79,9 @@ SocketTransport::read_exact(size_t num_bytes, asio::yield_context yield) noexcep
     );
     
     if (ec) {
-        if (ec == asio::error::eof || 
-            ec == asio::error::connection_reset) {
+        if (ec == asio::error::eof ||
+            ec == asio::error::connection_reset ||
+            ec == asio::error::operation_aborted) {
             return SessionError::kConnectionFailed;
         }
         return SessionError::kInvalidMessage;
@@ -195,7 +196,18 @@ connect_with_timeout(
 ) noexcept {
     // Create socket
     tcp::socket socket(executor);
-    
+
+    // Arm the timeout: cancel the socket if the timer fires before connect completes.
+    asio::steady_timer timer(executor, timeout);
+    timer.async_wait([&socket](const boost::system::error_code& ec)
+    {
+        if (!ec)
+        {
+            boost::system::error_code ignore;
+            socket.cancel(ignore);
+        }
+    });
+
     // Resolve hostname to endpoints
     tcp::resolver resolver(executor);
     boost::system::error_code resolve_ec;
@@ -204,11 +216,13 @@ connect_with_timeout(
         std::to_string(port),
         asio::redirect_error(yield, resolve_ec)
     );
-    
-    if (resolve_ec) {
+
+    if (resolve_ec)
+    {
+        timer.cancel();
         return SessionError::kConnectionFailed;
     }
-    
+
     // Connect to one of the resolved endpoints
     boost::system::error_code connect_ec;
     asio::async_connect(
@@ -216,11 +230,14 @@ connect_with_timeout(
         endpoints,
         asio::redirect_error(yield, connect_ec)
     );
-    
-    if (connect_ec) {
+
+    timer.cancel();
+
+    if (connect_ec)
+    {
         return SessionError::kConnectionFailed;
     }
-    
+
     // Connection successful
     return SocketTransport(std::move(socket));
 }

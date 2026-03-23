@@ -6,7 +6,7 @@
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/socket/socket_transport.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
@@ -102,7 +102,7 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
 }
 
 // Factory for outbound connections
-Result<std::unique_ptr<RlpxSession>>
+Result<std::shared_ptr<RlpxSession>>
 RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yield) noexcept {
     // Step 1: Establish TCP connection with timeout
     auto executor = yield.get_executor();
@@ -151,7 +151,7 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     peer_info.remote_address = "";
     peer_info.remote_port = params.remote_port;
 
-    auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
+    auto session = std::shared_ptr<RlpxSession>(new RlpxSession(
         std::move(stream),
         std::move(peer_info),
         true  // is_initiator
@@ -161,9 +161,8 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     protocol::HelloMessage hello;
     hello.protocol_version = kProtocolVersion;
     hello.client_id        = std::string(params.client_id);
-    hello.capabilities     = { protocol::Capability{ "eth", 68 },
-                                protocol::Capability{ "eth", 67 },
-                                protocol::Capability{ "eth", 66 } };
+    // Advertise both ETH/68 and ETH/69 — peers negotiate the highest common version.
+    hello.capabilities     = { protocol::Capability{ "eth", 68 }, protocol::Capability{ "eth", 69 } };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),
               params.local_public_key.end(),
@@ -222,12 +221,8 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     } else if (peer_msg.id == kDisconnectMessageId) {
         static auto log = rlp::base::createLogger("rlpx.session");
         auto disc = protocol::DisconnectMessage::decode(peer_msg.payload);
-        if (disc) {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO, reason={}",
-                static_cast<int>(disc.value().reason));
-        } else {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO (reason undecodable)");
-        }
+        SPDLOG_LOGGER_DEBUG(log, "connect: peer sent Disconnect before HELLO, reason={}",
+            disc ? static_cast<int>(disc.value().reason) : -1);
         return SessionError::kHandshakeFailed;
     } else {
         static auto log = rlp::base::createLogger("rlpx.session");
@@ -239,16 +234,16 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
 
     asio::spawn(
         executor,
-        [session_ptr = session.get()](asio::yield_context yc) {
-            auto result = session_ptr->run_send_loop(yc);
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_send_loop(yc);
             (void)result;
         }
     );
 
     asio::spawn(
         executor,
-        [session_ptr = session.get()](asio::yield_context yc) {
-            auto result = session_ptr->run_receive_loop(yc);
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_receive_loop(yc);
             (void)result;
         }
     );
@@ -257,7 +252,7 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
 }
 
 // Factory for inbound connections
-Result<std::unique_ptr<RlpxSession>>
+Result<std::shared_ptr<RlpxSession>>
 RlpxSession::accept(const SessionAcceptParams& params, asio::yield_context /*yield*/) noexcept {
     (void)params;
     // TODO: Phase 3.5 - Implement inbound connection acceptance
@@ -328,6 +323,10 @@ RlpxSession::disconnect(DisconnectReason reason) noexcept {
     }
 
     state_.store(SessionState::kClosed, std::memory_order_release);
+    if (stream_)
+    {
+        stream_->close();
+    }
     return outcome::success();
 }
 

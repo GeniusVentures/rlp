@@ -33,6 +33,10 @@ set(OPENSSL_INCLUDE_DIR "${OPENSSL_DIR}/include" CACHE PATH "Path to OpenSSL inc
 find_package(OpenSSL REQUIRED)
 
 # --------------------------------------------------------
+# Crypto3 include dir
+set(crypto3_INCLUDE_DIR "${ZKLLVM_BUILD_DIR}/zkLLVM/include")
+
+# --------------------------------------------------------
 # Set config of Microsoft GSL (header-only library)
 set(GSL_INCLUDE_DIR "${_THIRDPARTY_BUILD_DIR}/Microsoft.GSL/include")
 include_directories(${GSL_INCLUDE_DIR})
@@ -140,7 +144,8 @@ install(TARGETS ${PROJECT_NAME} EXPORT RLPTargets
 )
 
 install(
-        EXPORT RLPTargets
+        EXPORT rlp
+        FILE rlpTargets.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
         NAMESPACE rlp::
 )
@@ -149,7 +154,7 @@ include(CMakePackageConfigHelpers)
 
 # generate the config file that is includes the exports
 configure_package_config_file(${PROJECT_ROOT}/cmake/config.cmake.in
-        "${CMAKE_CURRENT_BINARY_DIR}/RLPConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake"
         INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
         NO_SET_AND_CHECK_MACRO
         NO_CHECK_REQUIRED_COMPONENTS_MACRO
@@ -157,18 +162,18 @@ configure_package_config_file(${PROJECT_ROOT}/cmake/config.cmake.in
 
 # generate the version file for the config file
 write_basic_package_version_file(
-        "${CMAKE_CURRENT_BINARY_DIR}/RLPConfigVersion.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake"
         VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}"
         COMPATIBILITY AnyNewerVersion
 )
 
 # install the configuration file
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/RLPConfigVersion.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
 )
 
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/RLPConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/rlpConfig.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/rlp
 )

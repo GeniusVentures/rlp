@@ -166,3 +166,11 @@ Live network testing cannot distinguish between "our crypto is wrong" and "the p
 3. The global spdlog level is already controlled by the `--log-level` CLI flag in `eth_watch` (and similar entry points). Setting `--log-level debug` will show all `DEBUG` output with zero code changes.
 4. `std::cout` is only acceptable for **user-facing program output** (e.g., final results printed to the terminal by design). It is never acceptable for diagnostic or debug output.
 
+---
+
+## SUBMODULE MANAGEMENT
+
+### M015 — Incorrectly reverting the `build` submodule pointer
+**What happened**: When merging `enr_records` into `copilot/discv5-implementation`, the `build` submodule pointer was updated from `bc5302b` to `f09f0cb` (the latest `main` of cmaketemplate). This was mistakenly reverted to `bc5302b`, which is the *older* commit and lacks Android library support. `f09f0cb` is the correct commit — it adds the `android::log`/`android::android` interface targets and thirdparty directory updates.  
+**Rule**: When the `build` submodule pointer changes during a merge, verify whether the new commit is from the latest `main` of cmaketemplate. If it is, keep it (or update to it). The correct workflow to update the submodule is: go into `build/`, run `git pull && git checkout main`, then `cd ..` and `git add build`.
+

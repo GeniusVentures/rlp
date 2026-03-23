@@ -50,6 +50,9 @@ public:
     /// Enable compression after hello exchange.
     void enable_compression() noexcept { compression_enabled_ = true; }
 
+    /// Close the underlying socket, unblocking any pending receive_message call.
+    void close() noexcept;
+
     /// Query state.
     [[nodiscard]] bool is_compression_enabled() const noexcept { 
         return compression_enabled_; 

@@ -31,7 +31,7 @@
 namespace {
 
 constexpr uint64_t kSepoliaNetworkID = 11155111;
-constexpr uint8_t  kProtoVersion     = 68;
+constexpr uint8_t  kProtoVersion     = 69;
 
 // Sepolia genesis hash (go-ethereum params/config.go SepoliaGenesisHash)
 static const eth::Hash256 kSepoliaGenesis = []() {
@@ -48,16 +48,17 @@ static const eth::Hash256 kSepoliaGenesis = []() {
 }();
 
 /// Build a StatusMessage that passes all validation checks.
-eth::StatusMessage make_valid_status() {
-    eth::StatusMessage msg;
-    msg.protocol_version  = kProtoVersion;
-    msg.network_id        = kSepoliaNetworkID;
-    msg.genesis_hash      = kSepoliaGenesis;
-    msg.fork_id           = {};
-    msg.earliest_block    = 0;
-    msg.latest_block      = 8'000'000;
-    msg.latest_block_hash = kSepoliaGenesis; // any non-zero hash is fine for validation
-    return msg;
+eth::StatusMessage make_valid_status()
+{
+    eth::StatusMessage69 msg69;
+    msg69.protocol_version  = kProtoVersion;
+    msg69.network_id        = kSepoliaNetworkID;
+    msg69.genesis_hash      = kSepoliaGenesis;
+    msg69.fork_id           = {};
+    msg69.earliest_block    = 0;
+    msg69.latest_block      = 8'000'000;
+    msg69.latest_block_hash = kSepoliaGenesis;
+    return msg69;
 }
 
 } // anonymous namespace
@@ -83,21 +84,31 @@ TEST(EthHandshakeValidationTest, ValidStatus_Passes)
 {
     const auto msg    = make_valid_status();
     const auto result = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     EXPECT_TRUE(result.has_value())
         << "A fully valid ETH Status must pass validation without error";
 }
 
 /// go-ethereum: { code: StatusMsg, data: StatusPacket{10, ...} }
 ///              → errProtocolVersionMismatch
+/// After the variant redesign, protocol version is implied by the variant type
+/// (StatusMessage68 / StatusMessage69).  An unrecognised wire version causes
+/// decode_status to return a decoding error rather than validate_status to
+/// return kProtocolVersionMismatch.
 TEST(EthHandshakeValidationTest, WrongProtocolVersion_Fails)
 {
-    auto msg             = make_valid_status();
-    msg.protocol_version = 10; // ancient/unsupported version
-    const auto result    = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
-    ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error(), eth::StatusValidationError::kProtocolVersionMismatch);
+    // Build a valid Status69, then overwrite the encoded version byte to 10
+    // so that decode_status encounters an unrecognised protocol version.
+    auto msg = make_valid_status();
+    std::get<eth::StatusMessage69>(msg).protocol_version = 10; // unknown version
+
+    const auto encoded = eth::protocol::encode_status(msg);
+    ASSERT_TRUE(encoded.has_value()) << "encode_status must succeed";
+
+    const rlp::ByteView wire{encoded.value().data(), encoded.value().size()};
+    const auto decoded = eth::protocol::decode_status(wire);
+    EXPECT_FALSE(decoded.has_value())
+        << "decode_status must reject an unrecognised protocol version";
 }
 
 /// go-ethereum: { code: StatusMsg, data: StatusPacket{proto, 999, ...} }
@@ -105,9 +116,9 @@ TEST(EthHandshakeValidationTest, WrongProtocolVersion_Fails)
 TEST(EthHandshakeValidationTest, WrongNetworkID_Fails)
 {
     auto msg          = make_valid_status();
-    msg.network_id    = 999; // unknown chain
+    std::get<eth::StatusMessage69>(msg).network_id    = 999; // unknown chain
     const auto result = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kNetworkIDMismatch);
 }
@@ -117,9 +128,9 @@ TEST(EthHandshakeValidationTest, WrongNetworkID_Fails)
 TEST(EthHandshakeValidationTest, PolygonPeerOnSepolia_NetworkIDMismatch)
 {
     auto msg          = make_valid_status();
-    msg.network_id    = 137; // Polygon mainnet
+    std::get<eth::StatusMessage69>(msg).network_id    = 137; // Polygon mainnet
     const auto result = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kNetworkIDMismatch);
 }
@@ -129,9 +140,9 @@ TEST(EthHandshakeValidationTest, PolygonPeerOnSepolia_NetworkIDMismatch)
 TEST(EthHandshakeValidationTest, WrongGenesis_Fails)
 {
     auto msg             = make_valid_status();
-    msg.genesis_hash[0] ^= 0xFF; // flip first byte → wrong genesis
+    std::get<eth::StatusMessage69>(msg).genesis_hash[0] ^= 0xFF; // flip first byte → wrong genesis
     const auto result    = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kGenesisMismatch);
 }
@@ -141,10 +152,10 @@ TEST(EthHandshakeValidationTest, WrongGenesis_Fails)
 TEST(EthHandshakeValidationTest, InvalidBlockRange_EarliestAfterLatest_Fails)
 {
     auto msg              = make_valid_status();
-    msg.earliest_block    = 500;
-    msg.latest_block      = 499; // earliest > latest
+    std::get<eth::StatusMessage69>(msg).earliest_block    = 500;
+    std::get<eth::StatusMessage69>(msg).latest_block      = 499; // earliest > latest
     const auto result     = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kInvalidBlockRange);
 }
@@ -153,10 +164,10 @@ TEST(EthHandshakeValidationTest, InvalidBlockRange_EarliestAfterLatest_Fails)
 TEST(EthHandshakeValidationTest, ZeroBlockRange_Passes)
 {
     auto msg           = make_valid_status();
-    msg.earliest_block = 0;
-    msg.latest_block   = 0;
+    std::get<eth::StatusMessage69>(msg).earliest_block = 0;
+    std::get<eth::StatusMessage69>(msg).latest_block   = 0;
     const auto result  = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     EXPECT_TRUE(result.has_value())
         << "Zero block range (fresh node) must be accepted";
 }
@@ -165,10 +176,10 @@ TEST(EthHandshakeValidationTest, ZeroBlockRange_Passes)
 TEST(EthHandshakeValidationTest, NetworkIDCheckedBeforeGenesis)
 {
     auto msg             = make_valid_status();
-    msg.network_id       = 1;   // mainnet instead of Sepolia
-    msg.genesis_hash[0] ^= 0xFF; // also wrong genesis
+    std::get<eth::StatusMessage69>(msg).network_id       = 1;   // mainnet instead of Sepolia
+    std::get<eth::StatusMessage69>(msg).genesis_hash[0] ^= 0xFF; // also wrong genesis
     const auto result    = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     // NetworkID mismatch must be reported (not genesis mismatch) because
     // validate_status checks network_id first, matching go-ethereum's readStatus().
@@ -194,7 +205,7 @@ TEST(EthHandshakeEncodeDecodeTest, RoundTrip_ValidStatus)
 
     const auto& msg   = decoded.value();
     const auto result = eth::protocol::validate_status(
-        msg, kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        msg, kSepoliaNetworkID, kSepoliaGenesis);
     EXPECT_TRUE(result.has_value())
         << "Round-tripped Status must pass validation";
 }
@@ -203,7 +214,7 @@ TEST(EthHandshakeEncodeDecodeTest, RoundTrip_ValidStatus)
 TEST(EthHandshakeEncodeDecodeTest, RoundTrip_WrongNetworkID_StillFails)
 {
     auto original      = make_valid_status();
-    original.network_id = 1; // mainnet
+    std::get<eth::StatusMessage69>(original).network_id = 1; // mainnet
 
     const auto encoded = eth::protocol::encode_status(original);
     ASSERT_TRUE(encoded.has_value());
@@ -213,7 +224,7 @@ TEST(EthHandshakeEncodeDecodeTest, RoundTrip_WrongNetworkID_StillFails)
     ASSERT_TRUE(decoded.has_value());
 
     const auto result = eth::protocol::validate_status(
-        decoded.value(), kProtoVersion, kSepoliaNetworkID, kSepoliaGenesis);
+        decoded.value(), kSepoliaNetworkID, kSepoliaGenesis);
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), eth::StatusValidationError::kNetworkIDMismatch);
 }

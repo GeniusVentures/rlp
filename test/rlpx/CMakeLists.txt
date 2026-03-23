@@ -2,13 +2,12 @@
 cmake_minimum_required(VERSION 3.15)
 
 # Crypto tests
-add_executable(rlpx_crypto_tests
+addtest(rlpx_crypto_tests
     ${CMAKE_CURRENT_LIST_DIR}/crypto_test.cpp
 )
 
-target_link_libraries(rlpx_crypto_tests PRIVATE
+target_link_libraries(rlpx_crypto_tests
     rlpx
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_crypto_tests PRIVATE
@@ -16,13 +15,12 @@ target_include_directories(rlpx_crypto_tests PRIVATE
 )
 
 # Frame cipher tests
-add_executable(rlpx_frame_cipher_tests
+addtest(rlpx_frame_cipher_tests
     ${CMAKE_CURRENT_LIST_DIR}/frame_cipher_test.cpp
 )
 
-target_link_libraries(rlpx_frame_cipher_tests PRIVATE
+target_link_libraries(rlpx_frame_cipher_tests
     rlpx
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_frame_cipher_tests PRIVATE
@@ -30,14 +28,13 @@ target_include_directories(rlpx_frame_cipher_tests PRIVATE
 )
 
 # Protocol messages tests
-add_executable(rlpx_protocol_messages_tests
+addtest(rlpx_protocol_messages_tests
     ${CMAKE_CURRENT_LIST_DIR}/protocol_messages_test.cpp
 )
 
-target_link_libraries(rlpx_protocol_messages_tests PRIVATE
+target_link_libraries(rlpx_protocol_messages_tests
     rlpx
     rlp
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_protocol_messages_tests PRIVATE
@@ -45,14 +42,13 @@ target_include_directories(rlpx_protocol_messages_tests PRIVATE
 )
 
 # RLPx Session integration tests
-add_executable(rlpx_session_tests
+addtest(rlpx_session_tests
     ${CMAKE_CURRENT_LIST_DIR}/rlpx_session_test.cpp
 )
 
-target_link_libraries(rlpx_session_tests PRIVATE
+target_link_libraries(rlpx_session_tests
     rlpx
     rlp
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_session_tests PRIVATE
@@ -60,13 +56,12 @@ target_include_directories(rlpx_session_tests PRIVATE
 )
 
 # RLPx state tests
-add_executable(rlpx_state_tests
+addtest(rlpx_state_tests
     ${CMAKE_CURRENT_LIST_DIR}/rlpx_state_test.cpp
 )
 
-target_link_libraries(rlpx_state_tests PRIVATE
+target_link_libraries(rlpx_state_tests
     rlpx
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_state_tests PRIVATE
@@ -74,14 +69,13 @@ target_include_directories(rlpx_state_tests PRIVATE
 )
 
 # RLPx message routing tests
-add_executable(rlpx_message_routing_tests
+addtest(rlpx_message_routing_tests
     ${CMAKE_CURRENT_LIST_DIR}/message_routing_test.cpp
 )
 
-target_link_libraries(rlpx_message_routing_tests PRIVATE
+target_link_libraries(rlpx_message_routing_tests
     rlpx
     rlp
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_message_routing_tests PRIVATE
@@ -89,14 +83,13 @@ target_include_directories(rlpx_message_routing_tests PRIVATE
 )
 
 # RLPx socket lifecycle tests
-add_executable(rlpx_socket_lifecycle_tests
+addtest(rlpx_socket_lifecycle_tests
     ${CMAKE_CURRENT_LIST_DIR}/socket_lifecycle_test.cpp
 )
 
-target_link_libraries(rlpx_socket_lifecycle_tests PRIVATE
+target_link_libraries(rlpx_socket_lifecycle_tests
     rlpx
     rlp
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_socket_lifecycle_tests PRIVATE
@@ -104,13 +97,12 @@ target_include_directories(rlpx_socket_lifecycle_tests PRIVATE
 )
 
 # Handshake key derivation vectors test (go-ethereum compatible)
-add_executable(rlpx_handshake_vectors_tests
+addtest(rlpx_handshake_vectors_tests
     ${CMAKE_CURRENT_LIST_DIR}/handshake_vectors_test.cpp
 )
 
-target_link_libraries(rlpx_handshake_vectors_tests PRIVATE
+target_link_libraries(rlpx_handshake_vectors_tests
     rlpx
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_handshake_vectors_tests PRIVATE
@@ -118,30 +110,15 @@ target_include_directories(rlpx_handshake_vectors_tests PRIVATE
 )
 
 # Snappy compression tests (go-ethereum wire vectors + live peer capture)
-add_executable(rlpx_snappy_tests
+addtest(rlpx_snappy_tests
     ${CMAKE_CURRENT_LIST_DIR}/snappy_test.cpp
 )
 
-target_link_libraries(rlpx_snappy_tests PRIVATE
+target_link_libraries(rlpx_snappy_tests
     rlpx
-    Snappy::snappy
-    GTest::gtest_main
 )
 
 target_include_directories(rlpx_snappy_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# Add tests to CTest
-include(GoogleTest)
-if(NOT CMAKE_CROSSCOMPILING)
-    gtest_discover_tests(rlpx_crypto_tests)
-    gtest_discover_tests(rlpx_frame_cipher_tests)
-    gtest_discover_tests(rlpx_protocol_messages_tests)
-    gtest_discover_tests(rlpx_session_tests)
-    gtest_discover_tests(rlpx_state_tests)
-    gtest_discover_tests(rlpx_message_routing_tests)
-    gtest_discover_tests(rlpx_socket_lifecycle_tests)
-    gtest_discover_tests(rlpx_handshake_vectors_tests)
-    gtest_discover_tests(rlpx_snappy_tests)
-endif()

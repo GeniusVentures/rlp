@@ -8,21 +8,12 @@
 #include <discv4/discv4_client.hpp>
 #include <gtest/gtest.h>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
 #include <atomic>
+#include <array>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/udp.hpp>
 #include <boost/asio/spawn.hpp>
+#include <boost/system/error_code.hpp>
 #include <chrono>
 #include <thread>
 
@@ -30,58 +21,22 @@ namespace {
 
 using boost::asio::ip::udp;
 
-#ifdef _WIN32
-using SocketHandle = SOCKET;
-constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
-inline int close_socket(SocketHandle sockfd) { return ::closesocket(sockfd); }
-
-struct WinsockInit {
-    WinsockInit() {
-        WSADATA data{};
-        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
-        EXPECT_EQ(rc, 0) << "WSAStartup() failed";
-    }
-    ~WinsockInit() { ::WSACleanup(); }
-};
-#else
-using SocketHandle = int;
-constexpr SocketHandle kInvalidSocket = -1;
-inline int close_socket(SocketHandle sockfd) { return ::close(sockfd); }
-#endif
-
 /// @brief A minimal UDP listener that records the first datagram it receives.
-///        Uses a plain blocking socket in a background thread — no shared_ptrs
-///        that could race with the test's io_context.
+///        Uses a dedicated Boost.Asio socket so the test stays cross-platform.
 class UdpListener {
 public:
     explicit UdpListener(uint16_t port)
+        : socket_(io_)
     {
-#ifdef _WIN32
-    static WinsockInit winsock_init;
-    (void)winsock_init;
-#endif
+        boost::system::error_code ec;
+        socket_.open(udp::v4(), ec);
+        EXPECT_FALSE(ec) << "open() failed";
 
-        // Bind a UDP socket synchronously so port() is valid immediately.
-        sockfd_ = ::socket(AF_INET, SOCK_DGRAM, 0);
-    EXPECT_NE(sockfd_, kInvalidSocket) << "socket() failed";
+        socket_.bind(udp::endpoint(udp::v4(), port), ec);
+        EXPECT_FALSE(ec) << "bind() failed on port " << port;
 
-        struct timeval tv{};
-        tv.tv_sec  = 0;
-        tv.tv_usec = 100000;  // 100 ms receive timeout so the thread can poll running_
-    ::setsockopt(sockfd_, SOL_SOCKET, SO_RCVTIMEO,
-             reinterpret_cast<const char*>(&tv), sizeof(tv));
-
-        sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = INADDR_ANY;
-        addr.sin_port        = htons(port);
-        EXPECT_EQ(::bind(sockfd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)), 0)
-            << "bind() failed on port " << port;
-
-        sockaddr_in bound{};
-        socklen_t   len = sizeof(bound);
-        ::getsockname(sockfd_, reinterpret_cast<sockaddr*>(&bound), &len);
-        port_ = ntohs(bound.sin_port);
+        port_ = socket_.local_endpoint(ec).port();
+        EXPECT_FALSE(ec) << "local_endpoint() failed";
     }
 
     ~UdpListener() { stop(); }
@@ -89,28 +44,28 @@ public:
     /// @brief Start listening in a background thread.
     void start()
     {
-        running_ = true;
-        thread_  = std::thread([this] {
-            std::array<uint8_t, 2048> buf{};
-            while (running_) {
-#ifdef _WIN32
-                int n = ::recv(sockfd_, reinterpret_cast<char*>(buf.data()), static_cast<int>(buf.size()), 0);
-#else
-                ssize_t n = ::recv(sockfd_, buf.data(), buf.size(), 0);
-#endif
-                if (n > 0) { received_ = true; }
-            }
+        socket_.async_receive_from(
+            boost::asio::buffer(buffer_),
+            sender_endpoint_,
+            [this](const boost::system::error_code& ec, std::size_t bytes_received)
+            {
+                if (!ec && bytes_received > 0U) {
+                    received_ = true;
+                }
+            });
+
+        thread_ = std::thread([this] {
+            io_.run();
         });
     }
 
     /// @brief Stop the listener.
     void stop()
     {
-        running_ = false;
-        if (sockfd_ != kInvalidSocket) {
-            close_socket(sockfd_);
-            sockfd_ = kInvalidSocket;
-        }
+        boost::system::error_code ec;
+        socket_.cancel(ec);
+        socket_.close(ec);
+        io_.stop();
         if (thread_.joinable()) { thread_.join(); }
     }
 
@@ -120,11 +75,13 @@ public:
     uint16_t port() const { return port_; }
 
 private:
-    SocketHandle        sockfd_{kInvalidSocket};
-    uint16_t            port_{0};
-    std::atomic<bool>   received_{false};
-    std::atomic<bool>   running_{false};
-    std::thread         thread_;
+    boost::asio::io_context io_;
+    udp::socket socket_;
+    udp::endpoint sender_endpoint_{};
+    std::array<uint8_t, 2048> buffer_{};
+    uint16_t port_{0};
+    std::atomic<bool> received_{false};
+    std::thread thread_;
 };
 
 /// @brief Build a minimal discv4Config with a generated keypair.
@@ -142,6 +99,8 @@ discv4::discv4Config make_cfg(boost::asio::io_context& /*io*/)
         0x61, 0x0a, 0x82, 0xc4, 0x2b, 0x8d, 0x29, 0x77
     };
     // Corresponding public key is not needed for the send-only tests below.
+    // Short timeout ensures coroutines complete within test run_for() windows.
+    cfg.ping_timeout = std::chrono::milliseconds(100);
     return cfg;
 }
 
@@ -215,4 +174,116 @@ TEST(DiscoveryClientLifetimeTest, ClientOuterScope_MultiPingReachesListeners)
         << "PING must reach first discovered peer when dv4 is in outer scope";
     EXPECT_TRUE(listener2.received())
         << "PING must reach second discovered peer when dv4 is in outer scope";
+}
+
+// ---------------------------------------------------------------------------
+// RecursiveBondingTest
+//
+// These tests verify the mechanisms used by the recursive Kademlia bonding
+// code in handle_pong() and handle_neighbours():
+//   - handle_pong  spawns find_node() for newly-seen peers
+//   - handle_neighbours spawns ping() for newly-discovered peers
+//
+// Because bonded_set_ is private and triggering handle_pong requires a fully-
+// signed wire packet, we test the underlying send primitives directly:
+// verifying that find_node() and ping() actually deliver UDP datagrams gives
+// confidence that the coroutines spawned by those handlers will work correctly
+// when real signed packets arrive.
+// ---------------------------------------------------------------------------
+
+/// @brief find_node() delivers a UDP datagram to the target listener.
+TEST(RecursiveBondingTest, FindNodeSentToPeer_PacketReachesListener)
+{
+    UdpListener listener(30460);
+    listener.start();
+
+    boost::asio::io_context io;
+    auto cfg = make_cfg(io);
+    auto dv4 = std::make_shared<discv4::discv4_client>(io, cfg);
+    ASSERT_TRUE(dv4->start()) << "discv4_client::start() failed";
+
+    discv4::NodeId targetId{};  // zeroed target — acceptable for send test
+
+    boost::asio::spawn(io,
+        [dv4, port = listener.port(), targetId](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r =
+                dv4->find_node("127.0.0.1", port, targetId, yield);
+        });
+
+    io.run_for(std::chrono::milliseconds(500));
+
+    EXPECT_TRUE(listener.received())
+        << "find_node() must deliver a UDP datagram to the target endpoint";
+}
+
+/// @brief ping() to a new peer delivers a datagram — mirrors the spawn issued
+///        by handle_neighbours for each undiscovered peer.
+TEST(RecursiveBondingTest, PingToNewPeer_PacketReachesListener)
+{
+    UdpListener listener(30461);
+    listener.start();
+
+    boost::asio::io_context io;
+    auto cfg = make_cfg(io);
+    auto dv4 = std::make_shared<discv4::discv4_client>(io, cfg);
+    ASSERT_TRUE(dv4->start()) << "discv4_client::start() failed";
+
+    discv4::NodeId dummyId{};
+
+    boost::asio::spawn(io,
+        [dv4, port = listener.port(), dummyId](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r =
+                dv4->ping("127.0.0.1", port, dummyId, yield);
+        });
+
+    io.run_for(std::chrono::milliseconds(500));
+
+    EXPECT_TRUE(listener.received())
+        << "ping() must deliver a UDP datagram when called for a new peer";
+}
+
+/// @brief Spawning find_node() to multiple distinct peers all deliver packets.
+///        This mirrors what handle_pong does when each of N new peers replies.
+TEST(RecursiveBondingTest, FindNodeSentToMultiplePeers_AllReceivePackets)
+{
+    UdpListener listener1(30462);
+    UdpListener listener2(30463);
+    UdpListener listener3(30464);
+    listener1.start();
+    listener2.start();
+    listener3.start();
+
+    boost::asio::io_context io;
+    auto cfg = make_cfg(io);
+    auto dv4 = std::make_shared<discv4::discv4_client>(io, cfg);
+    ASSERT_TRUE(dv4->start()) << "discv4_client::start() failed";
+
+    discv4::NodeId targetId{};
+
+    boost::asio::spawn(io,
+        [dv4, p = listener1.port(), targetId](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r =
+                dv4->find_node("127.0.0.1", p, targetId, yield);
+        });
+
+    boost::asio::spawn(io,
+        [dv4, p = listener2.port(), targetId](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r =
+                dv4->find_node("127.0.0.1", p, targetId, yield);
+        });
+
+    boost::asio::spawn(io,
+        [dv4, p = listener3.port(), targetId](boost::asio::yield_context yield) {
+            [[maybe_unused]] auto r =
+                dv4->find_node("127.0.0.1", p, targetId, yield);
+        });
+
+    io.run_for(std::chrono::milliseconds(500));
+
+    EXPECT_TRUE(listener1.received())
+        << "find_node() must reach first peer";
+    EXPECT_TRUE(listener2.received())
+        << "find_node() must reach second peer";
+    EXPECT_TRUE(listener3.received())
+        << "find_node() must reach third peer";
 }

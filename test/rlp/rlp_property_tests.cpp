@@ -171,7 +171,7 @@ TEST_F(PropertyBasedTest, RoundtripPropertyUint256) {
 }
 
 TEST_F(PropertyBasedTest, RoundtripPropertyBool) {
-    run_property_test([this](int iteration) {
+    run_property_test([](int iteration) {
         bool original = (iteration % 2 == 0); // Alternate true/false
         
         RlpEncoder encoder;

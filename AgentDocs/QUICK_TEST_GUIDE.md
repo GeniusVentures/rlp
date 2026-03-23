@@ -10,11 +10,11 @@ I've created two new resources to help you test with real Ethereum peers:
 - Provides examples and scripts
 
 ### 2. **test_eth_watch.sh** (Automated!)
-Located in: `/Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/`
+Located in: `/Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/`
 
 Usage:
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp
 ./test_eth_watch.sh sepolia    # Test Sepolia testnet
 ./test_eth_watch.sh mainnet    # Test Ethereum mainnet
 ```
@@ -42,7 +42,7 @@ HOST=$(echo "$PEER" | sed 's/.*@\([^:]*\):.*/\1/')
 PORT=$(echo "$PEER" | sed 's/.*:\([0-9]*\)$/\1/')
 
 # 3. Connect
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ./eth_watch "$HOST" "$PORT" "$PUBKEY"
 ```
 
@@ -76,7 +76,7 @@ NewBlockHashes: 1 hash
 ## Files Created/Updated
 
 ```
-/Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/
+ /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/
 ├── PUBLIC_NODES_FOR_TESTING.md        (NEW - Complete reference guide)
 ├── test_eth_watch.sh                  (NEW - Automated test script)
 ├── WHY_NO_MESSAGES.md                 (Created earlier - explains bootstrap vs peers)
@@ -94,7 +94,7 @@ NewBlockHashes: 1 hash
 ## Next Steps
 
 1. **For Quick Testing**: Run `./test_eth_watch.sh sepolia`
-2. **For Production**: Implement full discv4 discovery in `discovery.hpp`
+2. **For Discovery Debugging**: Use the maintained C++ discovery harnesses under `examples/discovery/` (for example `test_discovery.cpp` and `test_enr_survey.cpp`)
 3. **For Development**: Use a local Geth node with `--http --http.api admin,web3,eth,net`
 
 ---
