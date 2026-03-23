@@ -6,6 +6,7 @@
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/socket/socket_transport.hpp>
+#include <eth/eth_types.hpp>
 #include <base/rlp-logger.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/spawn.hpp>
@@ -36,7 +37,9 @@ uint8_t negotiate_eth_version(const std::vector<protocol::Capability>& capabilit
             continue;
         }
 
-        if ((capability.version >= 66U && capability.version <= 69U) && capability.version > negotiated_version)
+        if ((capability.version >= eth::kEthProtocolVersion66 &&
+             capability.version <= eth::kEthProtocolVersion69) &&
+            capability.version > negotiated_version)
         {
             negotiated_version = capability.version;
         }
@@ -189,10 +192,10 @@ RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yie
     hello.client_id        = std::string(params.client_id);
     // Advertise ETH/66-69 — peers negotiate the highest common version.
     hello.capabilities     = {
-        protocol::Capability{ "eth", 66 },
-        protocol::Capability{ "eth", 67 },
-        protocol::Capability{ "eth", 68 },
-        protocol::Capability{ "eth", 69 }
+        protocol::Capability{ "eth", eth::kEthProtocolVersion66 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion67 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion68 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion69 }
     };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),

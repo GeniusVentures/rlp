@@ -298,7 +298,7 @@ void run_watch(std::string host,
 
     {
         eth::StatusMessage status;
-        if (negotiated_eth_version <= 68U)
+        if (negotiated_eth_version <= eth::kEthProtocolVersion68)
         {
             eth::StatusMessage68 status68;
             status68.protocol_version = negotiated_eth_version;

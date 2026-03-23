@@ -18,6 +18,11 @@ using Hash256 = rlp::Hash256;
 using Address = rlp::Address;
 using Bloom = rlp::Bloom;
 
+inline constexpr uint8_t kEthProtocolVersion66 = 66U;
+inline constexpr uint8_t kEthProtocolVersion67 = 67U;
+inline constexpr uint8_t kEthProtocolVersion68 = 68U;
+inline constexpr uint8_t kEthProtocolVersion69 = 69U;
+
 struct ForkId {
     std::array<uint8_t, 4> fork_hash{};
     uint64_t next_fork = 0;
@@ -27,7 +32,7 @@ struct ForkId {
 /// Wire: [version, networkid, td, blockhash, genesis, forkid]
 struct StatusMessage68
 {
-    uint8_t       protocol_version = 68;
+    uint8_t       protocol_version = kEthProtocolVersion68;
     uint64_t      network_id = 0;
     intx::uint256 td{};
     Hash256       blockhash{};
@@ -39,7 +44,7 @@ struct StatusMessage68
 /// Wire: [version, networkid, genesis, forkid, earliestBlock, latestBlock, latestBlockHash]
 struct StatusMessage69
 {
-    uint8_t  protocol_version = 69;
+    uint8_t  protocol_version = kEthProtocolVersion69;
     uint64_t network_id = 0;
     Hash256  genesis_hash{};
     ForkId   fork_id{};

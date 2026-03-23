@@ -689,7 +689,7 @@ DecodeResult<StatusMessage> decode_status(rlp::ByteView rlp_data) noexcept
         return rlp::DecodingError::kUnexpectedString;
     }
 
-    if (protocol_version == 69)
+    if (protocol_version == eth::kEthProtocolVersion69)
     {
         eth::StatusMessage69 msg69;
         msg69.protocol_version = protocol_version;
@@ -728,7 +728,9 @@ DecodeResult<StatusMessage> decode_status(rlp::ByteView rlp_data) noexcept
 
         return StatusMessage{msg69};
     }
-    else if (protocol_version == 68 || protocol_version == 67 || protocol_version == 66)
+    else if (protocol_version == eth::kEthProtocolVersion68 ||
+             protocol_version == eth::kEthProtocolVersion67 ||
+             protocol_version == eth::kEthProtocolVersion66)
     {
         eth::StatusMessage68 msg68;
         msg68.protocol_version = protocol_version;
