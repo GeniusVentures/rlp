@@ -72,7 +72,7 @@ configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.cmake.in
 # generate the version file for the config file
 write_basic_package_version_file(
         "${CMAKE_CURRENT_BINARY_DIR}/rlpConfigVersion.cmake"
-        VERSION "${VERSION_STRING}.${SUBVERSION_STRING}"
+        VERSION "${PROJECT_VERSION}"
         COMPATIBILITY AnyNewerVersion
 )
 
