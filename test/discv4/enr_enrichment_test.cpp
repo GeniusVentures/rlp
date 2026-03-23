@@ -147,9 +147,9 @@ TEST( EnrEnrichmentTest, PeerCallbackReceivesEthForkId )
 
     // Trigger request_enr() directly (mirrors what handle_neighbours coroutine does).
     boost::asio::spawn( io,
-        [dv4]( boost::asio::yield_context yield )
+        [dv4, peer_port = kPeerPort]( boost::asio::yield_context yield )
         {
-            [[maybe_unused]] auto r = dv4->request_enr( "127.0.0.1", kPeerPort, yield );
+            [[maybe_unused]] auto r = dv4->request_enr( "127.0.0.1", peer_port, yield );
         } );
 
     // Peer thread: receive ENRRequest, reply with known ForkId.
