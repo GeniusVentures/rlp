@@ -27,7 +27,7 @@ jobs:
     env:
       GRPC_BUILD_ENABLE_CCACHE: "ON"
       GH_TOKEN: ${{ secrets.GNUS_TOKEN_1 }}
-    runs-on: ${{ matrix.host }}
+    runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.container }}
       options: ${{ '--cap-add=IPC_LOCK' }}
@@ -42,29 +42,29 @@ jobs:
         abi: [ "" ]
         include:
           - target: Linux
-            host: sg-ubuntu-linux
+            runner: sg-ubuntu-linux
             abi: "x86_64"
             build-type: "Release"
             container: ghcr.io/geniusventures/debian-bullseye:latest
           - target: Linux
-            host: sg-arm-linux
+            runner: sg-arm-linux
             abi: "aarch64"
             build-type: "Release"
             container: ghcr.io/geniusventures/debian-bullseye:latest
           - target: Windows
-            host: SG-WIN11
+            runner: [ self-hosted, Windows ]
           - target: OSX
-            host: gv-OSX-Large
+            runner: gv-OSX-Large
           - target: Android
-            host: sg-ubuntu-linux
+            runner: sg-ubuntu-linux
             abi: arm64-v8a
             build-type: "Release"
           - target: Android
-            host: sg-ubuntu-linux
+            runner: sg-ubuntu-linux
             abi: armeabi-v7a
             build-type: "Release"
           - target: iOS
-            host: macos-latest
+            runner: macos-latest
         exclude:
           - target: Android
             abi: ""
