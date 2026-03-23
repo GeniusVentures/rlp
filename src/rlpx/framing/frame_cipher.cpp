@@ -185,22 +185,27 @@ FrameCipher::~FrameCipher() = default;
 FramingResult<ByteBuffer> FrameCipher::encrypt_frame(
     const FrameEncryptParams& params) noexcept
 {
-    if (params.frame_data.empty() || params.frame_data.size() > kMaxFrameSize)
+    const size_t frame_data_size = static_cast<size_t>(params.frame_data.size());
+    if (params.frame_data.empty() || frame_data_size > kMaxFrameSize)
     {
         return FramingError::kInvalidFrameSize;
     }
 
-    const size_t fsize   = params.frame_data.size();
-    const size_t padding = (fsize % 16 != 0) ? (16 - fsize % 16) : 0;
+    const size_t fsize   = frame_data_size;
+    const size_t padding = (fsize % kFramePaddingAlignment != 0)
+                         ? (kFramePaddingAlignment - (fsize % kFramePaddingAlignment))
+                         : 0;
     const size_t rsize   = fsize + padding;
 
-    // Header: 3-byte frame length + [0xC2, 0x80, 0x80] + 10 zero bytes
-    static constexpr uint8_t kZeroHeader[3] = { 0xC2, 0x80, 0x80 };
+    // Header: 3-byte frame length + fixed RLP header bytes + trailing zeros.
     std::array<uint8_t, kFrameHeaderSize> header{};
-    header[0] = static_cast<uint8_t>((fsize >> 16U) & 0xFFU);
-    header[1] = static_cast<uint8_t>((fsize >>  8U) & 0xFFU);
-    header[2] = static_cast<uint8_t>( fsize         & 0xFFU);
-    std::memcpy(header.data() + 3, kZeroHeader, 3);
+    header[kFrameLengthMsbOffset] = static_cast<uint8_t>((fsize >> kFrameLengthMsbShift) & 0xFFU);
+    header[kFrameLengthMiddleOffset] = static_cast<uint8_t>((fsize >> kFrameLengthMiddleShift) & 0xFFU);
+    header[kFrameLengthLsbOffset] = static_cast<uint8_t>((fsize >> kFrameLengthLsbShift) & 0xFFU);
+    std::memcpy(
+        header.data() + kFrameHeaderDataOffset,
+        kFrameHeaderStaticRlpBytes.data(),
+        kFrameHeaderStaticRlpBytes.size());
 
     std::array<uint8_t, kFrameHeaderSize> header_ct{};
     impl_->enc.process(header.data(), header_ct.data(), kFrameHeaderSize);
@@ -216,7 +221,7 @@ FramingResult<ByteBuffer> FrameCipher::encrypt_frame(
     auto frame_mac = impl_->egress_mac.compute_frame(frame_ct.data(), rsize);
 
     ByteBuffer out;
-    out.reserve(kFrameHeaderSize + kMacSize + rsize + kMacSize);
+    out.reserve(kFrameHeaderWithMacSize + rsize + kMacSize);
     out.insert(out.end(), header_ct.begin(),  header_ct.end());
     out.insert(out.end(), header_mac.begin(), header_mac.end());
     out.insert(out.end(), frame_ct.begin(),   frame_ct.end());
@@ -243,9 +248,9 @@ FramingResult<size_t> FrameCipher::decrypt_header(
     std::array<uint8_t, kFrameHeaderSize> header_pt{};
     impl_->dec.process(header_ct.data(), header_pt.data(), kFrameHeaderSize);
 
-    const size_t fsize = (static_cast<size_t>(header_pt[0]) << 16U)
-                       | (static_cast<size_t>(header_pt[1]) <<  8U)
-                       |  static_cast<size_t>(header_pt[2]);
+    const size_t fsize = (static_cast<size_t>(header_pt[kFrameLengthMsbOffset]) << kFrameLengthMsbShift)
+                       | (static_cast<size_t>(header_pt[kFrameLengthMiddleOffset]) << kFrameLengthMiddleShift)
+                       | (static_cast<size_t>(header_pt[kFrameLengthLsbOffset]) << kFrameLengthLsbShift);
     if (fsize == 0 || fsize > kMaxFrameSize)
     {
         return FramingError::kInvalidFrameSize;
@@ -258,6 +263,18 @@ FramingResult<size_t> FrameCipher::decrypt_header(
 FramingResult<ByteBuffer> FrameCipher::decrypt_frame(
     const FrameDecryptParams& params) noexcept
 {
+    const size_t header_ciphertext_size = static_cast<size_t>(params.header_ciphertext.size());
+    const size_t header_mac_size        = static_cast<size_t>(params.header_mac.size());
+    const size_t frame_ciphertext_size  = static_cast<size_t>(params.frame_ciphertext.size());
+    const size_t frame_mac_size         = static_cast<size_t>(params.frame_mac.size());
+
+    if (header_ciphertext_size < kFrameHeaderSize
+        || header_mac_size < kMacSize
+        || frame_mac_size < kMacSize)
+    {
+        return FramingError::kInvalidFrameSize;
+    }
+
     gsl::span<const uint8_t, kFrameHeaderSize> hct(
         params.header_ciphertext.data(), kFrameHeaderSize);
     gsl::span<const uint8_t, kMacSize> hm(
@@ -267,12 +284,12 @@ FramingResult<ByteBuffer> FrameCipher::decrypt_frame(
     if (!fsize_result) { return fsize_result.error(); }
     const size_t fsize = fsize_result.value();
 
-    if (params.frame_ciphertext.size() < fsize)
+    if (frame_ciphertext_size < fsize)
     {
         return FramingError::kInvalidFrameSize;
     }
 
-    const size_t rsize = params.frame_ciphertext.size();
+    const size_t rsize = frame_ciphertext_size;
     auto frame_mac_expected = impl_->ingress_mac.compute_frame(
         params.frame_ciphertext.data(), rsize);
     if (CRYPTO_memcmp(params.frame_mac.data(), frame_mac_expected.data(),
@@ -295,8 +312,9 @@ FramingResult<ByteBuffer> FrameCipher::decrypt_frame_body(
     ByteView frame_ct_padded,
     ByteView frame_mac) noexcept
 {
-    const size_t rsize = frame_ct_padded.size();
-    if (rsize < fsize || frame_mac.size() < kMacSize)
+    const size_t rsize          = static_cast<size_t>(frame_ct_padded.size());
+    const size_t frame_mac_size = static_cast<size_t>(frame_mac.size());
+    if (rsize < fsize || frame_mac_size < kMacSize)
     {
         return FramingError::kInvalidFrameSize;
     }

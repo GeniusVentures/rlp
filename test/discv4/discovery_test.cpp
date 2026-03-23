@@ -19,6 +19,9 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <condition_variable>
+#include <mutex>
+#include <string>
 #include <secp256k1.h>
 #include <secp256k1_recovery.h>
 
@@ -34,8 +37,7 @@ using namespace discv4;
 class Mockdiscv4Server {
 public:
     Mockdiscv4Server(uint16_t port)
-        : port_(port)
-        , io_context_()
+        : io_context_()
         , socket_(io_context_, udp::endpoint(udp::v4(), port))
         , running_(false) {
         
@@ -54,10 +56,23 @@ public:
     
     void start() {
         running_ = true;
+        {
+            std::lock_guard<std::mutex> lock(ready_mutex_);
+            ready_ = false;
+            error_message_.clear();
+        }
         server_thread_ = std::thread([this]() { this->run(); });
-        
-        // Give server time to start
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        std::unique_lock<std::mutex> lock(ready_mutex_);
+        const bool started = ready_cv_.wait_for(
+            lock,
+            std::chrono::seconds(1),
+            [this]() {
+                return ready_ || !error_message_.empty();
+            });
+
+        ASSERT_TRUE(started) << "Mock discv4 server failed to become ready";
+        ASSERT_TRUE(error_message_.empty()) << error_message_;
     }
     
     void stop() {
@@ -70,7 +85,11 @@ public:
     
     bool received_ping() const { return ping_received_; }
     bool sent_pong() const { return pong_sent_; }
-    
+    std::string error_message() const {
+        std::lock_guard<std::mutex> lock(ready_mutex_);
+        return error_message_;
+    }
+
 private:
     void run() {
         while (running_) {
@@ -91,14 +110,20 @@ private:
                         }
                     }
                 );
-                
+
+                {
+                    std::lock_guard<std::mutex> lock(ready_mutex_);
+                    ready_ = true;
+                }
+                ready_cv_.notify_all();
+
                 // Run with timeout
                 io_context_.restart();
                 io_context_.run_for(std::chrono::milliseconds(100));
                 
             } catch (const std::exception& e) {
                 if (running_) {
-                    std::cerr << "Mock server error: " << e.what() << std::endl;
+                    record_error(std::string("Mock server error: ") + e.what());
                 }
             }
         }
@@ -139,20 +164,35 @@ private:
             // Encode the "to" endpoint (sender's endpoint from PING)
             RlpEncoder endpoint_encoder;
             auto begin_result = endpoint_encoder.BeginList();
-            ASSERT_TRUE(begin_result) << "Failed to begin endpoint list";
+            if (!begin_result) {
+                record_error("Failed to begin endpoint list");
+                return;
+            }
 
             // Use the actual sender's IP and port
             auto add_ip_result = endpoint_encoder.add(ByteView(from_ip.data(), from_ip.size()));
-            ASSERT_TRUE(add_ip_result) << "Failed to add IP";
+            if (!add_ip_result) {
+                record_error("Failed to add IP");
+                return;
+            }
             auto add_port1_result = endpoint_encoder.add(from_port);
-            ASSERT_TRUE(add_port1_result) << "Failed to add UDP port";
+            if (!add_port1_result) {
+                record_error("Failed to add UDP port");
+                return;
+            }
             auto add_port2_result = endpoint_encoder.add(from_port);
-            ASSERT_TRUE(add_port2_result) << "Failed to add TCP port";
+            if (!add_port2_result) {
+                record_error("Failed to add TCP port");
+                return;
+            }
             auto end_result = endpoint_encoder.EndList();
-            ASSERT_TRUE(end_result) << "Failed to end endpoint list";
+            if (!end_result) {
+                record_error("Failed to end endpoint list");
+                return;
+            }
             auto endpoint_result = endpoint_encoder.MoveBytes();
             if (!endpoint_result) {
-                std::cerr << "Failed to encode endpoint" << std::endl;
+                record_error("Failed to encode endpoint");
                 return;
             }
             auto endpoint_bytes = std::move(endpoint_result.value());
@@ -163,19 +203,34 @@ private:
             // Encode PONG payload
             RlpEncoder encoder;
             auto begin_list_result = encoder.BeginList();
-            ASSERT_TRUE(begin_list_result) << "Failed to begin PONG list";
+            if (!begin_list_result) {
+                record_error("Failed to begin PONG list");
+                return;
+            }
             auto add_raw_result = encoder.AddRaw(ByteView(endpoint_bytes.data(), endpoint_bytes.size()));
-            ASSERT_TRUE(add_raw_result) << "Failed to add endpoint";
+            if (!add_raw_result) {
+                record_error("Failed to add endpoint");
+                return;
+            }
             auto add_hash_result = encoder.add(ByteView(ping_hash.data(), ping_hash.size())); // Echo ping hash
-            ASSERT_TRUE(add_hash_result) << "Failed to add ping hash";
+            if (!add_hash_result) {
+                record_error("Failed to add ping hash");
+                return;
+            }
             auto add_exp_result = encoder.add(expiration);
-            ASSERT_TRUE(add_exp_result) << "Failed to add expiration";
+            if (!add_exp_result) {
+                record_error("Failed to add expiration");
+                return;
+            }
             auto end_list_result = encoder.EndList();
-            ASSERT_TRUE(end_list_result) << "Failed to end PONG list";
+            if (!end_list_result) {
+                record_error("Failed to end PONG list");
+                return;
+            }
 
             auto result = encoder.MoveBytes();
             if (!result) {
-                std::cerr << "Failed to encode PONG payload" << std::endl;
+                record_error("Failed to encode PONG payload");
                 return;
             }
             auto payload = std::move(result.value());
@@ -195,7 +250,7 @@ private:
             
             if (!success) {
                 secp256k1_context_destroy(ctx);
-                std::cerr << "Failed to sign PONG" << std::endl;
+                record_error("Failed to sign PONG");
                 return;
             }
             
@@ -223,11 +278,19 @@ private:
             pong_sent_ = true;
             
         } catch (const std::exception& e) {
-            std::cerr << "Error sending PONG: " << e.what() << std::endl;
+            record_error(std::string("Error sending PONG: ") + e.what());
         }
     }
-    
-    uint16_t port_;
+
+    void record_error(const std::string& message) {
+        std::lock_guard<std::mutex> lock(ready_mutex_);
+        if (error_message_.empty()) {
+            error_message_ = message;
+        }
+        ready_ = true;
+        ready_cv_.notify_all();
+    }
+
     asio::io_context io_context_;
     udp::socket socket_;
     std::thread server_thread_;
@@ -235,6 +298,10 @@ private:
     std::atomic<bool> ping_received_{false};
     std::atomic<bool> pong_sent_{false};
     std::vector<uint8_t> priv_key_;
+    mutable std::mutex ready_mutex_;
+    std::condition_variable ready_cv_;
+    bool ready_{false};
+    std::string error_message_;
 };
 
 // ===================================================================
@@ -259,7 +326,7 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
     bool parsing_successful = false;
     uint16_t bound_port = 0;
     
-    auto callback = [&](const std::vector<uint8_t>& data, const udp::endpoint& endpoint) {
+    auto callback = [&](const std::vector<uint8_t>& data, const udp::endpoint&) {
         pong_received = true;
         
         ByteView raw_packet_data(data.data(), data.size());
@@ -309,10 +376,9 @@ TEST(PeerDiscovery, PingPongLocalExchange) {
         &bound_port
     );
 
-    std::cout << "PingPongLocalExchange using local UDP port: " << bound_port << std::endl;
-
     ASSERT_TRUE(send_result.has_value()) << "SendPingAndWait failed";
-    
+    EXPECT_TRUE(mock_server.error_message().empty()) << mock_server.error_message();
+
     // Verify test outcomes
     EXPECT_TRUE(mock_server.received_ping()) << "Mock server should receive PING";
     EXPECT_TRUE(mock_server.sent_pong()) << "Mock server should send PONG";
@@ -398,9 +464,6 @@ TEST(PeerDiscovery, PongPacketParsing) {
     packet.insert(packet.end(), 65, 0); // Signature placeholder (64 + 1 recovery)
     packet.insert(packet.end(), payload.begin(), payload.end());
     
-    // Try to parse (will fail signature verification, but should parse structure)
-    ByteView packet_view(packet.data(), packet.size());
-    
     // Note: Full parsing requires valid signature, but we can test structure
     EXPECT_GE(packet.size(), 98) << "PONG packet should be at least 98 bytes";
     EXPECT_EQ(packet[97], 0x02) << "Packet type should be PONG (0x02)";
@@ -413,40 +476,7 @@ TEST(PeerDiscovery, PongPacketParsing) {
  * by using a mock server that doesn't respond.
  */
 TEST(PeerDiscovery, TimeoutHandling) {
-    asio::io_context io;
-    bool callback_invoked = false;
-    
-    auto callback = [&](const std::vector<uint8_t>&, const udp::endpoint&) {
-        callback_invoked = true;
-    };
-    
-    std::vector<uint8_t> priv_key = {
-        0xe6, 0xb1, 0x81, 0x2f, 0x04, 0xe3, 0x45, 0x19,
-        0x00, 0x43, 0x4f, 0x5a, 0xbd, 0x33, 0x03, 0xb5,
-        0x3d, 0x28, 0x4b, 0xd4, 0x2f, 0x42, 0x5c, 0x07,
-        0x61, 0x0a, 0x82, 0xc4, 0x2b, 0x8d, 0x29, 0x77
-    };
-    
-    // Create a thread that will timeout the test if it hangs
-    std::atomic<bool> test_completed{false};
-    std::thread timeout_thread([&test_completed]() {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        if (!test_completed) {
-            FAIL() << "Test timed out - discovery call hung indefinitely";
-        }
-    });
-    
-    // Note: This will timeout in SendPingAndWait's receive_from
-    // In production code, you'd want to add timeout logic to PacketFactory
-    // For now, we'll just verify the test infrastructure works
-    test_completed = true;
-    
-    if (timeout_thread.joinable()) {
-        timeout_thread.join();
-    }
-    
-    // This test mainly verifies the test infrastructure
-    SUCCEED() << "Timeout handling test infrastructure verified";
+    GTEST_SKIP() << "PacketFactory::SendPingAndWait uses blocking receive_from without a timeout path.";
 }
 
 int main(int argc, char **argv) {

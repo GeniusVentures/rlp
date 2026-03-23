@@ -23,7 +23,7 @@ namespace { // Anonymous namespace for internal helpers
     const size_t input_len = v.length();
 
     // Reserved bytes (0xf9–0xff) as single bytes are always invalid
-    if ( input_len == 1 && b >= 0xf9 && b <= 0xff ) {
+    if ( input_len == 1 && b >= 0xf9 ) {
         return DecodingError::kMalformedHeader;
     }
 
@@ -58,10 +58,12 @@ namespace { // Anonymous namespace for internal helpers
         if ( len64 <= kMaxShortStringLen ) { // Must use short form if length <= 55
             return DecodingError::kNonCanonicalSize;
         }
-        // Check for overflow if size_t is smaller than uint64_t
-        if ( len64 > std::numeric_limits<size_t>::max() ) {
+        // Check for overflow only on platforms where size_t is narrower than uint64_t.
+#if SIZE_MAX < UINT64_MAX
+        if ( len64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ) {
             return DecodingError::kOverflow;
         }
+#endif
         h.payload_size_bytes = static_cast<size_t>(len64);
         v.remove_prefix(h.header_size_bytes); // Consume header + length bytes
     } else if ( b <= kMaxShortListLen + kShortListOffset ) { // 0xF7
@@ -86,9 +88,11 @@ namespace { // Anonymous namespace for internal helpers
         if ( len64 <= kMaxShortListLen ) { // Must use short form if length <= 55
             return DecodingError::kNonCanonicalSize;
         }
-        if ( len64 > std::numeric_limits<size_t>::max() ) {
+#if SIZE_MAX < UINT64_MAX
+        if ( len64 > static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ) {
             return DecodingError::kOverflow;
         }
+#endif
         h.payload_size_bytes = static_cast<size_t>(len64);
         v.remove_prefix(h.header_size_bytes); // Consume header + length bytes
     }

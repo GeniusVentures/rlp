@@ -152,8 +152,6 @@ FramingResult<void> MessageStream::send_frame(ByteView frame_data, asio::yield_c
 }
 
 FramingResult<ByteBuffer> MessageStream::receive_frame(asio::yield_context yield) noexcept {
-    // Read frame header (32 bytes total = 16 header + 16 MAC)
-    constexpr size_t kFrameHeaderWithMacSize = kFrameHeaderSize + kMacSize;
     auto header_with_mac_result = transport_.read_exact(kFrameHeaderWithMacSize, yield);
     if ( !header_with_mac_result ) {
         ByteBuffer empty;
@@ -182,7 +180,9 @@ FramingResult<ByteBuffer> MessageStream::receive_frame(asio::yield_context yield
         size_t frame_size = frame_size_result.value();
         
         // Frame body is padded to 16-byte boundary on the wire; followed by 16-byte MAC.
-        const size_t padding    = (frame_size % 16 != 0) ? (16 - frame_size % 16) : 0;
+        const size_t padding    = (frame_size % kFramePaddingAlignment != 0)
+                                ? (kFramePaddingAlignment - (frame_size % kFramePaddingAlignment))
+                                : 0;
         const size_t padded_size = frame_size + padding;
         size_t total_frame_bytes = padded_size + kMacSize;
         auto frame_with_mac_result = transport_.read_exact(total_frame_bytes, yield);

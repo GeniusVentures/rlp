@@ -39,13 +39,6 @@ namespace
 using NodeAddress = std::array<uint8_t, kKeccak256Bytes>;
 
 static constexpr size_t  kMessageAuthDataBytes = kKeccak256Bytes;
-static constexpr size_t  kHandshakeAuthFixedBytes = kKeccak256Bytes + 2U;
-static constexpr size_t  kAes128KeyBytes = 16U;
-static constexpr size_t  kGcmTagBytes = 16U;
-static constexpr size_t  kRandomMessageCiphertextBytes = 20U;
-static constexpr uint8_t kInitialEnrSeq = 1U;
-static constexpr char    kProtocolId[] = "discv5";
-static constexpr char    kIdentitySchemeV4[] = "v4";
 
 struct PacketView
 {
@@ -145,7 +138,7 @@ std::array<uint8_t, SHA256_DIGEST_LENGTH> hmac_sha256(
     return digest;
 }
 
-Result<std::array<uint8_t, 32U>> hkdf_expand_32(
+Result<std::array<uint8_t, kPrivateKeyBytes>> hkdf_expand_32(
     const std::vector<uint8_t>& salt,
     const std::vector<uint8_t>& ikm,
     const std::vector<uint8_t>& info) noexcept
@@ -153,9 +146,9 @@ Result<std::array<uint8_t, 32U>> hkdf_expand_32(
     const auto prk = hmac_sha256(salt.data(), salt.size(), ikm.data(), ikm.size());
 
     std::vector<uint8_t> t1_input;
-    t1_input.reserve(info.size() + 1U);
+    t1_input.reserve(info.size() + kMessageTypePrefixBytes);
     t1_input.insert(t1_input.end(), info.begin(), info.end());
-    t1_input.push_back(0x01U);
+    t1_input.push_back(kHkdfFirstBlockCounter);
 
     return hmac_sha256(prk.data(), prk.size(), t1_input.data(), t1_input.size());
 }
@@ -169,8 +162,8 @@ Result<std::array<uint8_t, kCompressedKeyBytes>> compress_public_key(const NodeI
     }
 
     std::array<uint8_t, kUncompressedKeyBytes> raw{};
-    raw[0U] = 0x04U;
-    std::copy(public_key.begin(), public_key.end(), raw.begin() + 1U);
+    raw[0U] = kUncompressedPubKeyPrefix;
+    std::copy(public_key.begin(), public_key.end(), raw.begin() + kUncompressedPubKeyDataOffset);
 
     secp256k1_pubkey pubkey;
     if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, raw.data(), raw.size()))
@@ -198,7 +191,7 @@ Result<std::array<uint8_t, kCompressedKeyBytes>> compress_public_key(const NodeI
 
 Result<std::array<uint8_t, kCompressedKeyBytes>> shared_secret_from_uncompressed_pubkey(
     const NodeId& remote_node_id,
-    const std::array<uint8_t, 32U>& private_key) noexcept
+    const std::array<uint8_t, kPrivateKeyBytes>& private_key) noexcept
 {
     secp256k1_context* ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
     if (ctx == nullptr)
@@ -207,8 +200,8 @@ Result<std::array<uint8_t, kCompressedKeyBytes>> shared_secret_from_uncompressed
     }
 
     std::array<uint8_t, kUncompressedKeyBytes> raw{};
-    raw[0U] = 0x04U;
-    std::copy(remote_node_id.begin(), remote_node_id.end(), raw.begin() + 1U);
+    raw[0U] = kUncompressedPubKeyPrefix;
+    std::copy(remote_node_id.begin(), remote_node_id.end(), raw.begin() + kUncompressedPubKeyDataOffset);
 
     secp256k1_pubkey pubkey;
     if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, raw.data(), raw.size()))
@@ -242,7 +235,7 @@ Result<std::array<uint8_t, kCompressedKeyBytes>> shared_secret_from_uncompressed
 
 Result<std::array<uint8_t, kCompressedKeyBytes>> shared_secret_from_compressed_pubkey(
     const std::vector<uint8_t>& remote_pubkey,
-    const std::array<uint8_t, 32U>& private_key) noexcept
+    const std::array<uint8_t, kPrivateKeyBytes>& private_key) noexcept
 {
     if (remote_pubkey.size() != kCompressedKeyBytes)
     {
@@ -286,7 +279,7 @@ Result<std::array<uint8_t, kCompressedKeyBytes>> shared_secret_from_compressed_p
 }
 
 Result<std::vector<uint8_t>> make_id_signature(
-    const std::array<uint8_t, 32U>& private_key,
+    const std::array<uint8_t, kPrivateKeyBytes>& private_key,
     const std::vector<uint8_t>& challenge_data,
     const std::vector<uint8_t>& eph_pubkey,
     const NodeAddress& destination_node_addr) noexcept
@@ -350,8 +343,8 @@ bool verify_id_signature(
     }
 
     std::array<uint8_t, kUncompressedKeyBytes> raw{};
-    raw[0U] = 0x04U;
-    std::copy(node_id.begin(), node_id.end(), raw.begin() + 1U);
+    raw[0U] = kUncompressedPubKeyPrefix;
+    std::copy(node_id.begin(), node_id.end(), raw.begin() + kUncompressedPubKeyDataOffset);
 
     secp256k1_pubkey pubkey;
     if (!secp256k1_ec_pubkey_parse(ctx, &pubkey, raw.data(), raw.size()))
@@ -372,7 +365,7 @@ bool verify_id_signature(
     return verified;
 }
 
-Result<std::pair<std::array<uint8_t, 16U>, std::array<uint8_t, 16U>>> derive_session_keys(
+Result<std::pair<std::array<uint8_t, kAes128KeyBytes>, std::array<uint8_t, kAes128KeyBytes>>> derive_session_keys(
     const std::array<uint8_t, kCompressedKeyBytes>& shared_secret,
     const std::vector<uint8_t>& challenge_data,
     const NodeAddress& first_id,
@@ -393,8 +386,8 @@ Result<std::pair<std::array<uint8_t, 16U>, std::array<uint8_t, 16U>>> derive_ses
         return okm_result.error();
     }
 
-    std::array<uint8_t, 16U> write_key{};
-    std::array<uint8_t, 16U> read_key{};
+    std::array<uint8_t, kAes128KeyBytes> write_key{};
+    std::array<uint8_t, kAes128KeyBytes> read_key{};
     const auto& okm = okm_result.value();
     std::copy_n(okm.begin(), write_key.size(), write_key.begin());
     std::copy_n(okm.begin() + write_key.size(), read_key.size(), read_key.begin());
@@ -428,7 +421,7 @@ bool apply_aes128_ctr(
 }
 
 Result<std::vector<uint8_t>> encrypt_gcm(
-    const std::array<uint8_t, 16U>& key,
+    const std::array<uint8_t, kAes128KeyBytes>& key,
     const std::array<uint8_t, kGcmNonceBytes>& nonce,
     const std::vector<uint8_t>& plaintext,
     const std::vector<uint8_t>& auth_data) noexcept
@@ -498,7 +491,7 @@ Result<std::vector<uint8_t>> encrypt_gcm(
 }
 
 Result<std::vector<uint8_t>> decrypt_gcm(
-    const std::array<uint8_t, 16U>& key,
+    const std::array<uint8_t, kAes128KeyBytes>& key,
     const std::array<uint8_t, kGcmNonceBytes>& nonce,
     const std::vector<uint8_t>& ciphertext,
     const std::vector<uint8_t>& auth_data) noexcept
@@ -630,13 +623,13 @@ Result<PacketView> decode_packet(
         return discv5Error::kNetworkReceiveFailed;
     }
 
-    packet.flag = static_header[kProtocolIdBytes + sizeof(uint16_t)];
+    packet.flag = static_header[kStaticHeaderFlagOffset];
     std::copy_n(
-        static_header + kProtocolIdBytes + sizeof(uint16_t) + sizeof(uint8_t),
+        static_header + kStaticHeaderNonceOffset,
         packet.nonce.size(),
         packet.nonce.begin());
     packet.auth_size = read_u16_be(
-        static_header + kProtocolIdBytes + sizeof(uint16_t) + sizeof(uint8_t) + kGcmNonceBytes);
+        static_header + kStaticHeaderAuthSizeOffset);
 
     const size_t auth_end = kStaticPacketBytes + packet.auth_size;
     if (auth_end > length)
@@ -741,7 +734,7 @@ Result<std::vector<uint8_t>> make_local_enr_record(const discv5Config& config, u
     }
     else
     {
-        ip_bytes = {0U, 0U, 0U, 0U};
+        ip_bytes = std::vector<uint8_t>(kIPv4Bytes, 0U);
     }
 
     const uint16_t tcp_port = (config.tcp_port != 0U) ? config.tcp_port : udp_port;
@@ -749,15 +742,15 @@ Result<std::vector<uint8_t>> make_local_enr_record(const discv5Config& config, u
     rlp::RlpEncoder content_enc;
     if (!content_enc.BeginList() ||
         !content_enc.add(static_cast<uint64_t>(kInitialEnrSeq)) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("id"), 2U)) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kIdentitySchemeV4), 2U)) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("ip"), 2U)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyId), kEnrKeyIdBytes)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kIdentitySchemeV4), kIdentitySchemeV4Bytes)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyIp), kEnrKeyIpBytes)) ||
         !content_enc.add(rlp::ByteView(ip_bytes.data(), ip_bytes.size())) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("secp256k1"), 9U)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeySecp256k1), kEnrKeySecp256k1Bytes)) ||
         !content_enc.add(rlp::ByteView(compressed_result.value().data(), compressed_result.value().size())) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("tcp"), 3U)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyTcp), kEnrKeyTcpBytes)) ||
         !content_enc.add(tcp_port) ||
-        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("udp"), 3U)) ||
+        !content_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyUdp), kEnrKeyUdpBytes)) ||
         !content_enc.add(udp_port) ||
         !content_enc.EndList())
     {
@@ -803,15 +796,15 @@ Result<std::vector<uint8_t>> make_local_enr_record(const discv5Config& config, u
     if (!full_enc.BeginList() ||
         !full_enc.add(rlp::ByteView(compact_sig.data(), compact_sig.size())) ||
         !full_enc.add(static_cast<uint64_t>(kInitialEnrSeq)) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("id"), 2U)) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kIdentitySchemeV4), 2U)) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("ip"), 2U)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyId), kEnrKeyIdBytes)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kIdentitySchemeV4), kIdentitySchemeV4Bytes)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyIp), kEnrKeyIpBytes)) ||
         !full_enc.add(rlp::ByteView(ip_bytes.data(), ip_bytes.size())) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("secp256k1"), 9U)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeySecp256k1), kEnrKeySecp256k1Bytes)) ||
         !full_enc.add(rlp::ByteView(compressed_result.value().data(), compressed_result.value().size())) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("tcp"), 3U)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyTcp), kEnrKeyTcpBytes)) ||
         !full_enc.add(tcp_port) ||
-        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>("udp"), 3U)) ||
+        !full_enc.add(rlp::ByteView(reinterpret_cast<const uint8_t*>(kEnrKeyUdp), kEnrKeyUdpBytes)) ||
         !full_enc.add(udp_port) ||
         !full_enc.EndList())
     {
@@ -842,7 +835,7 @@ Result<std::vector<uint8_t>> make_findnode_plaintext(const std::vector<uint8_t>&
     }
 
     if (!enc.BeginList() ||
-        !enc.add(static_cast<uint32_t>(256U)) ||
+        !enc.add(static_cast<uint32_t>(kFindNodeDistanceAll)) ||
         !enc.EndList() ||
         !enc.EndList())
     {
@@ -856,7 +849,7 @@ Result<std::vector<uint8_t>> make_findnode_plaintext(const std::vector<uint8_t>&
     }
 
     std::vector<uint8_t> plaintext;
-    plaintext.reserve(1U + bytes_result.value().size());
+    plaintext.reserve(kMessageTypePrefixBytes + bytes_result.value().size());
     plaintext.push_back(kMsgFindNode);
     plaintext.insert(plaintext.end(), bytes_result.value().begin(), bytes_result.value().end());
     return plaintext;
@@ -868,8 +861,7 @@ Result<std::vector<uint8_t>> make_nodes_plaintext(
 {
     rlp::RlpEncoder enc;
     if (!enc.BeginList() ||
-        !enc.add(rlp::ByteView(req_id.data(), req_id.size())) ||
-        !enc.add(static_cast<uint8_t>(1U)) ||
+        !enc.add(rlp::ByteView(req_id.data(), req_id.size())) ||!enc.add(kNodesResponseCountSingle) ||
         !enc.BeginList() ||
         !enc.AddRaw(rlp::ByteView(enr_record.data(), enr_record.size())) ||
         !enc.EndList() ||
@@ -885,7 +877,7 @@ Result<std::vector<uint8_t>> make_nodes_plaintext(
     }
 
     std::vector<uint8_t> plaintext;
-    plaintext.reserve(1U + bytes_result.value().size());
+    plaintext.reserve(kMessageTypePrefixBytes + bytes_result.value().size());
     plaintext.push_back(kMsgNodes);
     plaintext.insert(plaintext.end(), bytes_result.value().begin(), bytes_result.value().end());
     return plaintext;
@@ -998,8 +990,8 @@ Result<HandshakeAuthView> parse_handshake_auth(const std::vector<uint8_t>& auth_
 
     HandshakeAuthView view;
     std::copy_n(auth_data.begin(), view.src_id.size(), view.src_id.begin());
-    const uint8_t sig_size = auth_data[kKeccak256Bytes];
-    const uint8_t pubkey_size = auth_data[kKeccak256Bytes + 1U];
+    const uint8_t sig_size = auth_data[kHandshakeAuthSigSizeOffset];
+    const uint8_t pubkey_size = auth_data[kHandshakeAuthPubkeySizeOffset];
 
     const size_t key_offset = kHandshakeAuthFixedBytes;
     const size_t pubkey_offset = key_offset + sig_size;
@@ -1435,7 +1427,7 @@ size_t discv5_client::nodes_packet_count() const noexcept
          }
 
          const uint8_t msg_type = plaintext.front();
-         const std::vector<uint8_t> body(plaintext.begin() + 1U, plaintext.end());
+         const std::vector<uint8_t> body(plaintext.begin() + kMessageTypePrefixBytes, plaintext.end());
 
          if (msg_type == kMsgNodes)
          {
@@ -1581,7 +1573,7 @@ size_t discv5_client::nodes_packet_count() const noexcept
          if (plaintext.front() == kMsgFindNode)
          {
              auto req_id_result = parse_findnode_req_id(
-                 std::vector<uint8_t>(plaintext.begin() + 1U, plaintext.end()));
+                 std::vector<uint8_t>(plaintext.begin() + kMessageTypePrefixBytes, plaintext.end()));
              if (!req_id_result)
              {
                  return;

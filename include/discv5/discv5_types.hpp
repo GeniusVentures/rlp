@@ -112,7 +112,7 @@ struct discv5Config
     uint16_t     tcp_port            = kDefaultTcpPort;
 
     /// secp256k1 private key (32 bytes).  Must be set before start().
-    std::array<uint8_t, 32> private_key{};
+    std::array<uint8_t, kPrivateKeyBytes> private_key{};
 
     /// secp256k1 public key (64 bytes, uncompressed, no 0x04 prefix).
     NodeId public_key{};

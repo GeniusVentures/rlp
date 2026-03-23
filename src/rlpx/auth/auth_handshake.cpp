@@ -29,7 +29,6 @@ namespace {
         return log;
     }
 
-    constexpr size_t kMaxEip8HandshakePacketSize = 2048U;
 
     std::string pubkey_hex(gsl::span<const uint8_t, kPublicKeySize> pubkey)
     {
@@ -110,17 +109,15 @@ AuthResult<ByteBuffer> create_auth_message(
     if (!rlp_result) { return AuthError::kSignatureInvalid; }
     ByteBuffer rlp_body(rlp_result.value().begin(), rlp_result.value().end());
 
-    // ── 5. Append random padding: 100..199 bytes (go-ethereum: mrand.Intn(100)+100) ──
+    // ── 5. Append fixed random padding (current implementation keeps 100 bytes) ──
     {
-        ByteBuffer padding(100);
+        ByteBuffer padding(kEip8AuthPaddingSize);
         RAND_bytes(padding.data(), static_cast<int>(padding.size()));
         rlp_body.insert(rlp_body.end(), padding.begin(), padding.end());
     }
 
     // ── 6. EIP-8 prefix = uint16_be(len(rlp_body) + eciesOverhead) ──
-    //    eciesOverhead = 65 (pubkey) + 16 (iv) + 32 (mac) = 113
-    constexpr size_t kEciesOverhead = kUncompressedPubKeySize + kAesBlockSize + 32U;
-    const auto prefix_val = static_cast<uint16_t>(rlp_body.size() + kEciesOverhead);
+    const auto prefix_val = static_cast<uint16_t>(rlp_body.size() + kEciesOverheadSize);
     ByteBuffer prefix = { static_cast<uint8_t>(prefix_val >> 8U),
                           static_cast<uint8_t>(prefix_val & 0xFFU) };
 
@@ -333,7 +330,7 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
         const auto& auth_ciphertext = auth_msg_result.value();
         const auto  prefix_val      = static_cast<uint16_t>(auth_ciphertext.size());
         ByteBuffer  auth_wire;
-        auth_wire.reserve(sizeof(uint16_t) + auth_ciphertext.size());
+        auth_wire.reserve(kEip8LengthPrefixSize + auth_ciphertext.size());
         auth_wire.push_back(static_cast<uint8_t>(prefix_val >> 8U));
         auth_wire.push_back(static_cast<uint8_t>(prefix_val & 0xFFU));
         auth_wire.insert(auth_wire.end(), auth_ciphertext.begin(), auth_ciphertext.end());
@@ -351,7 +348,7 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
 
         // ── Initiator: receive ack ──────────────────────────────────────────
         // EIP-8 ack wire: 2-byte len(ack_ciphertext) || ack_ciphertext
-        auto len_result = transport_.read_exact(sizeof(uint16_t), yield);
+        auto len_result = transport_.read_exact(kEip8LengthPrefixSize, yield);
         if ( !len_result ) {
             auth_log()->debug("execute: peer {}:{} pubkey={} read_exact(ack length prefix) failed",
                               remote_addr,
@@ -409,7 +406,7 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
         result.key_material.recipient_nonce = local_nonce;
 
         // Read 2-byte length prefix
-        auto len_result = transport_.read_exact(sizeof(uint16_t), yield);
+        auto len_result = transport_.read_exact(kEip8LengthPrefixSize, yield);
         if ( !len_result ) {
             return SessionError::kAuthenticationFailed;
         }
@@ -458,7 +455,7 @@ Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexce
         const auto& ack_bytes = result.key_material.recipient_ack_message;
         const auto  ack_len   = static_cast<uint16_t>(ack_bytes.size());
         ByteBuffer  ack_wire;
-        ack_wire.reserve(sizeof(uint16_t) + ack_bytes.size());
+        ack_wire.reserve(kEip8LengthPrefixSize + ack_bytes.size());
         ack_wire.push_back(static_cast<uint8_t>(ack_len >> 8U));
         ack_wire.push_back(static_cast<uint8_t>(ack_len & 0xFFU));
         ack_wire.insert(ack_wire.end(), ack_bytes.begin(), ack_bytes.end());

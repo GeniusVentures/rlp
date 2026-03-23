@@ -4,6 +4,7 @@
 #include <secp256k1_recovery.h>
 #include <boost/outcome/try.hpp>
 
+#include "discv4/discv4_constants.hpp"
 #include "discv4/discv4_ping.hpp"
 #include "discv4/discv4_pong.hpp"
 
@@ -48,7 +49,7 @@ PacketResult PacketFactory::SendPingAndWait(
 
 
     // Receive async
-    std::array<uint8_t, 2048> arrayBuffer;
+    std::array<uint8_t, kUdpBufferSize> arrayBuffer;
     boost::system::error_code ec;
     size_t bytesTransferred = socket.receive_from( boost::asio::buffer( arrayBuffer ), sender, 0, ec );
 
@@ -78,7 +79,7 @@ PacketResult PacketFactory::SignAndBuildPacket(
     auto payload = packet->RlpPayload();
 
     // Hash with keccak-256
-    std::array<uint8_t, 32> hash = discv4_packet::Keccak256( payload );
+    std::array<uint8_t, kWireHashSize> hash = discv4_packet::Keccak256( payload );
 
     // Sign with secp256k1
     auto ctx = secp256k1_context_create( SECP256K1_CONTEXT_SIGN );
@@ -93,20 +94,20 @@ PacketResult PacketFactory::SignAndBuildPacket(
         return outcome::failure( PacketError::kSignFailure );
     }
 
-    uint8_t serialized[65];
+    std::array<uint8_t, kWireCompactSigSize> serialized{};
     int recid;
-    secp256k1_ecdsa_recoverable_signature_serialize_compact( ctx, serialized, &recid, &sig );
+    secp256k1_ecdsa_recoverable_signature_serialize_compact( ctx, serialized.data(), &recid, &sig );
     secp256k1_context_destroy( ctx );
 
-    out.reserve( 32 + 65 + payload.size() );
-    out.insert( out.end(), 32, 0 ); // Skip for hash for whole out message
-    out.insert( out.end(), serialized, serialized + 64 );
+    out.reserve( kWireHashSize + kWireSigSize + payload.size() );
+    out.insert( out.end(), kWireHashSize, 0 ); // Skip for hash for whole out message
+    out.insert( out.end(), serialized.begin(), serialized.end() );
     out.push_back( recid );
     out.insert( out.end(), payload.begin(), payload.end() );
 
     // Hash for whole out message
-    auto payloadHash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>( out.begin() + 32, out.end() );
-    std::array<uint8_t, 32> payloadArray = payloadHash;
+    auto payloadHash = nil::crypto3::hash<nil::crypto3::hashes::keccak_1600<256>>( out.begin() + kWireHashSize, out.end() );
+    std::array<uint8_t, kWireHashSize> payloadArray = payloadHash;
     std::copy( payloadArray.begin(), payloadArray.end(), out.begin() );
 
     return outcome::success();

@@ -492,7 +492,7 @@ discv4::Result<discv4_pong> discv4_client::ping(
     const std::string key  = reply_key(ip, port, kPacketTypePong);
     auto timer      = std::make_shared<asio::steady_timer>(io_context_);
     auto pong_slot  = std::make_shared<discv4_pong>();
-    pending_replies_[key] = PendingReply{ timer, pong_slot };
+    pending_replies_[key] = PendingReply{ timer, pong_slot, nullptr, {} };
     timer->expires_after(config_.ping_timeout);
 
     boost::system::error_code ec;
@@ -543,7 +543,7 @@ rlpx::VoidResult discv4_client::find_node(
     // Register pending reply matcher for NEIGHBOURS — mirrors go-ethereum's pending() call.
     const std::string key   = reply_key(ip, port, kPacketTypeNeighbours);
     auto timer = std::make_shared<asio::steady_timer>(io_context_);
-    pending_replies_[key] = PendingReply{ timer, nullptr };
+    pending_replies_[key] = PendingReply{ timer, nullptr, nullptr, {} };
     timer->expires_after(config_.ping_timeout); // reuse ping_timeout as findnode reply timeout
 
     boost::system::error_code ec;

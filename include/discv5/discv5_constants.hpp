@@ -36,8 +36,13 @@ static constexpr size_t   kNodeIdBytes           = 64U;
 /// @brief Bytes in a compressed secp256k1 public key (03/02 prefix + 32 bytes).
 static constexpr size_t   kCompressedKeyBytes    = 33U;
 
+/// @brief Bytes in a secp256k1 private key.
+static constexpr size_t   kPrivateKeyBytes       = 32U;
+
 /// @brief Bytes in the 0x04 uncompressed-point prefix.
 static constexpr size_t   kUncompressedPrefixLen = 1U;
+static constexpr uint8_t  kUncompressedPubKeyPrefix = 0x04U;
+static constexpr size_t   kUncompressedPubKeyDataOffset = kUncompressedPrefixLen;
 
 // ---------------------------------------------------------------------------
 // Cryptographic hash sizes
@@ -99,6 +104,9 @@ static constexpr size_t   kForkHashBytes         = 4U;
 /// @brief Byte length of the "discv5" protocol-ID magic string.
 static constexpr size_t   kProtocolIdBytes       = 6U;
 
+/// @brief The discv5 packet protocol-ID string.
+static constexpr char     kProtocolId[]          = "discv5";
+
 /// @brief Byte length of the AES-GCM nonce used for message encryption.
 static constexpr size_t   kGcmNonceBytes         = 12U;
 
@@ -113,6 +121,27 @@ static constexpr size_t   kMinPacketBytes        = 63U;
 
 /// @brief Maximum valid discv5 packet size in bytes.
 static constexpr size_t   kMaxPacketBytes        = 1280U;
+
+/// @brief AES-128 session key size in bytes.
+static constexpr size_t   kAes128KeyBytes        = 16U;
+
+/// @brief AES-GCM authentication tag size in bytes.
+static constexpr size_t   kGcmTagBytes           = 16U;
+
+/// @brief Random encrypted payload size used for pre-handshake message placeholders.
+static constexpr size_t   kRandomMessageCiphertextBytes = 20U;
+
+/// @brief FINDNODE distance that requests the full routing table (log2 space upper bound + 1).
+static constexpr uint32_t kFindNodeDistanceAll   = 256U;
+
+/// @brief Single-byte HKDF expansion block counter used for the first output block.
+static constexpr uint8_t  kHkdfFirstBlockCounter = 0x01U;
+
+/// @brief Byte size of the leading message-type prefix in decrypted discv5 payloads.
+static constexpr size_t   kMessageTypePrefixBytes = 1U;
+
+/// @brief Number of ENR records returned by the local single-record NODES reply helper.
+static constexpr uint8_t  kNodesResponseCountSingle = 1U;
 
 // ---------------------------------------------------------------------------
 // ENR record sizes
@@ -129,6 +158,25 @@ static constexpr size_t   kEnrPrefixLen          = 4U;
 
 /// @brief The "enr:" URI prefix string.
 static constexpr char     kEnrPrefix[]           = "enr:";
+
+/// @brief Initial ENR sequence number for locally generated records.
+static constexpr uint8_t  kInitialEnrSeq         = 1U;
+
+/// @brief ENR identity scheme string for secp256k1-v4.
+static constexpr char     kIdentitySchemeV4[]    = "v4";
+static constexpr size_t   kIdentitySchemeV4Bytes = 2U;
+
+/// @brief Common ENR field key strings and lengths.
+static constexpr char     kEnrKeyId[]            = "id";
+static constexpr size_t   kEnrKeyIdBytes         = 2U;
+static constexpr char     kEnrKeyIp[]            = "ip";
+static constexpr size_t   kEnrKeyIpBytes         = 2U;
+static constexpr char     kEnrKeySecp256k1[]     = "secp256k1";
+static constexpr size_t   kEnrKeySecp256k1Bytes  = 9U;
+static constexpr char     kEnrKeyTcp[]           = "tcp";
+static constexpr size_t   kEnrKeyTcpBytes        = 3U;
+static constexpr char     kEnrKeyUdp[]           = "udp";
+static constexpr size_t   kEnrKeyUdpBytes        = 3U;
 
 // ---------------------------------------------------------------------------
 // Base64url alphabet sizes (RFC-4648 §5) — used by the ENR URI decoder
@@ -286,6 +334,10 @@ struct StaticHeaderWire
 
 /// @brief Byte count of the static header (derived from wire struct, NOT a magic literal).
 static constexpr size_t kStaticHeaderBytes = sizeof(StaticHeaderWire);
+static constexpr size_t kStaticHeaderVersionOffset = offsetof(StaticHeaderWire, version);
+static constexpr size_t kStaticHeaderFlagOffset = offsetof(StaticHeaderWire, flag);
+static constexpr size_t kStaticHeaderNonceOffset = offsetof(StaticHeaderWire, nonce);
+static constexpr size_t kStaticHeaderAuthSizeOffset = offsetof(StaticHeaderWire, auth_size);
 
 /// @brief WHOAREYOU auth-data layout: id-nonce + highest ENR sequence.
 #pragma pack(push, 1)
@@ -298,6 +350,14 @@ struct WhoareyouAuthDataWire
 
 /// @brief Byte count of WHOAREYOU auth data.
 static constexpr size_t kWhoareyouAuthDataBytes = sizeof(WhoareyouAuthDataWire);
+
+/// @brief HANDSHAKE auth-data layout prefixes.
+static constexpr size_t kHandshakeAuthSizeFieldBytes = sizeof(uint8_t);
+static constexpr size_t kHandshakeAuthSizeFieldCount = 2U;
+static constexpr size_t kHandshakeAuthSigSizeOffset = kKeccak256Bytes;
+static constexpr size_t kHandshakeAuthPubkeySizeOffset = kHandshakeAuthSigSizeOffset + kHandshakeAuthSizeFieldBytes;
+static constexpr size_t kHandshakeAuthFixedBytes =
+    kKeccak256Bytes + (kHandshakeAuthSizeFieldCount * kHandshakeAuthSizeFieldBytes);
 
 /// @brief Total fixed bytes at the front of every discv5 packet:
 ///        masking IV + static header.

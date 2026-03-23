@@ -1,7 +1,7 @@
 # RLP Development Guide
 
 ## General Instructions
-You are an expert C++ software engineer working exclusively on the GNUS.AI Super Genius blockchain project.
+You are an Junior C++ software engineer working exclusively on the GNUS.AI Super Genius blockchain project.  You are working with the Senior C++ engineer (user) and are learning his/her preferences and knowledge of the codebase.  So, you are very careful to follow their style and guidelines. And learn best practices from them. You are careful not to break the project, nor slow down the Senior C++ engineer.
 
 **MANDATORY RULES – NEVER VIOLATE THESE**
 
@@ -104,7 +104,7 @@ ninja
 - Line length: 120 characters maximum
 - Classes/Methods: PascalCase
 - Variables: camelCase
-- Constants: ALL_CAPS
+- Constants: prefer `constexpr` / `inline constexpr` named `kCamelCase`; avoid ALL_CAPS `#define` value constants
 - Parentheses: space after opening and before closing: `if ( condition )`
 - Braces: Each on their own line
 - Error Handling: Use outcome::result<T> pattern for error propagation
@@ -132,7 +132,7 @@ ninja
 
 ### Language Fundamentals
 - Adapt your programming style based on the C++ sublanguage you're using (C, Object-Oriented C++, Template C++, STL)
-- Replace #define constants with const objects or enums
+- Replace `#define` value constants with `constexpr` / `inline constexpr` named `kCamelCase` (or enums when appropriate); reserve macros for header guards and unavoidable platform/compiler integration
 - Replace function-like macros with inline functions
 - Use const everywhere possible: objects, parameters, return types, and member functions
 - Always initialize objects before use; prefer member initialization lists over assignments in constructor bodies
@@ -238,7 +238,7 @@ ninja
 - Declare overriding functions override: catches interface mismatches, enables better refactoring, documents intent
 - Prefer const_iterators to iterators: const-correctness, C++11 makes them practical with cbegin/cend
 - Declare functions noexcept if they won't emit exceptions: enables optimizations (especially for move operations), required for some STL containers
-- Use constexpr whenever possible: computed at compile-time, usable in constant expressions, broader scope than const
+- Use `constexpr` whenever possible; in headers prefer C++17 `inline constexpr` for shared named constants following the project's `kCamelCase` convention
 - Make const member functions thread-safe: use mutex for mutable data, consider std::atomic for simple cases
 - Understand special member function generation: default constructor, destructor, copy ops, move ops; generation rules depend on what you declare
 

@@ -8,6 +8,7 @@
 #include "discv4/discv4_pong.hpp"
 #include "discv4/discv4_enr_request.hpp"
 #include "discv4/discv4_enr_response.hpp"
+#include "discv4/discv4_constants.hpp"
 #include "discv4/discv4_error.hpp"
 #include <rlp/result.hpp>
 #include <rlpx/rlpx_error.hpp>
@@ -49,8 +50,8 @@ struct discv4Config {
     uint16_t tcp_port = 30303;
     std::array<uint8_t, 32> private_key{};  // secp256k1 private key
     NodeId public_key{};                     // secp256k1 public key (uncompressed, 64 bytes)
-    std::chrono::milliseconds ping_timeout{5000};
-    std::chrono::seconds peer_expiry{300};   // 5 minutes
+    std::chrono::milliseconds ping_timeout{kDefaultPingTimeout};
+    std::chrono::seconds peer_expiry{kDefaultPeerExpiry};   // 5 minutes
 };
 
 // Callback types

@@ -239,7 +239,7 @@ TEST( EnrClientTest, RequestEnrCompletesOnValidResponse )
 
     // Spawn request_enr() coroutine.
     boost::asio::spawn( io,
-        [dv4, &enr_success, kPeerPort]( boost::asio::yield_context yield )
+        [dv4, &enr_success]( boost::asio::yield_context yield )
         {
             auto r       = dv4->request_enr( "127.0.0.1", kPeerPort, yield );
             enr_success  = r.has_value();
