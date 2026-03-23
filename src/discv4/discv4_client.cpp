@@ -447,9 +447,11 @@ discv4::Result<discv4_enr_response> discv4_client::request_enr(
     timer->async_wait( asio::redirect_error( yield, ec ) );
     pending_replies_.erase( key );
 
-    if ( ec == boost::asio::error::operation_aborted && !enr_slot->record_rlp.empty() )
+    if ( !enr_slot->record_rlp.empty() )
     {
-        // Timer cancelled by handle_enr_response — response was received.
+        // The reply slot is authoritative: a fast ENRResponse can arrive before
+        // async_wait() is armed, in which case timer->cancel() has no pending wait
+        // to abort. Treat a populated slot as success on all platforms.
         return *enr_slot;
     }
     return discv4Error::kPongTimeout;
@@ -507,9 +509,11 @@ discv4::Result<discv4_pong> discv4_client::ping(
     timer->async_wait(asio::redirect_error(yield, ec));
     pending_replies_.erase(key);
 
-    if (ec == boost::asio::error::operation_aborted && pong_slot->expiration != 0)
+    if (pong_slot->expiration != 0)
     {
-        // Timer was cancelled by handle_pong — PONG was received.
+        // The reply slot is authoritative: a fast PONG can arrive before
+        // async_wait() is armed, in which case timer->cancel() has no pending wait
+        // to abort. Treat a populated slot as success on all platforms.
         bonded_set_.insert(ip + ":" + std::to_string(port));
         return *pong_slot;
     }
