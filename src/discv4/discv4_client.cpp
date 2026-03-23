@@ -225,6 +225,11 @@ void discv4_client::handle_pong(const uint8_t* data, size_t length, const udp::e
         return; // unsolicited — drop
     }
 
+    if (pong_result.value().pingHash != it->second.expected_hash)
+    {
+        return; // wrong ping token — drop stale/spoofed PONG
+    }
+
     *it->second.pong = std::move(pong_result.value());
     it->second.timer->cancel(); // wake the waiting ping() coroutine
 }
@@ -495,11 +500,16 @@ discv4::Result<discv4_pong> discv4_client::ping(
     auto signed_packet = sign_packet(payload);
     if (!signed_packet) { return discv4Error::kSigningFailed; }
 
+    std::array<uint8_t, kWireHashSize> sent_hash{};
+    std::copy(signed_packet.value().begin(),
+              signed_packet.value().begin() + kWireHashSize,
+              sent_hash.begin());
+
     // Register pending reply matcher before sending — mirrors go-ethereum's sendPing replyMatcher.
     const std::string key  = reply_key(ip, port, kPacketTypePong);
     auto timer      = std::make_shared<asio::steady_timer>(io_context_);
     auto pong_slot  = std::make_shared<discv4_pong>();
-    pending_replies_[key] = PendingReply{ timer, pong_slot, nullptr, {} };
+    pending_replies_[key] = PendingReply{ timer, pong_slot, nullptr, sent_hash };
     timer->expires_after(config_.ping_timeout);
 
     udp::endpoint destination(asio::ip::make_address(ip), port);

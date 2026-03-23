@@ -6,6 +6,7 @@
 /// all UDP traffic.
 
 #include <discv4/discv4_client.hpp>
+#include <discv4/discv4_constants.hpp>
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -15,6 +16,7 @@
 #include <boost/asio/spawn.hpp>
 #include <boost/system/error_code.hpp>
 #include <chrono>
+#include <rlp/rlp_encoder.hpp>
 #include <thread>
 
 namespace {
@@ -102,6 +104,38 @@ discv4::discv4Config make_cfg(boost::asio::io_context& /*io*/)
     // Short timeout ensures coroutines complete within test run_for() windows.
     cfg.ping_timeout = std::chrono::milliseconds(100);
     return cfg;
+}
+
+/// @brief Build a minimal PONG wire packet addressed back to the provided endpoint.
+std::vector<uint8_t> make_pong_wire(
+    const std::array<uint8_t, discv4::kWireHashSize>& ping_hash,
+    const udp::endpoint&                               recipient )
+{
+    rlp::RlpEncoder encoder;
+    EXPECT_TRUE( encoder.BeginList().has_value() );
+    EXPECT_TRUE( encoder.BeginList().has_value() );
+
+    const auto recipient_ip = recipient.address().to_v4().to_bytes();
+    EXPECT_TRUE( encoder.add( rlp::ByteView( recipient_ip.data(), recipient_ip.size() ) ).has_value() );
+    EXPECT_TRUE( encoder.add( recipient.port() ).has_value() );
+    EXPECT_TRUE( encoder.add( recipient.port() ).has_value() );
+    EXPECT_TRUE( encoder.EndList().has_value() );
+    EXPECT_TRUE( encoder.add( rlp::ByteView( ping_hash.data(), ping_hash.size() ) ).has_value() );
+
+    const uint32_t expiration = static_cast<uint32_t>( std::time( nullptr ) ) + 60U;
+    EXPECT_TRUE( encoder.add( expiration ).has_value() );
+    EXPECT_TRUE( encoder.EndList().has_value() );
+
+    auto pong_bytes = encoder.MoveBytes();
+    EXPECT_TRUE( pong_bytes.has_value() );
+
+    std::vector<uint8_t> wire;
+    wire.reserve( discv4::kWireHeaderSize + pong_bytes.value().size() );
+    wire.insert( wire.end(), discv4::kWireHashSize, 0U );
+    wire.insert( wire.end(), discv4::kWireSigSize, 0U );
+    wire.push_back( discv4::kPacketTypePong );
+    wire.insert( wire.end(), pong_bytes.value().begin(), pong_bytes.value().end() );
+    return wire;
 }
 
 } // namespace
@@ -287,3 +321,136 @@ TEST(RecursiveBondingTest, FindNodeSentToMultiplePeers_AllReceivePackets)
     EXPECT_TRUE(listener3.received())
         << "find_node() must reach third peer";
 }
+
+/// @brief ping() succeeds when the received PONG echoes the outbound PING wire hash.
+TEST(RecursiveBondingTest, PingCompletesOnlyWhenPongTokenMatches)
+{
+    constexpr uint16_t kPeerPort = 30465U;
+
+    boost::asio::io_context peer_io;
+    udp::socket peer_socket( peer_io );
+    {
+        boost::system::error_code ec;
+        peer_socket.open( udp::v4(), ec );
+        ASSERT_FALSE( ec ) << "open() failed";
+
+        peer_socket.bind( udp::endpoint( udp::v4(), kPeerPort ), ec );
+        if ( ec )
+        {
+            GTEST_SKIP() << "Port " << kPeerPort << " unavailable — skipping loopback test";
+        }
+    }
+
+    boost::asio::io_context io;
+    auto cfg = make_cfg( io );
+    auto dv4 = std::make_shared<discv4::discv4_client>( io, cfg );
+    ASSERT_TRUE( dv4->start() ) << "discv4_client::start() failed";
+
+    discv4::NodeId dummy_id{};
+    std::atomic<bool> ping_completed{ false };
+    std::atomic<bool> ping_succeeded{ false };
+
+    boost::asio::spawn( io,
+        [dv4, &ping_completed, &ping_succeeded, peer_port = kPeerPort, dummy_id]( boost::asio::yield_context yield )
+        {
+            auto result = dv4->ping( "127.0.0.1", peer_port, dummy_id, yield );
+            ping_succeeded = result.has_value();
+            ping_completed = true;
+        } );
+
+    std::thread peer_thread( [&peer_socket]()
+    {
+        std::array<uint8_t, 2048U> buf{};
+        udp::endpoint sender_endpoint;
+        boost::system::error_code ec;
+
+        const std::size_t bytes_received = peer_socket.receive_from(
+            boost::asio::buffer( buf ),
+            sender_endpoint,
+            0,
+            ec );
+        if ( ec || bytes_received < discv4::kWireHashSize )
+        {
+            return;
+        }
+
+        std::array<uint8_t, discv4::kWireHashSize> ping_hash{};
+        std::copy( buf.begin(), buf.begin() + discv4::kWireHashSize, ping_hash.begin() );
+
+        const auto response_wire = make_pong_wire( ping_hash, sender_endpoint );
+        peer_socket.send_to( boost::asio::buffer( response_wire ), sender_endpoint, 0, ec );
+    } );
+
+    io.run_for( std::chrono::milliseconds( 300U ) );
+    peer_thread.join();
+
+    EXPECT_TRUE( ping_completed ) << "ping() must complete after receiving a matching PONG";
+    EXPECT_TRUE( ping_succeeded ) << "ping() must succeed when PONG pingHash matches the outbound PING";
+}
+
+/// @brief ping() times out when a PONG arrives from the endpoint with the wrong pingHash.
+TEST(RecursiveBondingTest, PingIgnoresPongWithWrongToken)
+{
+    constexpr uint16_t kPeerPort = 30466U;
+
+    boost::asio::io_context peer_io;
+    udp::socket peer_socket( peer_io );
+    {
+        boost::system::error_code ec;
+        peer_socket.open( udp::v4(), ec );
+        ASSERT_FALSE( ec ) << "open() failed";
+
+        peer_socket.bind( udp::endpoint( udp::v4(), kPeerPort ), ec );
+        if ( ec )
+        {
+            GTEST_SKIP() << "Port " << kPeerPort << " unavailable — skipping loopback test";
+        }
+    }
+
+    boost::asio::io_context io;
+    auto cfg = make_cfg( io );
+    auto dv4 = std::make_shared<discv4::discv4_client>( io, cfg );
+    ASSERT_TRUE( dv4->start() ) << "discv4_client::start() failed";
+
+    discv4::NodeId dummy_id{};
+    std::atomic<bool> ping_completed{ false };
+    std::atomic<bool> ping_succeeded{ false };
+
+    boost::asio::spawn( io,
+        [dv4, &ping_completed, &ping_succeeded, peer_port = kPeerPort, dummy_id]( boost::asio::yield_context yield )
+        {
+            auto result = dv4->ping( "127.0.0.1", peer_port, dummy_id, yield );
+            ping_succeeded = result.has_value();
+            ping_completed = true;
+        } );
+
+    std::thread peer_thread( [&peer_socket]()
+    {
+        std::array<uint8_t, 2048U> buf{};
+        udp::endpoint sender_endpoint;
+        boost::system::error_code ec;
+
+        const std::size_t bytes_received = peer_socket.receive_from(
+            boost::asio::buffer( buf ),
+            sender_endpoint,
+            0,
+            ec );
+        if ( ec || bytes_received < discv4::kWireHashSize )
+        {
+            return;
+        }
+
+        std::array<uint8_t, discv4::kWireHashSize> wrong_hash{};
+        wrong_hash.fill( 0xA5U );
+
+        const auto response_wire = make_pong_wire( wrong_hash, sender_endpoint );
+        peer_socket.send_to( boost::asio::buffer( response_wire ), sender_endpoint, 0, ec );
+    } );
+
+    io.run_for( std::chrono::milliseconds( 300U ) );
+    peer_thread.join();
+
+    EXPECT_TRUE( ping_completed ) << "ping() must complete after timing out on a mismatched PONG";
+    EXPECT_FALSE( ping_succeeded ) << "ping() must ignore a PONG whose pingHash does not match the outbound PING";
+}
+

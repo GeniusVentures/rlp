@@ -197,7 +197,7 @@ private:
         std::shared_ptr<boost::asio::steady_timer> timer;
         std::shared_ptr<discv4_pong>               pong;         ///< filled by handle_pong; null for non-ping entries
         std::shared_ptr<discv4_enr_response>       enr_response; ///< filled by handle_enr_response; null for non-ENR entries
-        std::array<uint8_t, kWireHashSize>         expected_hash{}; ///< hash of the outbound ENRRequest; used for ReplyTok verification
+        std::array<uint8_t, kWireHashSize>         expected_hash{}; ///< outbound PING/ENRRequest wire hash; used for PONG/ReplyTok verification
     };
     std::unordered_map<std::string, PendingReply> pending_replies_;
 
