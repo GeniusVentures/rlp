@@ -5,9 +5,7 @@
 #include <rlpx/socket/socket_transport.hpp>
 #include <rlpx/rlpx_session.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/detached.hpp>
-#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <chrono>
 #include <queue>
 
@@ -101,13 +99,13 @@ TEST_F(SocketLifecycleTest, SessionConnectParamsCreation) {
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
     SessionConnectParams params{
-        .remote_host = "example.com",
-        .remote_port = 30303,
-        .local_public_key = local_pub,
-        .local_private_key = local_priv,
-        .peer_public_key = peer_key,
-        .client_id = "test-client",
-        .listen_port = 30303
+        "example.com",
+        30303,
+        local_pub,
+        local_priv,
+        peer_key,
+        "test-client",
+        30303
     };
     
     // Verify params were set correctly
@@ -127,10 +125,10 @@ TEST_F(SocketLifecycleTest, SessionAcceptParamsCreation) {
     std::fill(local_priv.begin(), local_priv.end(), 0x02);
     
     SessionAcceptParams params{
-        .local_public_key = local_pub,
-        .local_private_key = local_priv,
-        .client_id = "test-server",
-        .listen_port = 30303
+        local_pub,
+        local_priv,
+        "test-server",
+        30303
     };
     
     // Verify params were set correctly
@@ -143,13 +141,12 @@ TEST_F(SocketLifecycleTest, PeerInfoCreation) {
     PublicKey peer_key{};
     std::fill(peer_key.begin(), peer_key.end(), 0x42);
     
-    PeerInfo info{
-        .public_key = peer_key,
-        .client_id = "peer-client",
-        .listen_port = 30303,
-        .remote_address = "192.168.1.1",
-        .remote_port = 30303
-    };
+    PeerInfo info{};
+    info.public_key = peer_key;
+    info.client_id = "peer-client";
+    info.listen_port = 30303;
+    info.remote_address = "192.168.1.1";
+    info.remote_port = 30303;
     
     // Verify info structure
     EXPECT_EQ(info.client_id, "peer-client");
@@ -167,7 +164,9 @@ TEST_F(SocketLifecycleTest, MessageChannelOperations) {
     std::queue<framing::Message> queue;
     
     // Push a message
-    framing::Message msg1{.id = 0x00, .payload = {0x01, 0x02, 0x03}};
+    framing::Message msg1{};
+    msg1.id = 0x00;
+    msg1.payload = {0x01, 0x02, 0x03};
     queue.push(std::move(msg1));
     
     // Queue should not be empty

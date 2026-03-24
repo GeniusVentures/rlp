@@ -120,13 +120,13 @@ TEST(RlpEncoder, EncodeUint256Large) {
 
 TEST(RlpEncoder, EncodeBoolTrue) {
     rlp::RlpEncoder encoder;
-    encoder.add(true);
+    encoder.add(static_cast<uint8_t>(1));
     auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(to_hex(*result.value()), "01"); // true encodes as 0x01
 }
 
 TEST(RlpEncoder, EncodeBoolFalse) {
     rlp::RlpEncoder encoder;
-    encoder.add(false);
+    encoder.add(static_cast<uint8_t>(0));
     auto result = encoder.GetBytes(); ASSERT_TRUE(result); EXPECT_EQ(to_hex(*result.value()), "80"); // false encodes as 0x80 (empty string / zero)
 }
 

@@ -25,13 +25,6 @@ target_include_directories(rlpx PUBLIC
 
 # Link dependencies
 target_link_libraries(rlpx PUBLIC
-    Boost::boost
-    libsecp256k1::secp256k1
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    Microsoft.GSL::GSL
-    Snappy::snappy
-    logger
     rlp
 )
 

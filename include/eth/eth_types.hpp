@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <variant>
 #include <vector>
 #include <rlp/intx.hpp>
 #include <rlp/rlp_ethereum.hpp>
@@ -17,22 +18,55 @@ using Hash256 = rlp::Hash256;
 using Address = rlp::Address;
 using Bloom = rlp::Bloom;
 
+inline constexpr uint8_t kEthProtocolVersion66 = 66U;
+inline constexpr uint8_t kEthProtocolVersion67 = 67U;
+inline constexpr uint8_t kEthProtocolVersion68 = 68U;
+inline constexpr uint8_t kEthProtocolVersion69 = 69U;
+
 struct ForkId {
     std::array<uint8_t, 4> fork_hash{};
     uint64_t next_fork = 0;
 };
 
-/// @brief ETH status message (ETH/68 wire format).
-/// Field order matches go-ethereum's StatusPacket struct exactly.
-struct StatusMessage {
-    uint8_t  protocol_version = 68;    ///< ETH sub-protocol version (68)
-    uint64_t network_id = 0;           ///< Chain network ID
-    Hash256  genesis_hash{};           ///< Genesis block hash
-    ForkId   fork_id{};                ///< EIP-2124 fork identifier
-    uint64_t earliest_block = 0;       ///< Earliest available block number
-    uint64_t latest_block = 0;         ///< Latest available block number (head)
-    Hash256  latest_block_hash{};      ///< Latest available block hash
+/// @brief ETH/68 Status message.
+/// Wire: [version, networkid, td, blockhash, genesis, forkid]
+struct StatusMessage68
+{
+    uint8_t       protocol_version = kEthProtocolVersion68;
+    uint64_t      network_id = 0;
+    intx::uint256 td{};
+    Hash256       blockhash{};
+    Hash256       genesis_hash{};
+    ForkId        fork_id{};
 };
+
+/// @brief ETH/69 Status message.
+/// Wire: [version, networkid, genesis, forkid, earliestBlock, latestBlock, latestBlockHash]
+struct StatusMessage69
+{
+    uint8_t  protocol_version = kEthProtocolVersion69;
+    uint64_t network_id = 0;
+    Hash256  genesis_hash{};
+    ForkId   fork_id{};
+    uint64_t earliest_block = 0;
+    uint64_t latest_block = 0;
+    Hash256  latest_block_hash{};
+};
+
+/// @brief Fields common to both ETH/68 and ETH/69 Status messages.
+struct CommonStatusFields
+{
+    uint8_t  protocol_version = 0;
+    uint64_t network_id = 0;
+    Hash256  genesis_hash{};
+    ForkId   fork_id{};
+};
+
+/// @brief Dual-version Status message (ETH/68 or ETH/69).
+using StatusMessage = std::variant<StatusMessage68, StatusMessage69>;
+
+/// @brief Extract fields common to both ETH/68 and ETH/69 Status messages.
+[[nodiscard]] CommonStatusFields get_common_fields(const StatusMessage& msg) noexcept;
 
 /// @brief Errors returned by validate_status(), mirroring go-ethereum's
 ///        readStatus error values from eth/protocols/eth/handshake.go.

@@ -39,31 +39,21 @@ rlp::Result<discv4_pong> discv4_pong::Parse(rlp::ByteView raw) {
     BOOST_OUTCOME_TRY( decoder.read( pong.pingHash ) );
     rlp::ByteView hashBv( pong.pingHash.data(), pong.pingHash.size() );
 
-    // Parse expiration (third element - big-endian uint32)
-    std::array<uint8_t, sizeof(uint32_t)> expiration;
+    // Parse expiration — variable-length RLP uint64 (go-ethereum encodes as uint64)
+    uint64_t expiration = 0;
     BOOST_OUTCOME_TRY( decoder.read( expiration ) );
-    pong.expiration  = static_cast<uint32_t>(expiration[0]) << 24U;
-    pong.expiration |= static_cast<uint32_t>(expiration[1]) << 16U;
-    pong.expiration |= static_cast<uint32_t>(expiration[2]) <<  8U;
-    pong.expiration |= static_cast<uint32_t>(expiration[3]);
+    pong.expiration = static_cast<uint32_t>(expiration);
 
-    // Verify we consumed all the data
+    // Optional ENR sequence number (EIP-868) — variable-length uint64, may be absent.
+    // Any further unknown fields are silently consumed for forward compatibility
+    // (mirrors go-ethereum's Rest []rlp.RawValue `rlp:"tail"`).
     if ( !decoder.IsFinished() )
     {
-        // Optional ENR sequence number (kEnrSeqSize-byte big-endian uint48)
-        std::array<uint8_t, kEnrSeqSize> ersErqArray;
-        BOOST_OUTCOME_TRY( decoder.read( ersErqArray ) );
-        pong.ersErq  = static_cast<uint64_t>(ersErqArray[0]) << 40U;
-        pong.ersErq |= static_cast<uint64_t>(ersErqArray[1]) << 32U;
-        pong.ersErq |= static_cast<uint64_t>(ersErqArray[2]) << 24U;
-        pong.ersErq |= static_cast<uint64_t>(ersErqArray[3]) << 16U;
-        pong.ersErq |= static_cast<uint64_t>(ersErqArray[4]) <<  8U;
-        pong.ersErq |= static_cast<uint64_t>(ersErqArray[5]);
-
-        if ( !decoder.IsFinished() )
-        {
-            return rlp::DecodingError::kInputTooLong;
-        }
+        BOOST_OUTCOME_TRY( decoder.read( pong.ersErq ) );
+    }
+    while ( !decoder.IsFinished() )
+    {
+        BOOST_OUTCOME_TRY( decoder.SkipItem() );
     }
 
     return pong;
@@ -84,16 +74,11 @@ rlp::DecodingResult discv4_pong::ParseEndpoint( rlp::RlpDecoder& decoder, discv4
     // Parse IP address (4 bytes)
     BOOST_OUTCOME_TRY( decoder.read( endpoint.ip ) );
     
-    // Parse UDP port (big-endian uint16)
-    std::array<uint8_t, sizeof(uint16_t)> port;
-    BOOST_OUTCOME_TRY( decoder.read( port ) );
-    endpoint.udpPort  = static_cast<uint16_t>(port[0]) << 8U;
-    endpoint.udpPort |= static_cast<uint16_t>(port[1]);
+    // Parse UDP port — variable-length RLP uint16
+    BOOST_OUTCOME_TRY( decoder.read( endpoint.udpPort ) );
 
-    // Parse TCP port (big-endian uint16)
-    BOOST_OUTCOME_TRY( decoder.read( port ) );
-    endpoint.tcpPort  = static_cast<uint16_t>(port[0]) << 8U;
-    endpoint.tcpPort |= static_cast<uint16_t>(port[1]);
+    // Parse TCP port — variable-length RLP uint16
+    BOOST_OUTCOME_TRY( decoder.read( endpoint.tcpPort ) );
 
     return rlp::outcome::success();
 }

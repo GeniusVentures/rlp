@@ -14,28 +14,44 @@ add_library(rlp STATIC
 )
 
 # Set config of crypto3
-set(crypto3_INCLUDE_DIR "${ZKLLVM_BUILD_DIR}/zkLLVM/include")
 include_directories(${crypto3_INCLUDE_DIR})
 
 # Set config of secp256k1 project
-set(libsecp256k1_DIR "${_THIRDPARTY_BUILD_DIR}/libsecp256k1/lib/cmake/libsecp256k1")
 find_package(libsecp256k1 CONFIG REQUIRED)
 
 # Specify public include directory for BUILD interface
 target_include_directories(rlp PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/../include>
         $<INSTALL_INTERFACE:include>
-        ${crypto3_INCLUDE_DIR}
+        $<BUILD_INTERFACE:${crypto3_INCLUDE_DIR}>
 )
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)
 
 # Link public dependencies
 target_link_libraries(rlp PUBLIC
         Boost::boost
         libsecp256k1::secp256k1
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        Snappy::snappy
+        Boost::context
+        Boost::coroutine
+        rlp_logger
 )
 
 # Ensure C++17 standard
 target_compile_features(rlp PUBLIC cxx_std_17)
+
+# Install the core library and attach it to the export set consumed by
+# the top-level install(EXPORT rlp ...) call.
+install(TARGETS rlp
+        EXPORT rlp
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
 
 # Explicitly install public headers to the base include directory
 install(FILES
@@ -57,7 +73,7 @@ install(FILES
         ../include/discv4/discovery.hpp
         ../include/discv4/packet_factory.hpp
         ../include/discv4/discv4_packet.hpp
-        ../include/discv4/discv4Ping.cpp
+        ../include/discv4/discv4_ping.hpp
         ../include/discv4/discv4_pong.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rlp
 )
@@ -68,11 +84,11 @@ install(DIRECTORY
         FILES_MATCHING PATTERN "*.hpp"
 )
 
-# Add base logger
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/base ${CMAKE_CURRENT_BINARY_DIR}/base)
-
 # Add RLPx subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/rlpx ${CMAKE_CURRENT_BINARY_DIR}/rlpx)
 
 # Add discv4 subdirectory
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/discv4 ${CMAKE_CURRENT_BINARY_DIR}/discv4)
+
+# Add discv5 subdirectory
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/discv5 ${CMAKE_CURRENT_BINARY_DIR}/discv5)

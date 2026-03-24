@@ -3,6 +3,7 @@
 #include <rlp/rlp_decoder.hpp>
 #include <rlp/common.hpp>
 #include <discv4/discv4_constants.hpp>
+#include <algorithm>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -211,12 +212,25 @@ rlp::EncodingResult<rlp::Bytes> EncodeEndpoint(rlp::ByteView ip, uint16_t udpPor
 rlp::EncodingResult<rlp::Bytes> EncodePing() {
     uint8_t packet_type = 0x01;
 
-    uint8_t from_ip_bytes[4];
-    uint8_t to_ip_bytes[4];
-    inet_pton(AF_INET, "10.0.2.15", from_ip_bytes);
+    uint8_t from_ip_bytes[4]{};
+    uint8_t to_ip_bytes[4]{};
+
+    boost::system::error_code parse_ec;
+    const auto from_address = asio::ip::make_address_v4("10.0.2.15", parse_ec);
+    if ( !parse_ec )
+    {
+        const auto bytes = from_address.to_bytes();
+        std::copy( bytes.begin(), bytes.end(), from_ip_bytes );
+    }
 
     // Hardcoded Eth Boot Node IP
-    inet_pton(AF_INET, "146.190.13.128", to_ip_bytes);
+    parse_ec.clear();
+    const auto to_address = asio::ip::make_address_v4("146.190.13.128", parse_ec);
+    if ( !parse_ec )
+    {
+        const auto bytes = to_address.to_bytes();
+        std::copy( bytes.begin(), bytes.end(), to_ip_bytes );
+    }
 
     // TODO Find better format to pass IPv4
     rlp::ByteView sv_from(

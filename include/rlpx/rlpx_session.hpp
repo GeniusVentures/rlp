@@ -7,16 +7,12 @@
 #include "rlpx_error.hpp"
 #include "framing/message_stream.hpp"
 #include "protocol/messages.hpp"
-#include <boost/asio/awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <atomic>
 #include <memory>
 #include <functional>
 
 namespace rlpx {
-
-// Hide Boost types (Law of Demeter)
-template<typename T>
-using Awaitable = boost::asio::awaitable<T>;
 
 // Message handler callback types
 using MessageHandler = std::function<void(const protocol::Message&)>;
@@ -54,16 +50,22 @@ struct PeerInfo {
     uint16_t remote_port;
 };
 
-// RLPx session managing encrypted P2P communication
-class RlpxSession {
+/// RLPx session managing encrypted P2P communication.
+class RlpxSession : public std::enable_shared_from_this<RlpxSession> {
 public:
-    // Factory for outbound connections
-    [[nodiscard]] static Awaitable<Result<std::unique_ptr<RlpxSession>>>
-    connect(const SessionConnectParams& params) noexcept;
+    /// @brief Factory for outbound connections.
+    /// @param params Session connection parameters.
+    /// @param yield  Boost.Asio stackful coroutine context.
+    /// @return Constructed session on success, SessionError on failure.
+    [[nodiscard]] static Result<std::shared_ptr<RlpxSession>>
+    connect(const SessionConnectParams& params, boost::asio::yield_context yield) noexcept;
 
-    // Factory for inbound connections
-    [[nodiscard]] static Awaitable<Result<std::unique_ptr<RlpxSession>>>
-    accept(const SessionAcceptParams& params) noexcept;
+    /// @brief Factory for inbound connections.
+    /// @param params Session accept parameters.
+    /// @param yield  Boost.Asio stackful coroutine context.
+    /// @return Constructed session on success, SessionError on failure.
+    [[nodiscard]] static Result<std::shared_ptr<RlpxSession>>
+    accept(const SessionAcceptParams& params, boost::asio::yield_context yield) noexcept;
 
     ~RlpxSession();
 
@@ -73,17 +75,26 @@ public:
     RlpxSession(RlpxSession&&) noexcept;
     RlpxSession& operator=(RlpxSession&&) noexcept;
 
-    // Send message (takes ownership via move)
+    /// Send message (takes ownership via move).
     [[nodiscard]] VoidResult
     post_message(framing::Message message) noexcept;
 
-    // Receive message (coroutine pull model)
-    [[nodiscard]] Awaitable<Result<framing::Message>>
-    receive_message() noexcept;
+    /// @brief Receive message (stackful coroutine pull model).
+    /// @param yield Boost.Asio stackful coroutine context.
+    /// @return Next message on success, SessionError on failure.
+    [[nodiscard]] Result<framing::Message>
+    receive_message(boost::asio::yield_context yield) noexcept;
 
-    // Graceful disconnect
-    [[nodiscard]] Awaitable<VoidResult>
+    /// @brief Graceful disconnect (sync, callable from callbacks).
+    /// @param reason Disconnect reason code.
+    [[nodiscard]] VoidResult
     disconnect(DisconnectReason reason) noexcept;
+
+    /// @brief Graceful disconnect (coroutine overload).
+    /// @param reason Disconnect reason code.
+    /// @param yield  Boost.Asio stackful coroutine context.
+    [[nodiscard]] VoidResult
+    disconnect(DisconnectReason reason, boost::asio::yield_context yield) noexcept;
 
     // Message handler registration
     void set_hello_handler(HelloHandler handler) noexcept {
@@ -120,6 +131,13 @@ public:
         return peer_info_;
     }
 
+    /// @brief Return the negotiated ETH subprotocol version from HELLO capability matching.
+    /// @return 66, 67, 68, or 69 when a common ETH capability was negotiated; 0 otherwise.
+    [[nodiscard]] uint8_t negotiated_eth_version() const noexcept
+    {
+        return negotiated_eth_version_;
+    }
+
     // Access to cipher secrets if needed (grouped values)
     [[nodiscard]] const auth::FrameSecrets& cipher_secrets() const noexcept;
 
@@ -132,8 +150,8 @@ private:
     ) noexcept;
 
     // Internal coroutine loops
-    [[nodiscard]] Awaitable<VoidResult> run_send_loop() noexcept;
-    [[nodiscard]] Awaitable<VoidResult> run_receive_loop() noexcept;
+    [[nodiscard]] VoidResult run_send_loop(boost::asio::yield_context yield) noexcept;
+    [[nodiscard]] VoidResult run_receive_loop(boost::asio::yield_context yield) noexcept;
 
     // Message routing
     void route_message(const protocol::Message& msg) noexcept;
@@ -151,6 +169,7 @@ private:
     
     // Peer metadata - stored as member for const reference access
     PeerInfo peer_info_;
+    uint8_t negotiated_eth_version_{0U};
     bool is_initiator_;
 
     // Message channels (lock-free, hidden Boost types)

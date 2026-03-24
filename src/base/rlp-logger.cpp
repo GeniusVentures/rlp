@@ -1,5 +1,6 @@
-#include "base/logger.hpp"
+#include "../../include/base/rlp-logger.hpp"
 #include <iostream>
+#include <mutex>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
@@ -52,7 +53,7 @@ namespace
 
 namespace rlp::base
 {
-    Logger createLogger( const std::string &tag, const std::string& basepath )
+    std::shared_ptr<spdlog::logger> createLogger( const std::string &tag, const std::string& basepath )
     {
         static std::mutex           mutex;
         std::lock_guard<std::mutex> lock( mutex );

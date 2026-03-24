@@ -6,10 +6,10 @@
 #include <rlpx/framing/frame_cipher.hpp>
 #include <rlpx/protocol/messages.hpp>
 #include <rlpx/socket/socket_transport.hpp>
-#include <base/logger.hpp>
+#include <eth/eth_types.hpp>
+#include <base/rlp-logger.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/co_spawn.hpp>
-#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/spawn.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/write.hpp>
@@ -23,6 +23,32 @@ namespace rlpx {
 
 namespace asio = boost::asio;
 using tcp = asio::ip::tcp;
+
+namespace {
+
+uint8_t negotiate_eth_version(const std::vector<protocol::Capability>& capabilities) noexcept
+{
+    uint8_t negotiated_version = 0U;
+
+    for (const auto& capability : capabilities)
+    {
+        if (capability.name != "eth")
+        {
+            continue;
+        }
+
+        if ((capability.version >= eth::kEthProtocolVersion66 &&
+             capability.version <= eth::kEthProtocolVersion69) &&
+            capability.version > negotiated_version)
+        {
+            negotiated_version = capability.version;
+        }
+    }
+
+    return negotiated_version;
+}
+
+} // namespace
 
 // Message channel for lock-free communication
 class RlpxSession::MessageChannel {
@@ -84,6 +110,7 @@ RlpxSession::RlpxSession(RlpxSession&& other) noexcept
     : state_(other.state_.load(std::memory_order_acquire))
     , stream_(std::move(other.stream_))
     , peer_info_(std::move(other.peer_info_))
+    , negotiated_eth_version_(other.negotiated_eth_version_)
     , is_initiator_(other.is_initiator_)
     , send_channel_(std::move(other.send_channel_))
     , recv_channel_(std::move(other.recv_channel_))
@@ -95,6 +122,7 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
         state_.store(other.state_.load(std::memory_order_acquire), std::memory_order_release);
         stream_ = std::move(other.stream_);
         peer_info_ = std::move(other.peer_info_);
+        negotiated_eth_version_ = other.negotiated_eth_version_;
         is_initiator_ = other.is_initiator_;
         send_channel_ = std::move(other.send_channel_);
         recv_channel_ = std::move(other.recv_channel_);
@@ -103,19 +131,20 @@ RlpxSession& RlpxSession::operator=(RlpxSession&& other) noexcept {
 }
 
 // Factory for outbound connections
-Awaitable<Result<std::unique_ptr<RlpxSession>>>
-RlpxSession::connect(const SessionConnectParams& params) noexcept {
+Result<std::shared_ptr<RlpxSession>>
+RlpxSession::connect(const SessionConnectParams& params, asio::yield_context yield) noexcept {
     // Step 1: Establish TCP connection with timeout
-    auto executor = co_await boost::asio::this_coro::executor;
+    auto executor = yield.get_executor();
 
-    auto transport_result = co_await socket::connect_with_timeout(
+    auto transport_result = socket::connect_with_timeout(
         executor,
         params.remote_host,
         params.remote_port,
-        kTcpConnectionTimeout
+        kTcpConnectionTimeout,
+        yield
     );
     if (!transport_result) {
-        co_return transport_result.error();
+        return transport_result.error();
     }
 
     // Step 2: Run the real RLPx auth handshake (auth → ack)
@@ -127,15 +156,15 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     hs_config.peer_public_key = params.peer_public_key;
 
     auth::AuthHandshake handshake(hs_config, std::move(transport_result.value()));
-    auto hs_result = co_await handshake.execute();
+    auto hs_result = handshake.execute(yield);
     if (!hs_result) {
-        co_return hs_result.error();
+        return hs_result.error();
     }
     auto& hs = hs_result.value();
 
     // Step 3: Build MessageStream with derived frame secrets
     if (!hs.transport) {
-        co_return SessionError::kAuthenticationFailed;
+        return SessionError::kAuthenticationFailed;
     }
     auto cipher = std::make_unique<framing::FrameCipher>(hs.frame_secrets);
     auto stream = std::make_unique<framing::MessageStream>(
@@ -144,15 +173,14 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     );
 
     // Step 4: Build session with peer info
-    PeerInfo peer_info{
-        .public_key      = params.peer_public_key,
-        .client_id       = std::string(params.client_id),
-        .listen_port     = params.listen_port,
-        .remote_address  = "",
-        .remote_port     = params.remote_port
-    };
+    PeerInfo peer_info{};
+    peer_info.public_key = params.peer_public_key;
+    peer_info.client_id = std::string(params.client_id);
+    peer_info.listen_port = params.listen_port;
+    peer_info.remote_address = "";
+    peer_info.remote_port = params.remote_port;
 
-    auto session = std::unique_ptr<RlpxSession>(new RlpxSession(
+    auto session = std::shared_ptr<RlpxSession>(new RlpxSession(
         std::move(stream),
         std::move(peer_info),
         true  // is_initiator
@@ -162,9 +190,13 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     protocol::HelloMessage hello;
     hello.protocol_version = kProtocolVersion;
     hello.client_id        = std::string(params.client_id);
-    hello.capabilities     = { protocol::Capability{ "eth", 68 },
-                                protocol::Capability{ "eth", 67 },
-                                protocol::Capability{ "eth", 66 } };
+    // Advertise ETH/66-69 — peers negotiate the highest common version.
+    hello.capabilities     = {
+        protocol::Capability{ "eth", eth::kEthProtocolVersion66 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion67 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion68 },
+        protocol::Capability{ "eth", eth::kEthProtocolVersion69 }
+    };
     hello.listen_port      = params.listen_port;
     std::copy(params.local_public_key.begin(),
               params.local_public_key.end(),
@@ -172,23 +204,22 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
 
     auto hello_encoded = hello.encode();
     if (!hello_encoded) {
-        co_return SessionError::kHandshakeFailed;
+        return SessionError::kHandshakeFailed;
     }
 
-    framing::MessageSendParams hello_send{
-        .message_id = kHelloMessageId,
-        .payload    = std::move(hello_encoded.value()),
-        .compress   = false
-    };
-    auto send_result = co_await session->stream_->send_message(hello_send);
+    framing::MessageSendParams hello_send{};
+    hello_send.message_id = kHelloMessageId;
+    hello_send.payload = std::move(hello_encoded.value());
+    hello_send.compress = false;
+    auto send_result = session->stream_->send_message(hello_send, yield);
     if (!send_result) {
-        co_return send_result.error();
+        return send_result.error();
     }
 
     // Step 6: Receive peer HELLO
-    auto recv_result = co_await session->stream_->receive_message();
+    auto recv_result = session->stream_->receive_message(yield);
     if (!recv_result) {
-        co_return recv_result.error();
+        return recv_result.error();
     }
     auto& peer_msg = recv_result.value();
     {
@@ -201,21 +232,22 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
         if (peer_hello) {
             session->peer_info_.client_id     = peer_hello.value().client_id;
             session->peer_info_.listen_port   = peer_hello.value().listen_port;
+            session->negotiated_eth_version_  = negotiate_eth_version(peer_hello.value().capabilities);
             static auto log = rlp::base::createLogger("rlpx.session");
             SPDLOG_LOGGER_DEBUG(log, "connect: peer HELLO ok, client='{}' port={} caps={}",
                 peer_hello.value().client_id,
                 peer_hello.value().listen_port,
                 peer_hello.value().capabilities.size());
+            SPDLOG_LOGGER_DEBUG(log, "connect: negotiated eth version={}",
+                static_cast<int>(session->negotiated_eth_version_));
 
             // RLPx spec: enable Snappy compression if both sides advertise p2p version >= 5.
-            // We always send version 5; if the peer does too, all post-HELLO messages are compressed.
             if (peer_hello.value().protocol_version >= kProtocolVersion) {
                 session->stream_->enable_compression();
                 SPDLOG_LOGGER_DEBUG(log, "connect: Snappy compression enabled (peer p2p v{})",
                     peer_hello.value().protocol_version);
             }
 
-            // Fire handler if already registered (unlikely here, but safe)
             if (session->hello_handler_) {
                 session->hello_handler_(peer_hello.value());
             }
@@ -226,13 +258,9 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     } else if (peer_msg.id == kDisconnectMessageId) {
         static auto log = rlp::base::createLogger("rlpx.session");
         auto disc = protocol::DisconnectMessage::decode(peer_msg.payload);
-        if (disc) {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO, reason={}",
-                static_cast<int>(disc.value().reason));
-        } else {
-            SPDLOG_LOGGER_WARN(log, "connect: peer sent Disconnect before HELLO (reason undecodable)");
-        }
-        co_return SessionError::kHandshakeFailed;
+        SPDLOG_LOGGER_DEBUG(log, "connect: peer sent Disconnect before HELLO, reason={}",
+            disc ? static_cast<int>(disc.value().reason) : -1);
+        return SessionError::kHandshakeFailed;
     } else {
         static auto log = rlp::base::createLogger("rlpx.session");
         SPDLOG_LOGGER_WARN(log, "connect: expected HELLO (0x00) but got id=0x{:02x}", peer_msg.id);
@@ -241,39 +269,31 @@ RlpxSession::connect(const SessionConnectParams& params) noexcept {
     // Step 7: Activate session and start I/O loops
     session->state_.store(SessionState::kActive, std::memory_order_release);
 
-    boost::asio::co_spawn(
+    asio::spawn(
         executor,
-        [session_ptr = session.get()]() -> Awaitable<void> {
-            auto result = co_await session_ptr->run_send_loop();
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_send_loop(yc);
             (void)result;
-        },
-        [](std::exception_ptr) noexcept {}
+        }
     );
 
-    boost::asio::co_spawn(
+    asio::spawn(
         executor,
-        [session_ptr = session.get()]() -> Awaitable<void> {
-            auto result = co_await session_ptr->run_receive_loop();
+        [s = session](asio::yield_context yc) {
+            auto result = s->run_receive_loop(yc);
             (void)result;
-        },
-        [](std::exception_ptr) noexcept {}
+        }
     );
 
-    co_return std::move(session);
+    return std::move(session);
 }
 
 // Factory for inbound connections
-Awaitable<Result<std::unique_ptr<RlpxSession>>>
-RlpxSession::accept(const SessionAcceptParams& params) noexcept {
+Result<std::shared_ptr<RlpxSession>>
+RlpxSession::accept(const SessionAcceptParams& params, asio::yield_context /*yield*/) noexcept {
+    (void)params;
     // TODO: Phase 3.5 - Implement inbound connection acceptance
-    // 1. Accept incoming TCP socket
-    // 2. Perform RLPx handshake as responder
-    // 3. Exchange Hello messages
-    // 4. Create MessageStream with FrameCipher
-    // 5. Start send/receive loops
-    
-    // For now, return error indicating not implemented
-    co_return SessionError::kConnectionFailed;
+    return SessionError::kConnectionFailed;
 }
 
 // Send message
@@ -293,64 +313,64 @@ VoidResult RlpxSession::post_message(framing::Message message) noexcept {
 }
 
 // Receive message
-Awaitable<Result<framing::Message>>
-RlpxSession::receive_message() noexcept {
+Result<framing::Message>
+RlpxSession::receive_message(asio::yield_context yield) noexcept {
     auto current_state = state();
     
-    // Can only receive in active state
     if (current_state != SessionState::kActive) {
         if (current_state == SessionState::kClosed || current_state == SessionState::kError) {
-            co_return SessionError::kConnectionFailed;
+            return SessionError::kConnectionFailed;
         }
-        co_return SessionError::kNotConnected;
+        return SessionError::kNotConnected;
     }
     
     // Check if there's a message in the receive channel
     auto msg = recv_channel_->try_pop();
     if (!msg) {
-        co_return SessionError::kNotConnected; // Would be timeout in real impl
+        (void)yield;
+        return SessionError::kNotConnected; // Would be timeout in real impl
     }
     
-    co_return std::move(*msg);
+    return std::move(*msg);
 }
 
-// Graceful disconnect
-Awaitable<VoidResult>
+// Graceful disconnect (sync)
+VoidResult
 RlpxSession::disconnect(DisconnectReason reason) noexcept {
+    (void)reason;
     auto current_state = state_.load(std::memory_order_acquire);
-    
-    // Check if already disconnecting or closed
+
     if (current_state == SessionState::kDisconnecting ||
         current_state == SessionState::kClosed ||
         current_state == SessionState::kError) {
-        // Already in terminal or transitioning state
-        co_return outcome::success();
+        return outcome::success();
     }
-    
-    // Transition to disconnecting state
+
     SessionState expected = current_state;
     while (!state_.compare_exchange_weak(
         expected,
         SessionState::kDisconnecting,
         std::memory_order_release,
         std::memory_order_acquire)) {
-        // If state changed, check again
         if (expected == SessionState::kDisconnecting ||
             expected == SessionState::kClosed ||
             expected == SessionState::kError) {
-            co_return outcome::success();
+            return outcome::success();
         }
     }
-    
-    // TODO: Phase 3.5 - Implement graceful disconnect
-    // 1. Send Disconnect message with reason
-    // 2. Flush pending messages
-    // 3. Close socket
-    
-    // Transition to closed state
+
     state_.store(SessionState::kClosed, std::memory_order_release);
-    
-    co_return outcome::success();
+    if (stream_)
+    {
+        stream_->close();
+    }
+    return outcome::success();
+}
+
+// Graceful disconnect (coroutine overload)
+VoidResult
+RlpxSession::disconnect(DisconnectReason reason, asio::yield_context /*yield*/) noexcept {
+    return disconnect(reason);
 }
 
 // Access to cipher secrets
@@ -359,7 +379,7 @@ const auth::FrameSecrets& RlpxSession::cipher_secrets() const noexcept {
 }
 
 // Internal send loop
-Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
+VoidResult RlpxSession::run_send_loop(asio::yield_context yield) noexcept {
     // Continuously send messages while session is active
     while (state() == SessionState::kActive) {
         // Check if there are pending messages to send
@@ -369,73 +389,70 @@ Awaitable<VoidResult> RlpxSession::run_send_loop() noexcept {
             // No messages pending — yield and check again
             // TODO: Replace polling with proper async condition variable
             boost::system::error_code ec;
-            co_await boost::asio::steady_timer(
-                co_await boost::asio::this_coro::executor,
+            asio::steady_timer(
+                yield.get_executor(),
                 kSendLoopPollInterval
-            ).async_wait(boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+            ).async_wait(asio::redirect_error(yield, ec));
             
             if (ec) {
                 force_error_state();
-                co_return SessionError::kConnectionFailed;
+                return SessionError::kConnectionFailed;
             }
             continue;
         }
         
         // Compress if stream compression is enabled (set after HELLO negotiation)
-        framing::MessageSendParams send_params{
-            .message_id = msg->id,
-            .payload = msg->payload,
-            .compress = stream_->is_compression_enabled()
-        };
+        framing::MessageSendParams send_params{};
+        send_params.message_id = msg->id;
+        send_params.payload = msg->payload;
+        send_params.compress = stream_->is_compression_enabled();
         
-        auto send_result = co_await stream_->send_message(send_params);
+        auto send_result = stream_->send_message(send_params, yield);
         
         if (!send_result) {
             // Network error - transition to error state
             force_error_state();
-            co_return send_result.error();
+            return send_result.error();
         }
     }
     
-    co_return outcome::success();
+    return outcome::success();
 }
 
 // Internal receive loop
-Awaitable<VoidResult> RlpxSession::run_receive_loop() noexcept {
+VoidResult RlpxSession::run_receive_loop(asio::yield_context yield) noexcept {
     static auto log = rlp::base::createLogger("rlpx.session");
     // Continuously receive messages while session is active
     while (state() == SessionState::kActive) {
         // Receive message from network stream
-        auto msg_result = co_await stream_->receive_message();
+        auto msg_result = stream_->receive_message(yield);
         
         if (!msg_result) {
             // Network error or connection closed
             SPDLOG_LOGGER_DEBUG(log, "receive_loop: stream error, closing session");
             force_error_state();
-            co_return msg_result.error();
+            return msg_result.error();
         }
         
         auto& msg = msg_result.value();
         SPDLOG_LOGGER_DEBUG(log, "receive_loop: msg id=0x{:02x} payload_size={}", msg.id, msg.payload.size());
         
         // Convert framing::Message to protocol::Message for routing
-        protocol::Message proto_msg{
-            .id = msg.id,
-            .payload = std::move(msg.payload)
-        };
+        protocol::Message proto_msg{};
+        proto_msg.id = msg.id;
+        proto_msg.payload = std::move(msg.payload);
         
         // Route message to appropriate handler (if registered)
         route_message(proto_msg);
         
         // Also push to receive channel for pull-based consumption
-        framing::Message frame_msg{
-            .id = proto_msg.id,
-            .payload = std::move(proto_msg.payload)
-        };
+        framing::Message frame_msg{};
+        frame_msg.id = proto_msg.id;
+        frame_msg.payload = std::move(proto_msg.payload);
         recv_channel_->push(std::move(frame_msg));
     }
     
-    co_return outcome::success();
+    return outcome::success();
 }
 
 // Message routing

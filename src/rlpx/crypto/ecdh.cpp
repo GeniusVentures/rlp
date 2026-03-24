@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <rlpx/crypto/ecdh.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <secp256k1.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>

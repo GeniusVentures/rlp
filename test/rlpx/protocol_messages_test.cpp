@@ -158,6 +158,32 @@ TEST(ProtocolMessagesTest, HelloRoundtrip) {
     EXPECT_EQ(decoded.value().capabilities.size(), original.capabilities.size());
 }
 
+TEST(ProtocolMessagesTest, HelloRoundtripPreservesEthCapabilities66Through69) {
+    HelloMessage original;
+    original.protocol_version = 5;
+    original.client_id = "TestClient/v1.0";
+    original.capabilities = {
+        {"eth", 66},
+        {"eth", 67},
+        {"eth", 68},
+        {"eth", 69}
+    };
+    original.listen_port = 30303;
+    original.node_id.fill(0x24);
+
+    auto encoded = original.encode();
+    ASSERT_TRUE(encoded.has_value());
+
+    auto decoded = HelloMessage::decode(encoded.value());
+    ASSERT_TRUE(decoded.has_value());
+    ASSERT_EQ(decoded.value().capabilities.size(), original.capabilities.size());
+
+    for (size_t i = 0; i < original.capabilities.size(); ++i) {
+        EXPECT_EQ(decoded.value().capabilities[i].name, original.capabilities[i].name);
+        EXPECT_EQ(decoded.value().capabilities[i].version, original.capabilities[i].version);
+    }
+}
+
 TEST(ProtocolMessagesTest, HelloEmptyClientId) {
     HelloMessage msg;
     msg.protocol_version = 5;

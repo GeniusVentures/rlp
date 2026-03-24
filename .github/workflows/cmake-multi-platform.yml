@@ -2,16 +2,6 @@ name: Release Build CI
 
 on:
   push:
-    branches:
-      - develop
-      - main
-    paths-ignore:
-      - ".github/**"
-      - "Readme.md"
-  pull_request:
-    branches:
-      - develop
-      - main
     paths-ignore:
       - ".github/**"
       - "Readme.md"
@@ -21,9 +11,113 @@ on:
         description: "Release tag"
         required: false
         type: string
+      android:
+        description: "Build Android targets"
+        required: false
+        type: boolean
+        default: true
+      ios:
+        description: "Build iOS targets"
+        required: false
+        type: boolean
+        default: true
+      osx:
+        description: "Build OSX targets"
+        required: false
+        type: boolean
+        default: true
+      linux:
+        description: "Build Linux targets"
+        required: false
+        type: boolean
+        default: true
+      windows:
+        description: "Build Windows targets"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Select build matrix
+        id: set-matrix
+        shell: bash
+        env:
+          SELECT_ANDROID: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.android == 'true' }}
+          SELECT_IOS: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.ios == 'true' }}
+          SELECT_OSX: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.osx == 'true' }}
+          SELECT_LINUX: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.linux == 'true' }}
+          SELECT_WINDOWS: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.windows == 'true' }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          entries = [
+              {
+                  "target": "Linux",
+                  "runner": ["self-hosted", "X64", "Linux"],
+                  "abi": "x86_64",
+                  "build-type": "Release",
+                  "container": "ghcr.io/geniusventures/debian-bullseye:latest",
+              },
+              {
+                  "target": "Linux",
+                  "runner": "sg-arm-linux",
+                  "abi": "aarch64",
+                  "build-type": "Release",
+                  "container": "ghcr.io/geniusventures/debian-bullseye:latest",
+              },
+              {
+                  "target": "Windows",
+                  "runner": ["self-hosted", "Windows"],
+                  "abi": "",
+                  "build-type": "Release",
+              },
+              {
+                  "target": "OSX",
+                  "runner": "gv-OSX-Large",
+                  "abi": "",
+                  "build-type": "Release",
+              },
+              {
+                  "target": "Android",
+                  "runner": "sg-ubuntu-linux",
+                  "abi": "arm64-v8a",
+                  "build-type": "Release",
+              },
+              {
+                  "target": "Android",
+                  "runner": ["self-hosted", "X64", "Linux"],
+                  "abi": "armeabi-v7a",
+                  "build-type": "Release",
+              },
+              {
+                  "target": "iOS",
+                  "runner": "macos-latest",
+                  "abi": "",
+                  "build-type": "Release",
+              },
+          ]
+
+          selected = {
+              "android": os.environ["SELECT_ANDROID"].lower() == "true",
+              "ios": os.environ["SELECT_IOS"].lower() == "true",
+              "osx": os.environ["SELECT_OSX"].lower() == "true",
+              "linux": os.environ["SELECT_LINUX"].lower() == "true",
+              "windows": os.environ["SELECT_WINDOWS"].lower() == "true",
+          }
+
+          include = [entry for entry in entries if selected[entry["target"].lower()]]
+          print(f"matrix={json.dumps({'include': include}, separators=(',', ':'))}")
+          PY
+
   build:
+    needs: prepare-matrix
     env:
       GRPC_BUILD_ENABLE_CCACHE: "ON"
       GH_TOKEN: ${{ secrets.GNUS_TOKEN_1 }}
@@ -36,40 +130,7 @@ jobs:
         password: ${{ secrets.GNUS_TOKEN_1 }}
     strategy:
       fail-fast: false
-      matrix:
-        target: [ Android, iOS, OSX, Linux, Windows ]
-        build-type: [ Release ]
-        abi: [ "" ]
-        include:
-          - target: Linux
-            runner: sg-ubuntu-linux
-            abi: "x86_64"
-            build-type: "Release"
-            container: ghcr.io/geniusventures/debian-bullseye:latest
-          - target: Linux
-            runner: sg-arm-linux
-            abi: "aarch64"
-            build-type: "Release"
-            container: ghcr.io/geniusventures/debian-bullseye:latest
-          - target: Windows
-            runner: [ self-hosted, Windows ]
-          - target: OSX
-            runner: gv-OSX-Large
-          - target: Android
-            runner: sg-ubuntu-linux
-            abi: arm64-v8a
-            build-type: "Release"
-          - target: Android
-            runner: sg-ubuntu-linux
-            abi: armeabi-v7a
-            build-type: "Release"
-          - target: iOS
-            runner: macos-latest
-        exclude:
-          - target: Android
-            abi: ""
-          - target: Linux
-            abi: ""
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
       - name: Configure Git Bash on Windows
         if: ${{ runner.environment == 'self-hosted' && matrix.target == 'Windows' }}
@@ -362,7 +423,12 @@ jobs:
       - name: Build rlp
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
         run: cmake --build . --config ${{ matrix.build-type }} -j
-      
+
+      - name: Test rlp (non-mobile)
+        if: ${{ matrix.target != 'Android' && matrix.target != 'iOS' }}
+        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+        run: ctest . -C ${{ matrix.build-type }} --output-on-failure -V
+
       - name: Install rlp
         working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
         run: cmake --install . --config ${{ matrix.build-type }}

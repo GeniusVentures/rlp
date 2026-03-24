@@ -2,7 +2,7 @@
 #define RLP_DECODER_HPP
 
 #include <vector>
-#include <span> // For span overloads if desired
+#include <boost/core/span.hpp>
 #include "common.hpp"
 #include "intx.hpp"
 #include "endian.hpp"
@@ -214,7 +214,7 @@ class RlpDecoder {
      // --- Convenience for Fixed-Size Arrays/Spans (Consume) ---
      // Reads next item into a fixed-size span/array
     template <size_t N>
-    DecodingResult read(std::span<uint8_t, N> out_span) noexcept {
+    DecodingResult read(boost::span<uint8_t, N> out_span) noexcept {
          BOOST_OUTCOME_TRY(auto h, PeekHeader()); // Peek first
 
          if ( h.list ) {
@@ -245,11 +245,11 @@ class RlpDecoder {
 
     template <size_t N>
     DecodingResult read(std::array<uint8_t, N>& out_array) noexcept {
-        return read<N>(std::span<uint8_t, N>{out_array});
+        return read<N>(boost::span<uint8_t, N>{out_array});
     }
     template <size_t N>
     DecodingResult read(uint8_t (&out_c_array)[N]) noexcept {
-        return read<N>(std::span<uint8_t, N>{out_c_array});
+        return read<N>(boost::span<uint8_t, N>{out_c_array});
     }
 
     // --- Streaming Support for Large Payloads ---

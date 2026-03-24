@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <discv4/discv4_constants.hpp>
 #include <string>
 #include <unordered_map>
 
@@ -22,7 +23,7 @@ public:
     using Duration  = Clock::duration;
 
     /// @brief Default expiry duration matching go-ethereum's dialHistoryExpiration.
-    static constexpr Duration kDefaultExpiry = std::chrono::seconds(35);
+    static constexpr Duration kDefaultExpiry = kDefaultDialHistoryExpiry;
 
     /// @param expiry  How long a dialed node is suppressed before being retried.
     explicit DialHistory(Duration expiry = kDefaultExpiry) : expiry_(expiry) {}

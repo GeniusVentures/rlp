@@ -6,7 +6,7 @@
 #include <rlpx/crypto/ecdh.hpp>
 #include <rlpx/crypto/kdf.hpp>
 #include <rlpx/crypto/hmac.hpp>
-#include <base/logger.hpp>
+#include <base/rlp-logger.hpp>
 #include <rlp/rlp_encoder.hpp>
 #include <rlp/rlp_decoder.hpp>
 #include <secp256k1.h>
@@ -21,10 +21,26 @@
 
 namespace rlpx::auth {
 
+namespace asio = boost::asio;
+
 namespace {
     rlp::base::Logger& auth_log() {
         static auto log = rlp::base::createLogger("rlpx.auth");
         return log;
+    }
+
+
+    std::string pubkey_hex(gsl::span<const uint8_t, kPublicKeySize> pubkey)
+    {
+        static constexpr char kHex[] = "0123456789abcdef";
+        std::string out;
+        out.reserve(kPublicKeySize * 2U);
+        for (uint8_t b : pubkey)
+        {
+            out.push_back(kHex[(b >> 4U) & 0x0FU]);
+            out.push_back(kHex[b & 0x0FU]);
+        }
+        return out;
     }
 
 // Create auth message (initiator -> responder)
@@ -93,25 +109,23 @@ AuthResult<ByteBuffer> create_auth_message(
     if (!rlp_result) { return AuthError::kSignatureInvalid; }
     ByteBuffer rlp_body(rlp_result.value().begin(), rlp_result.value().end());
 
-    // ── 5. Append random padding: 100..199 bytes (go-ethereum: mrand.Intn(100)+100) ──
+    // ── 5. Append fixed random padding (current implementation keeps 100 bytes) ──
     {
-        ByteBuffer padding(100);
+        ByteBuffer padding(kEip8AuthPaddingSize);
         RAND_bytes(padding.data(), static_cast<int>(padding.size()));
         rlp_body.insert(rlp_body.end(), padding.begin(), padding.end());
     }
 
     // ── 6. EIP-8 prefix = uint16_be(len(rlp_body) + eciesOverhead) ──
-    //    eciesOverhead = 65 (pubkey) + 16 (iv) + 32 (mac) = 113
-    constexpr size_t kEciesOverhead = kUncompressedPubKeySize + kAesBlockSize + 32U;
-    const auto prefix_val = static_cast<uint16_t>(rlp_body.size() + kEciesOverhead);
+    const auto prefix_val = static_cast<uint16_t>(rlp_body.size() + kEciesOverheadSize);
     ByteBuffer prefix = { static_cast<uint8_t>(prefix_val >> 8U),
                           static_cast<uint8_t>(prefix_val & 0xFFU) };
 
     // ── 7. ECIES encrypt with prefix as shared_mac_data ──
     EciesEncryptParams params{
-        .plaintext            = rlp_body,
-        .recipient_public_key = remote_public_key,
-        .shared_mac_data      = ByteView(prefix.data(), prefix.size())
+        ByteView(rlp_body.data(), rlp_body.size()),
+        remote_public_key,
+        ByteView(prefix.data(), prefix.size())
     };
 
     auth_log()->debug("create_auth_message: RLP+padding body={} bytes, prefix=0x{:02x}{:02x}",
@@ -129,13 +143,14 @@ AuthResult<ByteBuffer> create_auth_message(
 // Parse auth message (responder)
 AuthResult<AuthKeyMaterial> parse_auth_message(
     ByteView encrypted_auth,
-    gsl::span<const uint8_t, kPrivateKeySize> local_private_key
+    gsl::span<const uint8_t, kPrivateKeySize> local_private_key,
+    ByteView shared_mac_data
 ) noexcept {
     // Decrypt with ECIES
     EciesDecryptParams params{
-        .ciphertext = encrypted_auth,
-        .recipient_private_key = local_private_key,
-        .shared_mac_data = {}
+        encrypted_auth,
+        local_private_key,
+        shared_mac_data
     };
 
     auto auth_body_result = EciesCipher::decrypt(params);
@@ -201,9 +216,9 @@ AuthResult<ByteBuffer> create_ack_message(
 
     // Encrypt with ECIES
     EciesEncryptParams params{
-        .plaintext = ack_body,
-        .recipient_public_key = remote_public_key,
-        .shared_mac_data = {}
+        ByteView(ack_body.data(), ack_body.size()),
+        remote_public_key,
+        ByteView{}
     };
 
     return EciesCipher::encrypt(params);
@@ -219,9 +234,9 @@ AuthResult<void> parse_ack_message(
 ) noexcept {
     // Decrypt with ECIES — shared_mac_data is the 2-byte EIP-8 length prefix
     EciesDecryptParams params{
-        .ciphertext            = encrypted_ack,
-        .recipient_private_key = local_private_key,
-        .shared_mac_data       = shared_mac_data
+        encrypted_ack,
+        local_private_key,
+        shared_mac_data
     };
 
     auto ack_body_result = EciesCipher::decrypt(params);
@@ -263,14 +278,19 @@ AuthHandshake::AuthHandshake(const HandshakeConfig& config,
     , transport_(std::move(transport)) {
 }
 
-// Note: This is a simplified synchronous version
-// The async version would use Boost.Asio coroutines for socket I/O
-Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
+// Note: Uses Boost.Asio stackful coroutines (yield_context) for socket I/O — C++17 compatible.
+Result<HandshakeResult> AuthHandshake::execute(asio::yield_context yield) noexcept {
+    const std::string remote_addr = transport_.remote_address();
+    const uint16_t remote_port = transport_.remote_port();
+    const std::string remote_pubkey_hex = config_.peer_public_key.has_value()
+        ? pubkey_hex(config_.peer_public_key.value())
+        : std::string{};
+
     // Generate ephemeral keypair
     auto keypair_result = rlpx::crypto::Ecdh::generate_ephemeral_keypair();
     if ( !keypair_result ) {
         auth_log()->debug("execute: generate_ephemeral_keypair failed");
-        co_return SessionError::kAuthenticationFailed;
+        return SessionError::kAuthenticationFailed;
     }
     auto keypair = keypair_result.value();
 
@@ -278,7 +298,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
     Nonce local_nonce;
     if ( RAND_bytes(local_nonce.data(), kNonceSize) != 1 ) {
         auth_log()->debug("execute: RAND_bytes failed");
-        co_return SessionError::kAuthenticationFailed;
+        return SessionError::kAuthenticationFailed;
     }
 
     HandshakeResult result;
@@ -301,7 +321,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         if ( !auth_msg_result ) {
             auth_log()->debug("execute: create_auth_message failed (code {})",
                               static_cast<int>(auth_msg_result.error()));
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: auth message built ({} bytes), sending", auth_msg_result.value().size());
 
@@ -310,7 +330,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         const auto& auth_ciphertext = auth_msg_result.value();
         const auto  prefix_val      = static_cast<uint16_t>(auth_ciphertext.size());
         ByteBuffer  auth_wire;
-        auth_wire.reserve(sizeof(uint16_t) + auth_ciphertext.size());
+        auth_wire.reserve(kEip8LengthPrefixSize + auth_ciphertext.size());
         auth_wire.push_back(static_cast<uint8_t>(prefix_val >> 8U));
         auth_wire.push_back(static_cast<uint8_t>(prefix_val & 0xFFU));
         auth_wire.insert(auth_wire.end(), auth_ciphertext.begin(), auth_ciphertext.end());
@@ -318,30 +338,42 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         // Store full wire bytes for MAC derivation
         result.key_material.initiator_auth_message = auth_wire;
 
-        auto send_result = co_await transport_.write_all(
-            ByteView(auth_wire.data(), auth_wire.size()));
+        auto send_result = transport_.write_all(
+            ByteView(auth_wire.data(), auth_wire.size()), yield);
         if ( !send_result ) {
             auth_log()->debug("execute: write_all(auth) failed");
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: auth sent ({} bytes wire), waiting for ack length prefix", auth_wire.size());
 
         // ── Initiator: receive ack ──────────────────────────────────────────
         // EIP-8 ack wire: 2-byte len(ack_ciphertext) || ack_ciphertext
-        auto len_result = co_await transport_.read_exact(sizeof(uint16_t));
+        auto len_result = transport_.read_exact(kEip8LengthPrefixSize, yield);
         if ( !len_result ) {
-            auth_log()->debug("execute: read_exact(ack length prefix) failed");
-            co_return SessionError::kAuthenticationFailed;
+            auth_log()->debug("execute: peer {}:{} pubkey={} read_exact(ack length prefix) failed",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex);
+            return SessionError::kAuthenticationFailed;
         }
         const auto& len_bytes   = len_result.value();
         const size_t ack_body_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                                   |  static_cast<size_t>(len_bytes[1]);
+        if (ack_body_len > kMaxEip8HandshakePacketSize) {
+            auth_log()->debug("execute: peer {}:{} pubkey={} ack length {} exceeds EIP-8 max {}",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex,
+                              ack_body_len,
+                              kMaxEip8HandshakePacketSize);
+            return SessionError::kAuthenticationFailed;
+        }
         auth_log()->debug("execute: ack length prefix received, ack_body_len={}", ack_body_len);
 
-        auto ack_result = co_await transport_.read_exact(ack_body_len);
+        auto ack_result = transport_.read_exact(ack_body_len, yield);
         if ( !ack_result ) {
             auth_log()->debug("execute: read_exact(ack body) failed");
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: ack body received ({} bytes), parsing", ack_body_len);
 
@@ -362,7 +394,7 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         if ( !parse_result ) {
             auth_log()->debug("execute: parse_ack_message failed (code {})",
                               static_cast<int>(parse_result.error()));
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         auth_log()->debug("execute: ack parsed successfully");
 
@@ -374,24 +406,34 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
         result.key_material.recipient_nonce = local_nonce;
 
         // Read 2-byte length prefix
-        auto len_result = co_await transport_.read_exact(sizeof(uint16_t));
+        auto len_result = transport_.read_exact(kEip8LengthPrefixSize, yield);
         if ( !len_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         const auto& len_bytes = len_result.value();
         const size_t auth_len = (static_cast<size_t>(len_bytes[0]) << 8U)
                               |  static_cast<size_t>(len_bytes[1]);
+        if (auth_len > kMaxEip8HandshakePacketSize) {
+            auth_log()->debug("execute: peer {}:{} pubkey={} auth length {} exceeds EIP-8 max {}",
+                              remote_addr,
+                              remote_port,
+                              remote_pubkey_hex,
+                              auth_len,
+                              kMaxEip8HandshakePacketSize);
+            return SessionError::kAuthenticationFailed;
+        }
 
-        auto auth_result = co_await transport_.read_exact(auth_len);
+        auto auth_result = transport_.read_exact(auth_len, yield);
         if ( !auth_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
 
         auto parse_result = parse_auth_message(
             ByteView(auth_result.value().data(), auth_result.value().size()),
-            config_.local_private_key);
+            config_.local_private_key,
+            len_bytes);
         if ( !parse_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         result.key_material = parse_result.value();
         result.key_material.initiator_auth_message   = auth_result.value();
@@ -406,22 +448,22 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
             result.key_material.peer_public_key
         );
         if ( !ack_msg_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
         result.key_material.recipient_ack_message = ack_msg_result.value();
 
         const auto& ack_bytes = result.key_material.recipient_ack_message;
         const auto  ack_len   = static_cast<uint16_t>(ack_bytes.size());
         ByteBuffer  ack_wire;
-        ack_wire.reserve(sizeof(uint16_t) + ack_bytes.size());
+        ack_wire.reserve(kEip8LengthPrefixSize + ack_bytes.size());
         ack_wire.push_back(static_cast<uint8_t>(ack_len >> 8U));
         ack_wire.push_back(static_cast<uint8_t>(ack_len & 0xFFU));
         ack_wire.insert(ack_wire.end(), ack_bytes.begin(), ack_bytes.end());
 
-        auto send_result = co_await transport_.write_all(
-            ByteView(ack_wire.data(), ack_wire.size()));
+        auto send_result = transport_.write_all(
+            ByteView(ack_wire.data(), ack_wire.size()), yield);
         if ( !send_result ) {
-            co_return SessionError::kAuthenticationFailed;
+            return SessionError::kAuthenticationFailed;
         }
     }
 
@@ -431,22 +473,25 @@ Awaitable<Result<HandshakeResult>> AuthHandshake::execute() noexcept {
     // ── Hand transport back to caller via HandshakeResult ───────────────────
     result.transport = std::move(transport_);
 
-    co_return result;
+    return result;
 }
 
-Awaitable<AuthResult<AuthKeyMaterial>> AuthHandshake::perform_auth() noexcept {
+AuthResult<AuthKeyMaterial> AuthHandshake::perform_auth(asio::yield_context /*yield*/) noexcept {
     // This method would contain the core auth logic
     // Currently integrated into execute() above
-    co_return AuthError::kInvalidAuthMessage; // Placeholder
+    return AuthError::kInvalidAuthMessage; // Placeholder
 }
 
-Awaitable<Result<void>> AuthHandshake::exchange_hello(
+Result<void> AuthHandshake::exchange_hello(
     ByteView aes_key,
-    ByteView mac_key
+    ByteView mac_key,
+    asio::yield_context /*yield*/
 ) noexcept {
+    (void)aes_key;
+    (void)mac_key;
     // This would perform the Hello message exchange
     // Placeholder for now
-    co_return SessionError::kHandshakeFailed;
+    return SessionError::kHandshakeFailed;
 }
 
 FrameSecrets AuthHandshake::derive_frame_secrets(

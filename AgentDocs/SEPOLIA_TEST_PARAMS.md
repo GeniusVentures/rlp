@@ -1,13 +1,33 @@
 # Sepolia Test Parameters for eth_watch
 
-## Quick Answer
+## Current Sepolia Fork Hash (as of March 2026)
+
+The Sepolia chain is post-BPO2. Forks applied (all timestamps):
+- MergeNetsplit block 1735371
+- Shanghai 1677557088
+- Cancun 1706655072
+- Prague 1741159776 (passed ~March 5, 2025)
+- Osaka 1760427360 (passed ~October 14, 2025)
+- BPO1 1761017184 (passed ~October 21, 2025)
+- BPO2 1761607008 (passed ~October 28, 2025)
+
+**Current ENR/Status ForkId:** `{ 0x26, 0x89, 0x56, 0xb6 }`, Next=0
+
+Verified via `go-ethereum/core/forkid/forkid_test.go` SepoliaChainConfig test vectors
+and confirmed by live `test_enr_survey` run (March 14, 2026 — only hash `26 89 56 b6`
+matched current Sepolia peers in the ENR survey).
+
+> **Do NOT use `0xed, 0x88, 0xb5, 0xfd`** — that was the Prague hash with Next=1760427360,
+> valid only before Osaka launched (~Oct 2025). It will match zero live peers today.
+
+
 
 To test `eth_watch` with a public Sepolia node, you can use one of the **bootstrap nodes** (though they won't send block data, they will at least connect):
 
 ### Option 1: Use Bootstrap Node (Will Connect, No Block Data)
 
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 
 # Using the first Sepolia bootstrap node
 ./eth_watch 138.197.51.181 30303 4e5e92199ee224a01932a377160aa432f31d0b351f84ab413a8e0a42f4f36476f8fb1cbe914af0d9aef0d51665c214cf653c651c4bbd9d5550a934f241f1682b
@@ -22,7 +42,7 @@ cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/buil
 ### Option 2: Use --chain Flag (Easiest)
 
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 ./eth_watch --chain sepolia
 ```
 
@@ -113,19 +133,20 @@ Some public infrastructure providers run full nodes that accept p2p connections:
 
 However, most public RPC endpoints **don't expose p2p ports** for security reasons.
 
-### Option C: Complete discv4 Implementation
+### Option C: Use the maintained discovery harnesses
 
-Implement the full discv4 protocol in `/include/rlp/PeerDiscovery/discovery.hpp` to:
-1. Send PING to bootstrap nodes
-2. Receive PONG + NEIGHBOURS responses
-3. Extract real peer enodes from NEIGHBOURS
-4. Connect to those peers with eth_watch
+Use the current C++ discovery flow under `discv4_client` / `DialScheduler` via:
+1. `examples/discovery/test_discovery.cpp`
+2. `examples/discovery/test_enr_survey.cpp`
+3. the existing bootnode registry and ENR filter wiring
+
+Those paths exercise the maintained discovery implementation instead of the old `discovery.hpp` sketch.
 
 ## Summary
 
 **For quick testing right now:**
 ```bash
-cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/build/OSX/Debug
+cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/SuperGenius/rlp/build/OSX/Debug
 
 # Easiest - use --chain flag
 ./eth_watch --chain sepolia
@@ -136,5 +157,5 @@ cd /Users/Shared/SSDevelopment/Development/GeniusVentures/GeniusNetwork/rlp/buil
 
 **Expected result:** Connection succeeds, HELLO exchange works, but no block messages (because it's a bootstrap node).
 
-**To get block messages:** You need to implement discv4 discovery or run your own Geth node.
+**To get block messages:** You need to use the maintained discovery harnesses to find real peers, or run your own Geth node.
 

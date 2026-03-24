@@ -11,12 +11,17 @@ include_directories(
 )
 
 target_link_libraries(eth_watch
-    PRIVATE
-    rlpx
-    rlp
+    PUBLIC
     discv4
-    logger
-    Boost::boost
     Boost::json
 )
+
+# boost::coroutines performs stack switching that confuses ASan on macOS ARM64:
+# __asan_handle_no_return is called but ignored (stack region looks 1.5 GB),
+# leaving redzones active on the coroutine stack and eventually crashing the
+# error handler re-entrantly.  The unit tests (ctest) cover all logic with full
+# ASan.  This binary's tests are network integration tests that need a clean run.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(eth_watch PRIVATE -fno-sanitize=address)
+endif()
 
