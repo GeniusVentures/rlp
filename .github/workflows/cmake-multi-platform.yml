@@ -121,6 +121,8 @@ jobs:
     env:
       GRPC_BUILD_ENABLE_CCACHE: "ON"
       GH_TOKEN: ${{ secrets.GNUS_TOKEN_1 }}
+      REPO_NAME: ${{ endsWith(github.repository, '/') && 'error' || replace(github.repository, github.repository_owner + '/', '') }}
+
     runs-on: ${{ matrix.runner }}
     container:
       image: ${{ matrix.container }}
@@ -169,11 +171,11 @@ jobs:
             SUDO="sudo"
           fi
 
-          # Clean contents of rlp directory but keep the directory itself
-          if [ -d "rlp" ]; then
-            echo "Cleaning rlp directory contents..."
-            $SUDO rm -rf rlp/* rlp/.* 2>/dev/null || true
-            echo "rlp directory cleaned (kept the directory)"
+          # Clean contents of ${{ REPO_NAME }} directory but keep the directory itself
+          if [ -d "${{ REPO_NAME }}" ]; then
+            echo "Cleaning √ directory contents..."
+            $SUDO rm -rf ${{ REPO_NAME }}/* ${{ REPO_NAME }}/.* 2>/dev/null || true
+            echo "${{ REPO_NAME }} directory cleaned (kept the directory)"
           fi
           
           # Delete sibling dependency directories completely
@@ -187,15 +189,15 @@ jobs:
           echo "=== POST-CLEANUP DEBUG ==="
           echo "Runner workspace contents:"
           ls -la
-          if [ -d "rlp" ]; then
-            echo "rlp directory exists and contains:"
-            ls -la rlp/ 2>/dev/null || echo "  (empty)"
+          if [ -d "${{ REPO_NAME }}" ]; then
+            echo "${{ REPO_NAME }} directory exists and contains:"
+            ls -la ${{ REPO_NAME }}/ 2>/dev/null || echo "  (empty)"
           fi
 
-      - name: Checkout rlp repository
+      - name: Checkout ${{ REPO_NAME }} repository
         uses: actions/checkout@v6
         with:
-          path: "rlp"
+          path: "${{ REPO_NAME }}"
           submodules: "recursive"
 
       - name: Set build directory
@@ -397,38 +399,38 @@ jobs:
 
       - name: Configure CMake for Android
         if: ${{ matrix.target == 'Android'}}
-        working-directory: ${{github.workspace}}/rlp
+        working-directory: ${{github.workspace}}/${{ REPO_NAME }}
         run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DANDROID_ABI=${{matrix.abi}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
 
       - name: Configure CMake for Mac
         if: ${{ matrix.target == 'OSX'}}
-        working-directory: ${{github.workspace}}/rlp
+        working-directory: ${{github.workspace}}/${{ REPO_NAME }}
         run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DPLATFORM=MAC_UNIVERSAL -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
 
       - name: Configure CMake for iOS
         if: ${{ matrix.target == 'iOS'}}
-        working-directory: ${{github.workspace}}/rlp
+        working-directory: ${{github.workspace}}/${{ REPO_NAME }}
         run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DPLATFORM=OS64 -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
 
       - name: Configure CMake for Linux
         if: ${{matrix.target == 'Linux'}}
-        working-directory: ${{ github.workspace }}/rlp
+        working-directory: ${{ github.workspace }}/${{ REPO_NAME }}
         run: cmake -S build/${{matrix.target}} -B $BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}} -DSGNS_PRINT_LOGS=ON
 
       - name: Configure CMake for Windows
         if: ${{matrix.target == 'Windows'}}
-        working-directory: ${{github.workspace}}/rlp
+        working-directory: ${{github.workspace}}/${{ REPO_NAME }}
         run: cmake -S build/${{matrix.target}} -B $env:BUILD_DIRECTORY -DCMAKE_BUILD_TYPE=${{matrix.build-type}} -DTHIRDPARTY_BUILD_DIR=${{env.THIRDPARTY_BUILD_DIR}} -DZKLLVM_BUILD_DIR=${{env.ZKLLVM_BUILD_DIR}}
 
-      - name: Build rlp
-        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+      - name: Build ${{ REPO_NAME }}
+        working-directory: ${{ github.workspace }}/${{ REPO_NAME }}/${{ env.BUILD_DIRECTORY }}
         run: cmake --build . --config ${{ matrix.build-type }} -j
 
-      - name: Test rlp (non-mobile)
+      - name: Test ${{ REPO_NAME }} (non-mobile)
         if: ${{ matrix.target != 'Android' && matrix.target != 'iOS' }}
-        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+        working-directory: ${{ github.workspace }}/${{ REPO_NAME }}/${{ env.BUILD_DIRECTORY }}
         run: ctest . -C ${{ matrix.build-type }} --output-on-failure -V
 
-      - name: Install rlp
-        working-directory: ${{ github.workspace }}/rlp/${{ env.BUILD_DIRECTORY }}
+      - name: Install ${{ REPO_NAME }}
+        working-directory: ${{ github.workspace }}/${{ REPO_NAME }}/${{ env.BUILD_DIRECTORY }}
         run: cmake --install . --config ${{ matrix.build-type }}
